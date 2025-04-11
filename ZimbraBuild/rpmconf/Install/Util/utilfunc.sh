@@ -200,6 +200,44 @@ checkUser() {
   fi
 }
 
+checkDatabaseIntegrity() {
+  isInstalled zimbra-store
+  if [ x$PKGINSTALLED != "x" ]; then
+    if [ -x "bin/zmdbintegrityreport" ]; then
+      if [ x$DEFAULTFILE = "x" -o x$CLUSTERUPGRADE = "xyes" ]; then
+        while :; do
+          askYN "Do you want to verify message store database integrity?" "Y"
+          if [ $response = "no" ]; then
+            break
+          elif [ $response = "yes" ]; then
+            echo "Verifying integrity of message store databases.  This may take a while."
+            su - zimbra -c "/opt/zimbra/bin/mysqladmin -s ping" 2>/dev/null
+            if [ $? != 0 ]; then
+              su - zimbra -c "/opt/zimbra/bin/mysql.server start" 2> /dev/null
+              for ((i = 0; i < 60; i++)) do
+                su - zimbra -c "/opt/zimbra/bin/mysqladmin -s ping" 2>/dev/null
+                if [ $? = 0 ]; then
+                  break
+                fi
+                sleep 2
+              done
+            fi
+            perl -I/opt/zimbra/zimbramon/lib bin/zmdbintegrityreport -v -r
+            if [ $? != 0 ]; then
+              exit $?
+            fi
+            break
+          else
+            break
+          fi
+        done
+      else 
+        echo "Automated install detected...continuing."
+      fi
+    fi
+  fi
+}
+
 checkRecentBackup() {
   isInstalled zimbra-store
   if [ x$PKGINSTALLED != "x" ]; then
@@ -211,22 +249,27 @@ checkRecentBackup() {
         echo "24hrs.  It is recommended to perform a full system backup and"
         echo "copy it to a safe location prior to performing an upgrade."
         echo ""
-        while :; do
-          askYN "Do you wish to continue without a backup?" "N"
-          if [ $response = "no" ]; then
-            askYN "Exit?" "N"
-            if [ $response = "yes" ]; then
-              echo "Exiting."
-              exit 1
+        if [ x$DEFAULTFILE = "x" -o x$CLUSTERUPGRADE = "xyes" ]; then
+          while :; do
+            askYN "Do you wish to continue without a backup?" "N"
+            if [ $response = "no" ]; then
+              askYN "Exit?" "N"
+              if [ $response = "yes" ]; then
+                echo "Exiting."
+                exit 1
+              fi
+            else
+              break
             fi
-          else
-            break
-          fi
-        done
+          done
+        else
+          echo "Automated install detected...continuing."
+        fi
       fi
     fi
   fi
 }
+
 
 checkRequired() {
 
@@ -334,7 +377,9 @@ EOF
   fi
 
   checkRecentBackup
-  
+
+  checkDatabaseIntegrity
+
 }
 
 
@@ -897,7 +942,7 @@ removeExistingInstall() {
       echo "Backing up ldap"
       echo ""
       /opt/zimbra/openldap/sbin/slapcat -f /opt/zimbra/conf/slapd.conf \
-        -l /opt/zimbra/openldap-data/ldap.bak
+        -b '' -l /opt/zimbra/openldap-data/ldap.bak
     fi
 
     echo ""
@@ -1323,6 +1368,12 @@ getPlatformVars() {
       else 
         PREREQ_LIBS="/usr/lib/libstdc++.so.5"
       fi
+    elif [ $PLATFORM = "FC5" -o $PLATFORM = "FC6" -o $PLATFORM = "F7" ]; then
+      PREREQ_PACKAGES="sudo libidn curl fetchmail gmp bind-libs vixie-cron"
+      PREREQ_LIBS="/usr/lib/libstdc++.so.6"
+    elif [ $PLATFORM = "FC5_64" -o $PLATFORM = "FC6_64" -o $PLATFORM = "F7_64" ]; then
+      PREREQ_PACKAGES="sudo libidn curl fetchmail gmp bind-libs vixie-cron"
+      PREREQ_LIBS="/usr/lib/libstdc++.so.6 /usr/lib64/libstdc++.so.6"
     elif [ $PLATFORM = "RHEL5_64" -o $PLATFORM = "CentOS5_64" ]; then
       PREREQ_PACKAGES="sudo libidn curl fetchmail gmp compat-libstdc++-296 compat-libstdc++-33"
       PREREQ_LIBS="/usr/lib/libstdc++.so.6 /usr/lib64/libstdc++.so.6"

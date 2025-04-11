@@ -34,11 +34,12 @@ zmsetvars \
 platform=`/opt/zimbra/libexec/get_plat_tag.sh`
 
 rewriteconfig() {
+    /opt/zimbra/libexec/zmmtainit
     /opt/zimbra/libexec/zmmtaconfig mta > /dev/null 2>&1
 }
 
 if [ "x$1" = "xstatus" -o "x$1" = "xstart" ]; then
-	${zimbra_home}/postfix-${postfix_version}/sbin/postqueue -p > /dev/null 2>&1
+  sudo ${zimbra_home}/libexec/zmmtastatus 2> /dev/null
 	R=$?
 	if [ "x$1" = "xstart" ]; then
 		if [ "x$R" = "x0" ]; then

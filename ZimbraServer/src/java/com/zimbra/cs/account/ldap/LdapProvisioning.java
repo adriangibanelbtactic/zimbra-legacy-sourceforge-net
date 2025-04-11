@@ -287,7 +287,7 @@ public class LdapProvisioning extends Provisioning {
      * @param attrs
      * @throws ServiceException
      */
-    private synchronized void modifyAttrsInternal(Entry entry, DirContext initCtxt, Map attrs)
+    private void modifyAttrsInternal(Entry entry, DirContext initCtxt, Map attrs)
             throws ServiceException {
         DirContext ctxt = initCtxt;
         try {
@@ -324,7 +324,7 @@ public class LdapProvisioning extends Provisioning {
         refreshEntry(e, null, this);
     }
 
-    synchronized void refreshEntry(Entry entry, DirContext initCtxt, LdapProvisioning prov)
+    void refreshEntry(Entry entry, DirContext initCtxt, LdapProvisioning prov)
     throws ServiceException {
         DirContext ctxt = initCtxt;
         try {
@@ -399,7 +399,7 @@ public class LdapProvisioning extends Provisioning {
     /* (non-Javadoc)
      * @see com.zimbra.cs.account.Provisioning#getMimeType(java.lang.String)
      */
-    public synchronized MimeTypeInfo getMimeType(String name) throws ServiceException {
+    public MimeTypeInfo getMimeType(String name) throws ServiceException {
         DirContext ctxt = null;
         try {
             ctxt = LdapUtil.getDirContext();
@@ -413,7 +413,7 @@ public class LdapProvisioning extends Provisioning {
         }
     }
     
-    public synchronized MimeTypeInfo getMimeTypeByExtension(String ext) throws ServiceException {
+    public MimeTypeInfo getMimeTypeByExtension(String ext) throws ServiceException {
         DirContext ctxt = null;
         try {
             ctxt = LdapUtil.getDirContext();
@@ -440,7 +440,7 @@ public class LdapProvisioning extends Provisioning {
     /* (non-Javadoc)
      * @see com.zimbra.cs.account.Provisioning#getObjectType(java.lang.String)
      */
-    public synchronized List<Zimlet> getObjectTypes() throws ServiceException {
+    public List<Zimlet> getObjectTypes() throws ServiceException {
     	return listAllZimlets();
     }
 
@@ -2220,7 +2220,15 @@ public class LdapProvisioning extends Provisioning {
     public static final long TIMESTAMP_WINDOW = Constants.MILLIS_PER_MINUTE * 5; 
 
     private void checkAccountStatus(Account acct) throws ServiceException {
-        reload(acct);
+        /*
+         * We no longer do this reload(see bug 18981):
+         *     Staled data can be read back if there are replication delays and the account is 
+         *     refreshed from a not-caught-up replica.
+         * 
+         * For now we comment it out and leave a "stub" here for reference instead of deleting it.
+         */
+        // reload(acct);
+        
         String accountStatus = acct.getAccountStatus();
         if (accountStatus == null)
             throw AccountServiceException.AUTH_FAILED(acct.getName());
@@ -2306,6 +2314,20 @@ public class LdapProvisioning extends Provisioning {
             throw AccountServiceException.CHANGE_PASSWORD();
 
         // update/check last logon
+        updateLastLogon(acct);
+        
+    }
+    
+    private void updateLastLogon(Account acct) throws ServiceException {
+        Config config = Provisioning.getInstance().getConfig();
+        long freq = config.getTimeInterval(
+                    Provisioning.A_zimbraLastLogonTimestampFrequency,
+                    com.zimbra.cs.util.Config.D_ZIMBRA_LAST_LOGON_TIMESTAMP_FREQUENCY);
+        
+        // never update timestamp if frequency is 0
+        if (freq == 0)
+            return;
+        
         Date lastLogon = acct.getGeneralizedTimeAttr(Provisioning.A_zimbraLastLogonTimestamp, null);
         if (lastLogon == null) {
             Map<String, String> attrs = new HashMap<String, String>();
@@ -2316,10 +2338,6 @@ public class LdapProvisioning extends Provisioning {
                 ZimbraLog.account.warn("updating zimbraLastLogonTimestamp", e);
             }
         } else {
-            Config config = Provisioning.getInstance().getConfig();
-            long freq = config.getTimeInterval(
-                    Provisioning.A_zimbraLastLogonTimestampFrequency,
-                    com.zimbra.cs.util.Config.D_ZIMBRA_LAST_LOGON_TIMESTAMP_FREQUENCY);
             long current = System.currentTimeMillis();
             if (current - freq >= lastLogon.getTime()) {
                 Map<String, String> attrs = new HashMap<String , String>();
@@ -2331,6 +2349,7 @@ public class LdapProvisioning extends Provisioning {
                 }
             }
         }
+    
     }
 
     private void externalLdapAuth(Domain d, String authMech, Account acct, String password) throws ServiceException {

@@ -139,6 +139,7 @@ ZaAccount.A_zimbraPrefMailLocalDeliveryDisabled = "zimbraPrefMailLocalDeliveryDi
 ZaAccount.A_zimbraPrefCalendarApptReminderWarningTime = "zimbraPrefCalendarApptReminderWarningTime";
 ZaAccount.A_zimbraPrefSkin = "zimbraPrefSkin";
 ZaAccount.A_zimbraPrefGalAutoCompleteEnabled = "zimbraPrefGalAutoCompleteEnabled";
+ZaAccount.A_zimbraPrefTimeZoneId = "zimbraPrefTimeZoneId";
 //features
 ZaAccount.A_zimbraFeaturePop3DataSourceEnabled = "zimbraFeaturePop3DataSourceEnabled";
 ZaAccount.A_zimbraFeatureIdentitiesEnabled = "zimbraFeatureIdentitiesEnabled";
@@ -1295,6 +1296,7 @@ ZaAccount.myXModel = {
 		{id:ZaAccount.A_zimbraAvailableSkin, type:_COS_LIST_, ref:"attrs/" + ZaAccount.A_zimbraAvailableSkin, dataType: _STRING_},
 		{id:ZaAccount.A_zimbraZimletAvailableZimlets, type:_COS_LIST_, ref:"attrs/" + ZaAccount.A_zimbraZimletAvailableZimlets, dataType: _STRING_},		
 		{id:ZaAccount.A_zimbraPrefGalAutoCompleteEnabled, type:_COS_ENUM_, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaAccount.A_zimbraPrefGalAutoCompleteEnabled},
+		{id:ZaAccount.A_zimbraPrefTimeZoneId , type:_COS_ENUM_, choices:ZaModel.TIME_ZONE_CHOICES, ref:"attrs/"+ZaAccount.A_zimbraPrefTimeZoneId },
 		//features
 		{id:ZaAccount.A_zimbraFeaturePop3DataSourceEnabled, type:_COS_ENUM_, ref:"attrs/"+ZaAccount.A_zimbraFeaturePop3DataSourceEnabled, choices:ZaModel.BOOLEAN_CHOICES},
 		{id:ZaAccount.A_zimbraFeatureIdentitiesEnabled, type:_COS_ENUM_, ref:"attrs/"+ZaAccount.A_zimbraFeatureIdentitiesEnabled, choices:ZaModel.BOOLEAN_CHOICES},
@@ -1505,5 +1507,25 @@ function (){
 		return currentCos ;
 	} catch (ex) {
 		this._app.getCurrentController()._handleException(ex, "ZaAccount.prototype.getCurrentCos", null, false);
+	}	
+}
+
+ZaAccount.prototype.manageSpecialAttrs =
+function () {
+	var warning = "" ;
+	
+	//handle the unrecognized timezone
+	var tz = this.attrs[ZaAccount.A_zimbraPrefTimeZoneId] ;
+	if (tz) {
+		var n_tz = ZaModel.setUnrecoganizedTimezone(tz) ;
+		if (tz != n_tz) {
+			this.attrs[ZaAccount.A_zimbraPrefTimeZoneId] = n_tz ;
+			warning +=  AjxMessageFormat.format(ZaMsg.WARNING_TIME_ZONE_INVALID ,  [ tz, "account - \"" + this.name +"\""] );
+		}
+	}
+
+	//display warnings about the if manageSpecialAttrs return value
+	if (warning && warning.length > 0) {
+		this._app.getCurrentController().popupMsgDialog (warning, true);
 	}	
 }

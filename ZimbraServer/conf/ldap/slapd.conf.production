@@ -15,8 +15,22 @@ include		"/opt/zimbra/openldap/etc/openldap/schema/zimbra.schema"
 # service AND an understanding of referrals.
 #referral	ldap://root.openldap.org
 
+# Set the number of threads to 8.  Large thread values increase contention
+# and noticibly impact performance
+threads		8
+
+# Sets the number of tool-threads to 1.  This value should match the number
+# of real CPUs/cores on the box (i.e., do not include Hyper-Threading values).
+#tool-threads		1
+
 pidfile		"/opt/zimbra/openldap/var/run/slapd.pid"
 argsfile	"/opt/zimbra/openldap/var/run/slapd.args"
+
+TLSCertificateFile /opt/zimbra/conf/slapd.crt
+TLSCertificateKeyFile /opt/zimbra/conf/slapd.key
+TLSVerifyClient never
+
+loglevel @@ldap_log_level@@
 
 # Load dynamic backend modules:
 # modulepath	/usr/local/libexec/openldap
@@ -87,6 +101,26 @@ access to attrs=entry
 	by * read
 
 #######################################################################
+# config database definition
+#######################################################################
+
+database	config
+rootpw		{SSHA}8+r0nkcErptqasSrFPcT0k81NFrbTcAS
+
+#######################################################################
+# monitor database definition
+#######################################################################
+database	monitor 
+rootdn		"cn=config"
+access to dn.children="cn=monitor"
+	by dn.exact="uid=zimbra,cn=admins,cn=zimbra" read
+
+#######################################################################
+# accesslog database definition
+#######################################################################
+###include /opt/zimbra/conf/master-accesslog.conf
+
+#######################################################################
 # BDB database definitions
 #######################################################################
 
@@ -99,10 +133,11 @@ rootdn		"uid=zimbra,cn=admins,cn=zimbra"
 rootpw		{SSHA}8+r0nkcErptqasSrFPcT0k81NFrbTcAS
 # number of entries to keep in memory
 cachesize 10000
+# number of search results to keep in memory
+idlcachesize 10000
 # check point whenever 64k data bytes written or 
 # 5 minutes has elapsed whichever occurs first
 checkpoint 64 5
-loglevel @@ldap_log_level@@
 # The database directory MUST exist prior to running slapd AND 
 # should only be accessible by the slapd and slap tools.
 # Mode 700 recommended.
@@ -139,6 +174,4 @@ timelimit unlimited
 #overlay syncprov
 #syncprov-checkpoint 100 10
 #syncprov-sessionlog 500
-TLSCertificateFile /opt/zimbra/conf/slapd.crt
-TLSCertificateKeyFile /opt/zimbra/conf/slapd.key
-TLSVerifyClient never
+###include /opt/zimbra/conf/master-accesslog-overlay.conf

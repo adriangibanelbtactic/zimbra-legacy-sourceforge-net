@@ -52,7 +52,7 @@ if ($> eq 0) {
 my %config = (
   progname    => "zmmtaconfig",
   hostname    => $ENV{zimbra_server_hostname},
-  loglevel    => 5,
+  loglevel    => 3,
   watchdog    => 1,
   wd_all      => 0,
   debug       => 0,
@@ -554,9 +554,9 @@ sub compareKeys {
     logMsg(4, "Checking keys for $ref->{name}");
 
     # skip sections we aren't looking for.
-    if (scalar keys %{$state->{forcedkeys}} != 0) {
+    if (scalar keys %{$state->{forcedconfig}} != 0) {
       logMsg(4, "Checking for forced keys $ref->{name}");
-      next unless (exists $state->{forcedkeys}->{$ref->{name}});
+      next unless (exists $state->{forcedconfig}->{$ref->{name}});
     }
 
     $ref->{changed}=0; # reset the changed flagged
@@ -601,12 +601,12 @@ sub compileActions {
   foreach my $section (@{$state->{sections}}) {
     logMsg(4, "compiling actions for $section->{name}");
     # skip keys we aren't looking for.
-    if (scalar keys %{$state->{forcedkeys}} != 0) {
+    if (scalar keys %{$state->{forcedconfig}} != 0) {
       logMsg(4, "Checking for forced keys $section->{name}");
-      next unless (exists $state->{forcedkeys}->{$section->{name}});
+      next unless (exists $state->{forcedconfig}->{$section->{name}});
     }
 
-    if ($section->{changed}) {
+    if ($section->{changed} || exists $state->{forcedconfig}->{$section->{name}}) {
       logMsg(5, "Section $section->{name} changed compiling rewrites");
       foreach my $rewrite (keys %{$section->{config}->{rewrites}}) {
         logMsg(5, "Adding rewrite $rewrite");
@@ -713,6 +713,14 @@ sub rewriteConfig {
       if ($func ne "") {
         if ($func eq "SPLIT") {
           $val = (split (' ', $state->{localconfig}->{$key}, 2))[0];
+        } elsif ($func eq "PERDITION_LDAP_SPLIT") {
+          # we need first arg plus just host names from remaining args
+          my @ldap_list = split(/\s+/, $state->{localconfig}->{$key});
+          $val = shift @ldap_list;
+          foreach (@ldap_list) {
+            $val .= " $1" if (/ldap.?:\/\/(.*):\d+/);
+          }
+          logMsg(5, "PERDITION_LDAP_SPLIT: $val");
         } else {
         }
       }
@@ -898,8 +906,8 @@ sub controlProcess($$) {
     $state->{current}->{services}->{$processname} = "started";
     print Dumper $state->{current}->{services};
   }
-  logMsg(2, "Failed to $action $processname rc=$rc");
-    #if ($rc != 0 && $action ne "status" );
+  logMsg(2, "Failed to $action $processname rc=$rc")
+    if ($rc != 0 && $action ne "status" );
   return $rc;
 }
 
@@ -925,7 +933,7 @@ sub daemonize {
     logMsg(0, "Can't write to /dev/null: $!\n");
   chdir '/' or 
     logMsg(0, "Can't chdir to / $!\n");
-  umask(0);
+  umask(027);
   $ENV{PATH} = '/bin:/sbin:/usr/bin:/usr/sbin';
 
   # update the pid file  

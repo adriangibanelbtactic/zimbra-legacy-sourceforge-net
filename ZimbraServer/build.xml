@@ -493,7 +493,8 @@
 		<delete failonerror="no">
 			<fileset dir="${zimbra.home.dir}/db" excludes="data/**"/>
 		</delete>
-		
+
+		<delete dir="${zimbra.home.dir}/zmstat" />
 		<delete dir="${zimbra.home.dir}/store" />
 		<delete dir="${zimbra.home.dir}/index" />
 		<delete dir="${zimbra.home.dir}/redolog" />
@@ -512,6 +513,7 @@
 
 		<mkdir dir="${zimbra.home.dir}/openldap/var/openldap-data" />
 		<mkdir dir="${zimbra.home.dir}/log" />
+		<mkdir dir="${zimbra.home.dir}/zmstat" />
 		<mkdir dir="${zimbra.home.dir}/store" />
 		<mkdir dir="${zimbra.home.dir}/index" />
 		<mkdir dir="${zimbra.home.dir}/redolog" />
@@ -577,7 +579,7 @@
 	
 	<target name="ldap-load" depends="zmprov-commands">
 		<antcall target="ldap-add"><param name="ldif.file" value="${dist.dir}/${slapd.etc.dir}/zimbra.ldif"/></antcall>
-		<antcall target="ldap-modify"><param name="ldif.file" value="${dist.dir}/${slapd.etc.dir}/zimbra_globalconfig.ldif"/></antcall>
+		<antcall target="ldap-add"><param name="ldif.file" value="${dist.dir}/${slapd.etc.dir}/zimbra_globalconfig.ldif"/></antcall>
 		<antcall target="ldap-add"><param name="ldif.file" value="${dist.dir}/${slapd.etc.dir}/zimbra_defaultcos.ldif"/></antcall>
 		<antcall target="ldap-add"><param name="ldif.file" value="${dist.dir}/${slapd.etc.dir}/zimbra_mimehandlers.ldif"/></antcall>
 		<echo>Editing localconfig zimbra_server_hostname to be ${zimbra.server.hostname}</echo>

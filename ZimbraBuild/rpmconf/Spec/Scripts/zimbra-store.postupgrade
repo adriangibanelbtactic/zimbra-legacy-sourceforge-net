@@ -24,6 +24,7 @@
 # ***** END LICENSE BLOCK *****
 # 
 
+rm -f /opt/zimbra/perdition
 ln -s /opt/zimbra/perdition-1.17.1 /opt/zimbra/perdition
 mkdir -p /opt/zimbra/perdition/var/run
 chown -R zimbra:zimbra /opt/zimbra/perdition/var
@@ -35,10 +36,10 @@ if [ "x$PLAT" = "xMACOSXx86" ]; then
 fi
 
 rm -f /opt/zimbra/mysql
-ln -s /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH /opt/zimbra/mysql
+ln -s /opt/zimbra/mysql-standard-5.0.45-apple-darwin8.2.0-$ARCH /opt/zimbra/mysql
 # Can't get the dylib to hold the correct path...
-rm -f /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH/lib/mysql
-ln -s /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH/lib /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH/lib/mysql
+rm -f /opt/zimbra/mysql-standard-5.0.45-apple-darwin8.2.0-$ARCH/lib/mysql
+ln -s /opt/zimbra/mysql-standard-5.0.45-apple-darwin8.2.0-$ARCH/lib /opt/zimbra/mysql-standard-5.0.45-apple-darwin8.2.0-$ARCH/lib/mysql
 
 H=`hostname -s`
 
@@ -49,6 +50,7 @@ rm -rf /opt/zimbra/tomcat
 ln -s /opt/zimbra/apache-tomcat-5.5.15 /opt/zimbra/tomcat
 mkdir -p /opt/zimbra/tomcat/logs
 chown zimbra:zimbra /opt/zimbra/tomcat/logs
+chmod 750 /opt/zimbra/tomcat/logs
 chown root:root /opt/zimbra/apache-tomcat-5.5.15
 
 egrep -v '^%zimbra.*tomcat' /etc/sudoers > /tmp/sudoers

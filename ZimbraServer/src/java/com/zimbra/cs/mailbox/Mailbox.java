@@ -1075,8 +1075,8 @@ public class Mailbox {
      *            +--Sent
      *            +--&lt;other immutable folders>
      *            +--&lt;user-created folders></pre>
-     *  This function does <u>not</u> have hooks for inserting arbitrary
-     *  folders, tags, or messages into a new mailbox.
+     *  This method does <u>not</u> have hooks for inserting arbitrary folders,
+     *  tags, or messages into a new mailbox.
      * 
      * @see Folder#create(int, Mailbox, Folder, String, byte, byte, int, byte, String) */
     synchronized void initialize() throws ServiceException {
@@ -1084,8 +1084,8 @@ public class Mailbox {
         // loaded by the earlier call to loadFoldersAndTags in beginTransaction
 
         byte hidden = Folder.FOLDER_IS_IMMUTABLE | Folder.FOLDER_DONT_TRACK_COUNTS;
-        Folder root = Folder.create(ID_FOLDER_ROOT, this, null, "ROOT", hidden, MailItem.TYPE_UNKNOWN, 0, MailItem.DEFAULT_COLOR, null);
-        Folder.create(ID_FOLDER_TAGS,          this, root, "Tags",          hidden, MailItem.TYPE_TAG, 0, MailItem.DEFAULT_COLOR, null);
+        Folder root = Folder.create(ID_FOLDER_ROOT, this, null, "ROOT",     hidden, MailItem.TYPE_UNKNOWN,      0, MailItem.DEFAULT_COLOR, null);
+        Folder.create(ID_FOLDER_TAGS,          this, root, "Tags",          hidden, MailItem.TYPE_TAG,          0, MailItem.DEFAULT_COLOR, null);
         Folder.create(ID_FOLDER_CONVERSATIONS, this, root, "Conversations", hidden, MailItem.TYPE_CONVERSATION, 0, MailItem.DEFAULT_COLOR, null);
 
         byte system = Folder.FOLDER_IS_IMMUTABLE;
@@ -1098,9 +1098,9 @@ public class Mailbox {
         Folder.create(ID_FOLDER_CONTACTS, this, userRoot, "Contacts", system, MailItem.TYPE_CONTACT, 0, MailItem.DEFAULT_COLOR, null);
         Folder.create(ID_FOLDER_NOTEBOOK, this, userRoot, "Notebook", system, MailItem.TYPE_WIKI,    0, MailItem.DEFAULT_COLOR, null);
         Folder.create(ID_FOLDER_CALENDAR, this, userRoot, "Calendar", system, MailItem.TYPE_APPOINTMENT, Flag.BITMASK_CHECKED, MailItem.DEFAULT_COLOR, null);
-        Folder.create(ID_FOLDER_TASKS,    this, userRoot, "Tasks",    system, MailItem.TYPE_TASK, Flag.BITMASK_CHECKED, MailItem.DEFAULT_COLOR, null);
+        Folder.create(ID_FOLDER_TASKS,    this, userRoot, "Tasks",    system, MailItem.TYPE_TASK,        Flag.BITMASK_CHECKED, MailItem.DEFAULT_COLOR, null);
         Folder.create(ID_FOLDER_AUTO_CONTACTS, this, userRoot, "Emailed Contacts", system, MailItem.TYPE_CONTACT, 0, MailItem.DEFAULT_COLOR, null);
-        Folder.create(ID_FOLDER_IM_LOGS,   this, userRoot, "Chats",   system, MailItem.TYPE_MESSAGE, 0, MailItem.DEFAULT_COLOR, null);
+        Folder.create(ID_FOLDER_IM_LOGS,  this, userRoot, "Chats",    system, MailItem.TYPE_MESSAGE, 0, MailItem.DEFAULT_COLOR, null);
         
 
         mCurrentChange.itemId = getInitialItemId();
@@ -1118,7 +1118,7 @@ public class Mailbox {
     private void initFlags() throws ServiceException {
         // flags will be added to mFlags array via call to cache() in MailItem constructor
         mSentFlag      = Flag.instantiate(this, "\\Sent",       Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_FROM_ME);
-        mAttachFlag    = Flag.instantiate(this, "\\Attached",   Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_ATTACHED);
+        mAttachFlag    = Flag.instantiate(this, "\\Attached",   Flag.FLAG_GENERIC,         Flag.ID_FLAG_ATTACHED);
         mReplyFlag     = Flag.instantiate(this, "\\Answered",   Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_REPLIED);
         mForwardFlag   = Flag.instantiate(this, "\\Forwarded",  Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_FORWARDED);
         mCopiedFlag    = Flag.instantiate(this, "\\Copied",     Flag.FLAG_GENERIC,         Flag.ID_FLAG_COPIED);
@@ -2893,75 +2893,59 @@ public class Mailbox {
      * @return calendar item ID 
      * @throws ServiceException
      */
-    public synchronized int setCalendarItem(OperationContext octxt, int folderId,
-                                            int flags, long tags,
-                                            SetCalendarItemData defaultInv,
+    public synchronized int setCalendarItem(OperationContext octxt, int folderId, int flags, long tags, SetCalendarItemData defaultInv,
                                             SetCalendarItemData exceptions[])
     throws ServiceException {
-        SetCalendarItem redoRecorder =
-            new SetCalendarItem(getId(), attachmentsIndexingEnabled(), flags, tags);
-        SetCalendarItem redoPlayer = (octxt == null ? null : (SetCalendarItem) octxt.getPlayer());
+        flags = (flags & ~Flag.FLAG_SYSTEM);
+        SetCalendarItem redoRecorder = new SetCalendarItem(getId(), attachmentsIndexingEnabled(), flags, tags);
 
         boolean success = false;
         try {
             beginTransaction("setCalendarItem", octxt, redoRecorder);
+            SetCalendarItem redoPlayer = (octxt == null ? null : (SetCalendarItem) octxt.getPlayer());
 
             // allocate IDs for all of the passed-in invites (and the calendar item!) if necessary
             if (redoPlayer == null || redoPlayer.getCalendarItemId() == 0) {
                 assert(defaultInv.mInv.getMailItemId() == 0);
-
-                int mailItemId = getNextItemId(Mailbox.ID_AUTO_INCREMENT);
-                defaultInv.mInv.setInviteId(mailItemId);
-
+                defaultInv.mInv.setInviteId(getNextItemId(Mailbox.ID_AUTO_INCREMENT));
                 if (exceptions != null) {
-                    for (SetCalendarItemData sad : exceptions) {
-                        mailItemId = getNextItemId(Mailbox.ID_AUTO_INCREMENT);
-                        sad.mInv.setMailItemId(mailItemId);
-                    }
+                    for (SetCalendarItemData sad : exceptions)
+                        sad.mInv.setMailItemId(getNextItemId(Mailbox.ID_AUTO_INCREMENT));
                 }
-            } else {
-                // id already set before we stored the invite in the redoRecorder!!!
             }
-
             redoRecorder.setData(defaultInv, exceptions);
 
+            short volumeId = redoPlayer == null ? Volume.getCurrentMessageVolume().getId() : redoPlayer.getVolumeId();
+
             // handle the DEFAULT calendar item
-            short volumeId =
-                redoPlayer == null ? Volume.getCurrentMessageVolume().getId()
-                            : redoPlayer.getVolumeId();
-                CalendarItem calItem = getCalendarItemByUid(defaultInv.mInv.getUid());
-                if (calItem == null) { 
-                    // ONLY create an calendar item if this is a REQUEST method...otherwise don't.
-                    if (defaultInv.mInv.getMethod().equals("REQUEST") || defaultInv.mInv.getMethod().equals("PUBLISH")) {
-                        calItem = createCalendarItem(folderId, volumeId, "",
-                                    defaultInv.mInv.getUid(), defaultInv.mPm, defaultInv.mInv);
-                    } else {
-//                      mLog.info("Mailbox " + getId()+" Message "+getId()+" SKIPPING Invite "+method+" b/c not a REQUEST and no CalendarItem could be found");
-                        return 0; // for now, just ignore this Invitation
-                    }
+            CalendarItem calItem = getCalendarItemByUid(defaultInv.mInv.getUid());
+            boolean calItemIsNew = calItem == null;
+            if (calItemIsNew) {
+                // ONLY create an calendar item if this is a REQUEST method...otherwise don't.
+                if (defaultInv.mInv.getMethod().equals("REQUEST") || defaultInv.mInv.getMethod().equals("PUBLISH")) {
+                    calItem = createCalendarItem(folderId, volumeId, flags, tags, defaultInv.mInv.getUid(), defaultInv.mPm, defaultInv.mInv);
                 } else {
-                    calItem.processNewInvite(defaultInv.mPm,
-                                defaultInv.mInv,
-                                defaultInv.mForce, folderId, volumeId,
-                                true);
+//                      mLog.info("Mailbox " + getId()+" Message "+getId()+" SKIPPING Invite "+method+" b/c not a REQUEST and no CalendarItem could be found");
+                    return 0; // for now, just ignore this Invitation
                 }
-
-                redoRecorder.setCalendarItemAttrs(calItem.getId(),
-                            calItem.getFolderId(),
-                            volumeId);
-
-                // handle the exceptions!
-                if (exceptions != null) {
-                    for (SetCalendarItemData sad : exceptions) {
-                        calItem.processNewInvite(sad.mPm, sad.mInv, sad.mForce, folderId, volumeId);
-                    }
-                }
-
+            } else {
                 calItem.setTags(flags, tags);
-                success = true;
+                calItem.processNewInvite(defaultInv.mPm, defaultInv.mInv, defaultInv.mForce, folderId, volumeId, true);
+            }
 
-                return calItem.getId();
+            redoRecorder.setCalendarItemAttrs(calItem.getId(), calItem.getFolderId(), volumeId);
 
+            // handle the exceptions!
+            if (exceptions != null) {
+                for (SetCalendarItemData sad : exceptions)
+                    calItem.processNewInvite(sad.mPm, sad.mInv, sad.mForce, folderId, volumeId);
+            }
+            
+            if (calItem != null)
+                queueForIndexing(calItem, !calItemIsNew, null);
+
+            success = true;
+            return calItem.getId();
         } finally {
             endTransaction(success);
         }
@@ -3062,46 +3046,38 @@ public class Mailbox {
      */
     public synchronized int[] addInvite(OperationContext octxt, Invite inv, int folderId, boolean force, ParsedMessage pm)
     throws ServiceException {
-
-        byte[] data = null;
-
         if (pm == null) {
             MimeMessage mm = CalendarMailSender.createCalendarMessage(inv);
-            pm = new ParsedMessage(mm,
-                                   octxt == null ? System.currentTimeMillis()
-                                                 : octxt.getTimestamp(),
-                                   true);
+            pm = new ParsedMessage(mm, octxt == null ? System.currentTimeMillis() : octxt.getTimestamp(), true);
         }
 
+        byte[] data = null;
         try {
             data = pm.getRawData();
         } catch (MessagingException me) {
             throw MailServiceException.MESSAGE_PARSE_ERROR(me);
-        } catch (IOException ie) {
-            throw ServiceException.FAILURE("Caught IOException", ie);
+        } catch (IOException ioe) {
+            throw ServiceException.FAILURE("Caught IOException", ioe);
         }
 
         CreateInvite redoRecorder = new CreateInvite(mId, inv, folderId, data, force);
-        CreateInvite redoPlayer = (octxt == null ? null : (CreateInvite) octxt.getPlayer());
-        short volumeId = redoPlayer == null ? Volume.getCurrentMessageVolume().getId() : redoPlayer.getVolumeId();
 
         boolean success = false;
         try {
             beginTransaction("addInvite", octxt, redoRecorder);
+            CreateInvite redoPlayer = (octxt == null ? null : (CreateInvite) octxt.getPlayer());
+            short volumeId = redoPlayer == null ? Volume.getCurrentMessageVolume().getId() : redoPlayer.getVolumeId();
 
             if (redoPlayer == null || redoPlayer.getCalendarItemId() == 0) {
                 assert(inv.getMailItemId() == 0); 
-                int mailItemId = getNextItemId(Mailbox.ID_AUTO_INCREMENT);
-                inv.setInviteId(mailItemId);
-            } else {
-                // id already set before we stored the invite in the redoRecorder!!!
+                inv.setInviteId(getNextItemId(Mailbox.ID_AUTO_INCREMENT));
             }
 
             CalendarItem calItem = getCalendarItemByUid(inv.getUid());
             if (calItem == null) { 
                 // ONLY create an calendar item if this is a REQUEST method...otherwise don't.
                 if (inv.getMethod().equals("REQUEST") || inv.getMethod().equals("PUBLISH")) {
-                    calItem = createCalendarItem(folderId, volumeId, "", inv.getUid(), pm, inv);
+                    calItem = createCalendarItem(folderId, volumeId, 0, 0, inv.getUid(), pm, inv);
                 } else {
 //                  mLog.info("Mailbox " + getId()+" Message "+getId()+" SKIPPING Invite "+method+" b/c not a REQUEST and no CalendarItem could be found");
                     return null; // for now, just ignore this Invitation
@@ -3372,14 +3348,11 @@ public class Mailbox {
             }
         }
 
-        CreateMessage redoRecorder =
-            new CreateMessage(mId, rcptEmail, pm.getReceivedDate(),
-                              sharedDeliveryCtxt.getShared(),
-                              digest, msgSize, folderId, noICal, flags, tagStr);
+        CreateMessage redoRecorder = new CreateMessage(mId, rcptEmail, pm.getReceivedDate(), sharedDeliveryCtxt.getShared(),
+                                                       digest, msgSize, folderId, noICal, flags, tagStr);
         StoreIncomingBlob storeRedoRecorder = null;
 
-        // Strip out unread flag for internal storage.
-        // This should not be done earlier than redoRecorder initialization.
+        // strip out unread flag for internal storage (don't do this before redoRecorder initialization)
         boolean unread = (flags & Flag.BITMASK_UNREAD) > 0;
         flags = flags & ~Flag.BITMASK_UNREAD;
 
@@ -4219,16 +4192,16 @@ public class Mailbox {
         }
     }
 
-    CalendarItem createCalendarItem(int folderId, short volumeId, String tags, String uid, ParsedMessage pm, Invite invite)
+    CalendarItem createCalendarItem(int folderId, short volumeId, int flags, long tags, String uid, ParsedMessage pm, Invite invite)
     throws ServiceException {
         // FIXME: assuming that we're in the middle of a AddInvite op
-        CreateCalendarItemPlayer redoPlayer   = (CreateCalendarItemPlayer) mCurrentChange.getRedoPlayer();
+        CreateCalendarItemPlayer redoPlayer = (CreateCalendarItemPlayer) mCurrentChange.getRedoPlayer();
         CreateCalendarItemRecorder redoRecorder = (CreateCalendarItemRecorder) mCurrentChange.getRedoRecorder();
 
         int newCalItemId = redoPlayer == null ? Mailbox.ID_AUTO_INCREMENT : redoPlayer.getCalendarItemId();
         int createId = getNextItemId(newCalItemId);
 
-        CalendarItem calItem = CalendarItem.create(createId, getFolderById(folderId), volumeId, tags, uid, pm, invite);
+        CalendarItem calItem = CalendarItem.create(createId, getFolderById(folderId), volumeId, flags, tags, uid, pm, invite);
 
         if (redoRecorder != null)
             redoRecorder.setCalendarItemAttrs(calItem.getId(),

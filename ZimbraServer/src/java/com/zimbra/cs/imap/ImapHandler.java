@@ -86,6 +86,7 @@ import com.zimbra.cs.operation.SetTagsOperation;
 import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.util.ThreadLocalData;
 import com.zimbra.cs.session.SessionCache;
+import com.zimbra.cs.stats.ActivityTracker;
 import com.zimbra.cs.stats.StatsFile;
 import com.zimbra.cs.stats.ZimbraPerf;
 import com.zimbra.cs.tcpserver.ProtocolHandler;
@@ -154,10 +155,15 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
     private String        mLastCommand;
     private boolean       mStartedTLS;
     private boolean       mGoodbyeSent;
+    
+    private static ActivityTracker sActivityTracker;
 
     public ImapHandler(ImapServer server) {
         super(server);
         mServer = server;
+        if (sActivityTracker == null) {
+            sActivityTracker = ActivityTracker.getInstance("imap.csv");
+        }
     }
 
     public void dumpState(Writer w) {
@@ -200,9 +206,6 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
     }
 
     private static final boolean STOP_PROCESSING = false, CONTINUE_PROCESSING = true;
-    
-    private static StatsFile STATS_FILE =
-        new StatsFile("perf_imap", new String[] { "command" }, true);
     
     protected boolean processCommand() throws IOException {
         ImapRequest req = null;
@@ -247,13 +250,14 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
             setIdle(false);
             mIncompleteRequest = null;
 
-            if (ZimbraPerf.isPerfEnabled())
-                ZimbraPerf.writeStats(STATS_FILE, mLastCommand);
+            if (mLastCommand != null) {
+                sActivityTracker.addStat(mLastCommand.toUpperCase(), start);
+            }
             ZimbraPerf.STOPWATCH_IMAP.stop(start);
         } catch (ImapContinuationException ice) {
             mIncompleteRequest = req.rewind();
             if (ice.sendContinuation)
-                sendContinuation();
+                sendContinuation("send literal data");
         } catch (ImapParseException ipe) {
             mIncompleteRequest = null;
             if (ipe.mTag == null)
@@ -748,7 +752,7 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
         if (finished)
             mAuthenticator = null;
         else
-            sendContinuation();
+            sendContinuation("");
         return CONTINUE_PROCESSING;
     }
 
@@ -1064,7 +1068,7 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
         if (mailboxName.equals("")) {
             // 6.3.8: "An empty ("" string) mailbox name argument is a special request to return
             //         the hierarchy delimiter and the root name of the name given in the reference."
-            sendUntagged("LIST (\\Noselect) \"/\" \"\"");
+            sendUntagged("LIST (\\NoSelect) \"/\" \"\"");
             sendOK(tag, "LIST completed");
             return CONTINUE_PROCESSING;
         }
@@ -1299,7 +1303,7 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
         if (begin == IDLE_START) {
             mSession.beginIdle(tag);
             sendNotifications(true, false);
-            sendContinuation();
+            sendContinuation("idling");
         } else {
             tag = mSession.endIdle();
             if (success)  sendOK(tag, "IDLE completed");
@@ -1360,7 +1364,7 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
             }
 
             // see if there's any quota on the account
-            long quota = mMailbox.getAccount().getIntAttr(Provisioning.A_zimbraMailQuota, 0);
+            long quota = mMailbox.getAccount().getLongAttr(Provisioning.A_zimbraMailQuota, 0);
             sendUntagged("QUOTAROOT " + ImapFolder.formatPath(path, mSession) + (quota > 0 ? " \"\"" : ""));
             if (quota > 0)
                 sendUntagged("QUOTA \"\" (STORAGE " + (mMailbox.getSize() / 1024) + ' ' + (quota / 1024) + ')');
@@ -1572,6 +1576,8 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
                 result.append(' ').append(byUID ? i4msg.imapUid : i4msg.sequence);
         } else if (options != RETURN_SAVE) {
             result = new StringBuilder("ESEARCH (TAG \"").append(tag).append("\")");
+            if (byUID)
+                result.append(" UID");
             if (!hits.isEmpty() && (options & RETURN_MIN) != 0)
                 result.append(" MIN ").append(byUID ? hits.first().imapUid : hits.first().sequence);
             if (!hits.isEmpty() && (options & RETURN_MAX) != 0)
@@ -1598,7 +1604,7 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
         if (result != null)
             sendUntagged(result.toString());
         sendNotifications(false, false);
-        sendOK(tag, "SEARCH completed");
+        sendOK(tag, (byUID ? "UID " : "") + "SEARCH completed");
         return CONTINUE_PROCESSING;
     }
 
@@ -2079,7 +2085,6 @@ public class ImapHandler extends ProtocolHandler implements ImapSessionHandler {
     void sendBAD(String tag, String response) throws IOException { sendResponse(tag, response.equals("") ? "BAD" : "BAD " + response, true); }
     void sendUntagged(String response) throws IOException        { sendResponse("*", response, false); }
     void sendUntagged(String response, boolean flush) throws IOException { sendResponse("*", response, flush); }
-    void sendContinuation() throws IOException                   { sendResponse("+", null, true); }
     void sendContinuation(String response) throws IOException    { sendResponse("+", response, true); }
     void flushOutput() throws IOException                        { mOutputStream.flush(); }
     

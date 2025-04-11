@@ -88,6 +88,8 @@ $(BUILD_ROOT)/zimbracore.spec:
 		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(755, root, root) /opt/zimbra/libexec" >> \
 		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(755, root, root) /opt/zimbra/logger" >> \
+		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(-, zimbra, zimbra) /opt/zimbra/conf" >> \
 		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(-, zimbra, zimbra) /opt/zimbra/db" >> \
@@ -97,6 +99,10 @@ $(BUILD_ROOT)/zimbracore.spec:
 	echo "%attr(-, root, root) /opt/zimbra/lib" >> \
 		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(-, zimbra, zimbra) /opt/zimbra/zimbramon" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, zimbra, zimbra) /opt/zimbra/sleepycat-$(BDB_VERSION)" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, root, zimbra) /opt/zimbra/$(SASL_DIR)-$(SASL_VERSION)" >> \
 		$(BUILD_ROOT)/zimbracore.spec
 
 core_stage: $(CORE_COMPONENTS)
@@ -120,12 +126,11 @@ $(CORE_DEST_DIR)/zimbramon: $(CORE_DEST_DIR)/zimbramon/lib $(CORE_DEST_DIR)/zimb
 	mkdir -p $(CORE_DEST_DIR)/zimbramon/mrtg/conf
 	cp $(PACKAGE_CONF_DIR)/Conf/mrtg.cfg $(CORE_DEST_DIR)/zimbramon/mrtg/conf
 	(cd $(CORE_DEST_DIR)/zimbramon; tar xzf $(RRD_SOURCE).tar.gz)
-	mkdir -p $(CORE_DEST_DIR)/zimbramon/rrdtool/work
-	mkdir -p $(CORE_DEST_DIR)/zimbramon/rrdtool/work
+	mkdir -p $(CORE_DEST_DIR)/logger/db/work
 	cp -f $(PACKAGE_CONF_DIR)/Img/connection_failed.gif \
-		$(CORE_DEST_DIR)/zimbramon/rrdtool/work
+		$(CORE_DEST_DIR)/logger/db/work
 	cp -f $(PACKAGE_CONF_DIR)/Img/data_not_available.gif \
-		$(CORE_DEST_DIR)/zimbramon/rrdtool/work
+		$(CORE_DEST_DIR)/logger/db/work
 
 $(CORE_DEST_DIR)/zimbramon/crontabs:
 	mkdir -p $@
@@ -137,11 +142,10 @@ $(CORE_DEST_DIR)/zimbramon/lib:
 	tar xzf $(PERL_LIB_SOURCE)/builds/$(BUILD_PLATFORM)/perllib.tgz)
 	cp -R $(BUILD_ROOT)/lib/Zimbra $(CORE_DEST_DIR)/zimbramon/lib
 
-$(CORE_DEST_DIR)/lib: $(WEBAPP_DIR)/service.war $(LDAP_DEST_DIR)/$(LDAP_DIR) $(MTA_DEST_DIR)/$(BDB_DIR) pcre_$(BUILD_PLATFORM) $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $(LAUNCHER_DIR)/build/zimbra-launcher.jar
+$(CORE_DEST_DIR)/lib: $(WEBAPP_DIR)/service.war $(LDAP_DEST_DIR)/$(LDAP_DIR) pcre_$(BUILD_PLATFORM) $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $(LAUNCHER_DIR)/build/zimbra-launcher.jar
 	mkdir -p $@
 	cp -pr $(SERVICE_DIR)/build/dist/lib/* $@
 	cp -pr $(LDAP_DEST_DIR)/$(LDAP_DIR)/lib/* $@
-	cp -pr $(MTA_DEST_DIR)/$(BDB_DIR)/lib/* $@
 	cp -pr $(SERVICE_DIR)/build/dist/lib/* $@
 	cp -pr $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $@
 	(cd $@; tar xzf $(THIRD_PARTY)/mysql/$(BUILD_PLATFORM)/mysql-$(MYSQL_CLIENT_VERSION).tgz)
@@ -191,6 +195,8 @@ pcre_SuSE10: ;
 pcre_openSUSE_10.2: ;
 
 pcre_SuSEES10: ;
+
+pcre_SLES10_64: ;
 
 pcre_RPL1: ;
 
@@ -319,3 +325,16 @@ $(CORE_DEST_DIR)/lib/libexpat.dylib: $(CORE_DEST_DIR)/lib
 	(cd $(CORE_DEST_DIR); tar xzf $(THIRD_PARTY)/popt/builds/$(BUILD_PLATFORM)/popt.tgz)
 	rm -rf $(CORE_DEST_DIR)/include
 
+$(CORE_DEST_DIR)/$(BDB_DIR):
+	@echo "*** Creating sleepycat"
+	mkdir -p $@
+	(cd $(CORE_DEST_DIR); tar xzf $(BDB_SOURCE).tgz; chmod u+w $(BDB_DIR)/bin/*)
+	rm -rf $(CORE_DEST_DIR)/$(BDB_DIR)/docs/java
+
+$(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION):
+	@echo "*** Creating cyrus-sasl"
+	mkdir -p $@
+	(cd $(CORE_DEST_DIR); tar xzf $(SASL_SOURCE).tgz;)
+	mkdir -p $(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION)/etc
+	cp -f $(SERVICE_DIR)/conf/saslauthd.conf.in $(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION)/etc/
+	cp -f $(SERVICE_DIR)/conf/postfix_sasl_smtpd.conf $(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION)/lib/sasl2/smtpd.conf

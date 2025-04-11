@@ -1000,7 +1000,8 @@ function(appt) {
 			var isSynced = Boolean(calendar.url);
 			if (appt.isReadOnly() || isSynced) {
 				var mode = appt.isException() ? ZmAppt.MODE_EDIT_SINGLE_INSTANCE : ZmAppt.MODE_EDIT_SERIES;
-				appt.getDetails(mode, new AjxCallback(this, this._showApptReadOnlyView, [appt]));
+		        var clone = ZmAppt.quickClone(appt);
+				clone.getDetails(mode, new AjxCallback(this, this._showApptReadOnlyView, [clone]));
 			} else {
 				if (appt.isRecurring()) {
 					// prompt user to edit instance vs. series if recurring but not exception
@@ -1684,8 +1685,13 @@ function() {
 	if (work & ZmCalViewController.MAINT_MINICAL) {
 		var calRange = this._miniCalendar.getDateRange();
 		var cb = new AjxCallback(this, this._maintGetApptCallback, [ work, null]);
-		// TODO: turn on shell busy
-		this.getApptSummaries(calRange.start.getTime(), calRange.end.getTime(), true, this.getCheckedCalendarFolderIds(), cb);
+		if(this._appCtxt.getCurrentViewId() != ZmController.CAL_VIEW){	
+			this.fetchMiniCalendarAppts();
+		}else{
+			var view = this._viewMgr.getCurrentView();
+			var rt = view.getTimeRange();
+			this.getApptSummaries(rt.start, rt.end, true, this.getCheckedCalendarFolderIds(), cb);
+		}
 		// return. callback will check and see if MAINT_VIEW is nededed as well.
 		return;
 	} else if (work & ZmCalViewController.MAINT_VIEW) {
@@ -1762,4 +1768,12 @@ function(actionCode) {
 ZmCalViewController.prototype._getDefaultFocusItem = 
 function() {
 	return this._toolbar[ZmController.CAL_VIEW];
+};
+
+ZmCalViewController.prototype.fetchMiniCalendarAppts = 
+function() {	
+	var work = ZmCalViewController.MAINT_MINICAL;
+	var calRange = this._miniCalendar.getDateRange();
+	var cb = new AjxCallback(this, this._maintGetApptCallback, [ work, null]);
+	this.getApptSummaries(calRange.start.getTime(), calRange.end.getTime(), true, this.getCheckedCalendarFolderIds(), cb, true);
 };

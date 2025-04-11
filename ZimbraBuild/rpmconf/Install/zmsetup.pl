@@ -95,12 +95,15 @@ my %packageServiceMap = (
   mta       => "zimbra-mta",
   logger    => "zimbra-logger",
   mailbox   => "zimbra-store",
+  imapproxy => "zimbra-store",
   snmp      => "zimbra-snmp",
   ldap      => "zimbra-ldap",
   spell     => "zimbra-spell",
+  stats     => "zimbra-core",
 );
 
 my %installedPackages = ();
+my %prevInstalledPackages = ();
 my %enabledPackages = ();
 
 my $zimbraHome = "/opt/zimbra";
@@ -178,6 +181,7 @@ sub saveConfig {
     }
     print CONF "\"\n";
     close CONF;
+    chmod 0600, $fname;
     progress ("Done\n");
   } else {
     progress( "Can't open $fname: $!\n");
@@ -255,8 +259,46 @@ sub getInstalledPackages {
       $installedPackages{$p} = $p;
     }
   }
+
+  # get list of previously installed packages on upgrade  
+  if ($newinstall == 0) {
+    $config{zimbra_server_hostname} = getLocalConfig ("zimbra_server_hostname")
+      if ($config{zimbra_server_hostname} eq "");
+    detail ("DEBUG: zimbra_server_hostname=$config{zimbra_server_hostname}") 
+      if $options{d};
+
+    $config{ldap_url} = getLocalConfig ("ldap_url")
+      if ($config{ldap_url} eq "");
+    detail ("DEBUG: ldap_url=$config{ldap_url}") 
+      if $options{d};
+
+    if (index($config{ldap_url}, $config{zimbra_server_hostname}) != -1) {
+      detail ("zimbra_server_hostname contained in ldap_url checking ldap status");
+      if (startLdap()) {return 1;}
+    } else {
+      detail ("zimbra_server_hostname not in ldap_url not starting slapd");
+    }
+    detail("Getting installed services from ldap");
+    open(ZMPROV, "$ZMPROV gs $config{zimbra_server_hostname}|");
+    while (<ZMPROV>) {
+      chomp;
+      if (/zimbraServiceInstalled:\s(.*)/) {
+        my $service = $1;
+        if (exists $packageServiceMap{$service}) {
+          detail ("Marking $service as previously installed.")
+            if ($debug);
+          $prevInstalledPackages{$packageServiceMap{$service}} = "Installed";
+        } else {
+          progress("WARNING: Unknown package installed for $service.\n");
+        }
+      } else {
+        detail ("DEBUG: skipping not zimbraServiceInstalled =>  $_") if $debug;
+      }
+    } 
+  }
   
 }
+
 sub isEnabled {
   my $package = shift;
   detail("checking isEnabled $package");
@@ -301,17 +343,25 @@ sub isEnabled {
     open(ZMPROV, "$ZMPROV gs $config{zimbra_server_hostname}|");
     while (<ZMPROV>) {
       chomp;
-      if (/^zimbraServiceEnabled:\s(.*)/) {
-        detail ("Marking $packageServiceMap{$1} as an enabled service")
-          if $options{d};
-        $enabledPackages{$packageServiceMap{$1}} = "Enabled";
+      if (/zimbraServiceEnabled:\s(.*)/) {
+        my $service = $1;
+        if (exists $packageServiceMap{$service}) {
+          detail ("Marking $service as an enabled service.")
+            if ($debug);
+          $enabledPackages{$packageServiceMap{$service}} = "Enabled";
+        } else {
+          progress("WARNING: Unknown package installed for $service.\n");
+        }
       } else {
-        detail ("DEBUG: zmprov gs $1");
+        detail ("DEBUG: skipping not zimbraServiceEnabled =>  $_") if $debug;
       }
     } 
     foreach my $p (@packageList) {
-      if (isInstalled($p) and not defined $enabledPackages{$p}) {
-        detail("Marking $p as disabled");
+      if (isInstalled($p) and not defined $prevInstalledPackages{$p}) {
+        detail("Marking $p as installed. Services for $p will be enabled.");
+        $enabledPackages{$p} = "Enabled";
+      } elsif (isInstalled($p) and not defined $enabledPackages{$p}) {
+        detail("Marking $p as disabled.");
         $enabledPackages{$p} = "Disabled";
       }
     }
@@ -487,6 +537,7 @@ sub setLdapDefaults {
 
   my $mailmode=getLdapServerValue("zimbraMailMode");
 
+
   $config{HTTPPORT} = $mailport;
   $config{HTTPSPORT} = $sslport;
   $config{MODE} = $mailmode;
@@ -534,6 +585,8 @@ sub setLdapDefaults {
   if ($config{NOTEBOOKACCOUNT} eq "");
 
   $config{USEKBSHORTCUTS} = getLdapCOSValue("default", "zimbraPrefUseKeyboardShortcuts");
+
+  $config{zimbraPrefTimeZoneId}=getLdapCOSValue("default", "zimbraPrefTimeZoneId");
 
   my $smtphost=getLdapServerValue("zimbraSmtpHostname");
   if ( $smtphost ne "") {
@@ -604,6 +657,9 @@ sub setDefaults {
   $config{DOCREATEDOMAIN} = "no";
   $config{CREATEDOMAIN} = $config{HOSTNAME};
   $config{DOCREATEADMIN} = "no";
+  $config{tomcat_keystore_password} = genRandomPass();
+  $config{tomcat_truststore_password} = "changeit";
+
   if (isEnabled("zimbra-store")) {
     progress  "setting defaults for zimbra-store.\n" if $options{d};
     $config{MTAAUTHHOST} = $config{HOSTNAME};
@@ -640,6 +696,7 @@ sub setDefaults {
     progress "setting defaults for zimbra-ldap.\n" if $options{d};
     $config{DOCREATEDOMAIN} = "yes" if $newinstall;
     $config{LDAPPASS} = genRandomPass();
+    $config{zimbraPrefTimeZoneId} = '(GMT-08.00) Pacific Time (US & Canada)';
   }
   $config{CREATEADMIN} = "admin\@$config{CREATEDOMAIN}";
 
@@ -741,6 +798,7 @@ sub setDefaults {
   }
   if ($options{d}) {
     foreach my $key (sort keys %config) {
+      detail("\tDEBUG: $key=$config{$key}");
       print "\tDEBUG: $key=$config{$key}\n";
     }
   }
@@ -842,6 +900,16 @@ sub setDefaultsFromLocalConfig {
   $config{ZIMBRALOGSQLPASS} = getLocalConfig ("zimbra_logger_mysql_password");
   $config{TOMCATMEMORYPERCENT} = getLocalConfig ("tomcat_java_heap_memory_percent");
   $config{MYSQLMEMORYPERCENT} = getLocalConfig ("mysql_memory_percent");
+  $config{tomcat_keystore_password} = getLocalConfig ("tomcat_keystore_password")
+    if (getLocalConfig("tomcat_keystore_password") ne "");
+  $config{tomcat_truststore_password} = getLocalConfig ("tomcat_truststore_password") 
+    if (getLocalConfig("tomcat_truststore_password") ne "");
+  if ($debug) {
+    foreach my $key (sort keys %config) {
+      print "\tDEBUG: $key=$config{$key}\n";
+    }
+  }
+    
 }
 
 sub ask {
@@ -1420,6 +1488,35 @@ sub setLicenseFile {
     if ($config{LICENSEFILE} ne "/opt/zimbra/conf/ZCSLicense.xml");
 }
 
+sub setTimeZone {
+  my $timezones="/opt/zimbra/conf/timezones.ics";
+  if (-f $timezones) {
+    detail ("DEBUG: Checking for timezones in $timezones\n");
+    open (ICS, "$timezones");
+    my %TZID;
+    my $i=0;
+    foreach my $tz (grep(/^TZID/, <ICS>)) {
+      chomp $tz;
+      $tz =~ s/^TZID://;
+      $i++;
+      $TZID{$tz} = $i;
+    }
+    my %RTZID = reverse %TZID;
+    close(ICS);
+    my $new;
+    my $default = $TZID{$config{zimbraPrefTimeZoneId}} || "5";
+    while ($new eq "") {
+      foreach (sort {$TZID{$a} <=> $TZID{$b}} keys %TZID) {
+        print "$TZID{$_} $_\n";
+      }
+      my $ans=askNum("Enter the number for the local timezone:", $default);
+      $new = $RTZID{$ans};
+    }
+    $config{zimbraPrefTimeZoneId} = $new;
+    
+  }
+}
+
 sub configurePackage {
   my $package = shift;
   if ($package eq "zimbra-logger") {
@@ -1521,7 +1618,6 @@ sub createPackageMenu {
     return createStoreMenu($package);
   }
 }
-
 sub createLdapMenu {
   my $package = shift;
   my $lm = genPackageMenu($package);
@@ -2127,6 +2223,12 @@ sub createMainMenu {
     "callback" => \&setLdapPass
     };
   $i++;
+  $mm{menuitems}{$i} = { 
+    "prompt" => "TimeZone:", 
+    "var" => \$config{zimbraPrefTimeZoneId},
+    "callback" => \&setTimeZone
+  };
+  $i++;
   foreach (@packageList) {
     if ($_ eq "zimbra-core") {next;}
     if ($_ eq "zimbra-apache") {next;}
@@ -2295,11 +2397,12 @@ sub runAsZimbraWithOutput {
 
 sub getLocalConfig {
   my $key = shift;
+  
+  detail ( "Getting local config $key" );
 
   return $loaded{lc}{$key}
     if (exists $loaded{lc}{$key});
 
-  detail ( "Getting local config $key" );
   my $val = `/opt/zimbra/bin/zmlocalconfig -x -s -m nokey ${key}`;
   chomp $val;
   $loaded{lc}{$key} = $val;
@@ -2366,6 +2469,9 @@ sub configLCValues {
   setLocalConfig ("zimbra_uid", $uid);
   setLocalConfig ("zimbra_gid", $gid);
   setLocalConfig ("zimbra_user", "zimbra");
+
+  setLocalConfig ("tomcat_truststore_password", "$config{tomcat_truststore_password}");
+  setLocalConfig ("tomcat_keystore_password", "$config{tomcat_keystore_password}");
 
   if (defined $config{AVUSER}) {
     setLocalConfig ("av_notify_user", $config{AVUSER})
@@ -2460,20 +2566,26 @@ sub configSetupLdap {
         #unlink "/opt/zimbra/.enable_replica";
         $config{DOCREATEADMIN} = "no";
         $config{DOCREATEDOMAIN} = "no";
+	runAsZimbra ("/opt/zimbra/bin/ldap stop");
         progress ( "done.\n" );
       } else {
         progress ("failed.\n");
         progress ("You will have to correct the problem and manually enable replication.\n");
         progress ("Disabling ldap on $config{HOSTNAME}...");
         runAsZimbra("$ZMPROV ms $config{HOSTNAME} -zimbraServiceEnabled ldap");
+	runAsZimbra ("/opt/zimbra/bin/ldap stop");
         progress ("done.\n");
       }
     }
     # zmldappasswd starts ldap and re-applies the ldif
     if ($ldapPassChanged) {
       progress ( "Setting ldap password..." );
-      runAsZimbra 
-        ("/opt/zimbra/openldap/sbin/slapindex -q -f /opt/zimbra/conf/slapd.conf");
+      if ( -f "/opt/zimbra/openldap-data/id2entry.bdb") {
+        stopLdap();
+        runAsZimbra("/opt/zimbra/sleepycat/bin/db_recover -h /opt/zimbra/openldap-data");
+        runAsZimbra 
+          ("/opt/zimbra/openldap/sbin/slapindex -b '' -q -f /opt/zimbra/conf/slapd.conf");
+      }
       runAsZimbra ("/opt/zimbra/bin/zmldappasswd --root $config{LDAPPASS}");
       runAsZimbra ("/opt/zimbra/bin/zmldappasswd $config{LDAPPASS}");
       progress ( "Done\n" );
@@ -2539,27 +2651,38 @@ sub configCreateCert {
     return 0;
   }
 
-  if (isEnabled("zimbra-ldap") || isEnabled("zimbra-store") || isEnabled("zimbra-mta")) {
-
-    if (!-f "/opt/zimbra/tomcat/conf/keystore" || 
-      !-f "/opt/zimbra/conf/smtpd.crt" ||
-      !-f "/opt/zimbra/conf/slapd.crt") {
-      progress ( "Creating SSL certificate..." );
-      if (-f "$config{JAVAHOME}/lib/security/cacerts") {
-        `chmod 777 $config{JAVAHOME}/lib/security/cacerts >> $logfile 2>&1`;
-      } else {
-        `chmod 777 $config{JAVAHOME}/jre/lib/security/cacerts >> $logfile 2>&1`;
-      }
-      runAsZimbra("cd /opt/zimbra; zmcreatecert");
-      if (-f "$config{JAVAHOME}/lib/security/cacerts") {
-        `chmod 744 $config{JAVAHOME}/lib/security/cacerts >> $logfile 2>&1`;
-      } else {
-        `chmod 744 $config{JAVAHOME}/jre/lib/security/cacerts >> $logfile 2>&1`;
-      }
-      progress ( "Done\n" );
-    }
-
+  if (-f "$config{JAVAHOME}/lib/security/cacerts") {
+    `chmod 777 $config{JAVAHOME}/lib/security/cacerts >> $logfile 2>&1`;
+  } else {
+   `chmod 777 $config{JAVAHOME}/jre/lib/security/cacerts >> $logfile 2>&1`;
   }
+
+  progress ( "Creating SSL certificate..." );
+
+  if (isEnabled("zimbra-store")) {
+    if ( !-f "/opt/zimbra/tomcat/conf/keystore" && !-f "/opt/zimbra/ssl/ssl/server/server.crt" ) {
+      runAsZimbra("cd /opt/zimbra; zmcreatecert");
+    }
+  }
+
+  if (isEnabled("zimbra-ldap")) {
+    if ( !-f "/opt/zimbra/conf/slapd.crt" && !-f "/opt/zimbra/ssl/ssl/server.crt") {
+      runAsZimbra("cd /opt/zimbra; zmcreatecert");
+    }
+  }
+
+  if (isEnabled("zimbra-mta")) {
+    if ( !-f "/opt/zimbra/conf/smtpd.crt" && !-f "/opt/zimbra/ssl/ssl/server.crt") {
+      runAsZimbra("cd /opt/zimbra; zmcreatecert");
+    }
+  }
+
+  if (-f "$config{JAVAHOME}/lib/security/cacerts") {
+    `chmod 744 $config{JAVAHOME}/lib/security/cacerts >> $logfile 2>&1`;
+  } else {
+    `chmod 744 $config{JAVAHOME}/jre/lib/security/cacerts >> $logfile 2>&1`;
+  }
+  progress ( "Done\n" );
 
   configLog("configCreateCert");
 }
@@ -2588,6 +2711,17 @@ sub configInstallCert {
     }
     progress ( "Done\n" );
   }
+  if (isEnabled("zimbra-ldap")) {
+    if (! (-f "/opt/zimbra/conf/slapd.key" || 
+      -f "/opt/zimbra/conf/slapd.crt")) {
+      progress ("Installing LDAP SSL certificate...");
+      runAsZimbra("cd /opt/zimbra; zmcertinstall ldap ".
+        "/opt/zimbra/ssl/ssl/server/server.crt ".
+        "/opt/zimbra/ssl/ssl/server/server.key");
+      progress ( "Done\n" );
+    }
+  }
+
   configLog("configInstallCert");
 }
 
@@ -2705,6 +2839,17 @@ sub configSetKeyboardShortcutsPref {
   runAsZimbra("$ZMPROV mc default zimbraPrefUseKeyboardShortcuts $config{USEKBSHORTCUTS}");
   progress ( "done.\n" );
   configLog("zimbraPrefUseKeyboardShortcuts");
+}
+
+sub configSetTimeZonePref {
+  if ($configStatus{zimbraPrefTimeZoneId} eq "CONFIGURED") {
+    configLog("zimbraPrefTimeZoneId");
+    return 0;
+  }
+  progress ( "Setting TimeZone Preference...");
+  runAsZimbra("$ZMPROV mc default zimbraPrefTimeZoneId \'$config{zimbraPrefTimeZoneId}\'");
+  progress ( "done.\n" );
+  configLog("zimbraPrefTimeZoneId");
 }
 
 sub configInitBackupPrefs {
@@ -2994,7 +3139,10 @@ sub configSetEnabledServices {
   }
 
   foreach my $p (keys %installedPackages) {
-    if ($p eq "zimbra-core") {next;}
+    if ($p eq "zimbra-core") {
+      $installedServiceStr .= "zimbraServiceInstalled stats ";
+      next;
+    }
     if ($p eq "zimbra-apache") {next;}
     $p =~ s/zimbra-//;
     if ($p eq "store") {$p = "mailbox"; $installedServiceStr .= "zimbraServiceInstalled imapproxy ";}
@@ -3002,7 +3150,10 @@ sub configSetEnabledServices {
   }
 
   foreach my $p (keys %enabledPackages) {
-    if ($p eq "zimbra-core") {next;}
+    if ($p eq "zimbra-core") {
+      $enabledServiceStr .= "zimbraServiceEnabled stats ";
+      next;
+    }
     if ($p eq "zimbra-apache") {next;}
     if ($enabledPackages{$p} eq "Enabled") {
       $p =~ s/zimbra-//;
@@ -3087,13 +3238,16 @@ sub applyConfig {
     configSetInstalledSkins();
 
     configSetKeyboardShortcutsPref() if (!$newinstall);
-  
-    configInitBackupPrefs();
 
+    configInitBackupPrefs();
   }
 
   if (isEnabled("zimbra-mta")) {
     configSetMtaAuthHost();
+  }
+
+  if (isEnabled("zimbra-ldap")) {
+    configSetTimeZonePref();
   }
 
   configCreateDomain();
@@ -3329,7 +3483,8 @@ sub startLdap {
   my $rc = runAsZimbra("/opt/zimbra/bin/ldap status");
   if ($rc) { 
     main::progress("Starting ldap\n");
-    $rc = runAsZimbra ("/opt/zimbra/openldap/sbin/slapindex -q -f /opt/zimbra/conf/slapd.conf");
+    runAsZimbra("/opt/zimbra/sleepycat/bin/db_recover -h /opt/zimbra/openldap-data");
+    $rc = runAsZimbra ("/opt/zimbra/openldap/sbin/slapindex -b '' -q -f /opt/zimbra/conf/slapd.conf");
     $rc = runAsZimbra ("/opt/zimbra/libexec/zmldapapplyldif");
     $rc = runAsZimbra ("/opt/zimbra/bin/ldap status");
     if ($rc) {

@@ -66,7 +66,7 @@ if [ -f /etc/redhat-release ]; then
 
 	grep "CentOS release 5" /etc/redhat-release > /dev/null 2>&1
 	if [ $? = 0 ]; then
-		echo "CentOS5{i}"
+		echo "CentOS5${i}"
 		exit 0
 	fi
 
@@ -79,6 +79,11 @@ if [ -f /etc/redhat-release ]; then
 fi
 
 if [ -f /etc/SuSE-release ]; then
+	grep "SUSE Linux Enterprise Server 10 (x86_64)" /etc/SuSE-release >/dev/null 2>&1
+	if [ $? = 0 ]; then
+		echo "SLES10_64"
+		exit 0
+	fi
 	grep "SUSE Linux Enterprise Server 10" /etc/SuSE-release > /dev/null 2>&1
 	if [ $? = 0 ]; then
 		echo "SuSEES10"
@@ -130,6 +135,11 @@ if [ -f /etc/lsb-release ]; then
 fi
 
 if [ -f /etc/mandriva-release ]; then
+	grep "2007" /etc/mandriva-release > /dev/null 2>&1
+	if [ $? = 0 ]; then
+		echo "MANDRIVA2007"
+		exit 0
+	fi
 	grep "2006" /etc/mandriva-release > /dev/null 2>&1
 	if [ $? = 0 ]; then
 		echo "MANDRIVA2006"

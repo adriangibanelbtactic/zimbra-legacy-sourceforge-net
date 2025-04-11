@@ -46,6 +46,9 @@ ZaCosXFormView.themeChoices = new XFormChoices([], XFormChoices.SIMPLE_LIST);
 **/
 ZaCosXFormView.prototype.setObject =
 function(entry) {
+	//handle the special attributes to be displayed in xform
+	entry.manageSpecialAttrs();
+	
 	this._containedObject = new Object();
 	this._containedObject.attrs = new Object();
 	if(entry.id)
@@ -391,6 +394,12 @@ ZaCosXFormView.myXFormModifier = function(xFormObject) {
 
 								{ref:ZaCos.A_zimbraPrefCalendarUseQuickAdd, type:_CHECKBOX_, msgName:ZaMsg.NAD_useQuickAdd,
 									label:ZaMsg.NAD_useQuickAdd, trueValue:"TRUE", falseValue:"FALSE", 
+									onChange:ZaTabView.onFormFieldChanged
+								},							
+								{ref:ZaCos.A_zimbraPrefTimeZoneId, type:_OSELECT1_, labelLocation:_LEFT_, 
+									msgName:ZaMsg.NAD_zimbraPrefTimeZoneId,
+									label:ZaMsg.NAD_zimbraPrefTimeZoneId,
+									choices: ZaModel.TIME_ZONE_CHOICES,
 									onChange:ZaTabView.onFormFieldChanged
 								},							
 								{ref:ZaCos.A_zimbraPrefUseTimeZoneListInCalendar, type:_CHECKBOX_, 

@@ -35,6 +35,7 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.httpclient.Header;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpException;
 import org.apache.commons.httpclient.HttpMethod;
@@ -48,7 +49,6 @@ import org.apache.commons.httpclient.methods.PostMethod;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.AuthToken;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.common.service.ServiceException;
@@ -148,6 +148,7 @@ public class ProxyServlet extends ZimbraServlet {
 	}
 
 	private void doProxy(HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
+        ZimbraLog.clearContext();
         AuthToken authToken = getAuthTokenFromCookie(req, resp);
         if (authToken == null) {
         	return;
@@ -228,6 +229,10 @@ public class ProxyServlet extends ZimbraServlet {
 				// workaround for Alexa Thumbnails paid web service, which doesn't bother to return a content-type line.
 				resp.setContentType("text/xml");
 			}
+			resp.setStatus(method.getStatusCode());
+			for (Header h : method.getResponseHeaders())
+				if (canProxyHeader(h.getName()))
+					resp.addHeader(h.getName(), h.getValue());
 			ByteUtil.copy(method.getResponseBodyAsStream(), false, resp.getOutputStream(), false);
 		} finally {
 			if (method != null)

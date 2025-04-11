@@ -198,6 +198,8 @@ public class LC {
     public static final KnownKey tomcat_pidfile;
     public static final KnownKey tomcat_keystore;
 
+    public static final KnownKey tomcat_keystore_password;
+    public static final KnownKey tomcat_truststore_password;
     public static final KnownKey ssl_allow_untrusted_certs;
 
     public static final KnownKey zimlet_directory;
@@ -229,6 +231,8 @@ public class LC {
     public static final KnownKey search_disable_database_hints;
     public static final KnownKey search_dbfirst_term_percentage_cutoff;
 
+    public static final KnownKey zmstat_log_directory;
+    public static final KnownKey zmstat_interval;
     static {
         final String ZM_MYCNF_CAVEAT = "This value is stored here for use by zmmycnf program.  Changing this setting does not immediately reflect in MySQL server.  You will have to, with abundant precaution, re-generate my.cnf and restart MySQL server for the change to take effect.";
         final String FS = File.separator;
@@ -775,6 +779,14 @@ public class LC {
         tomcat_keystore.setDefault("${tomcat_directory}" + FS + "conf" + FS + "keystore");
         tomcat_keystore.setDoc
         ("Location of keystore data file.");
+        
+        tomcat_keystore_password = new KnownKey("tomcat_keystore_password");
+        tomcat_keystore_password.setDefault("zimbra");
+        tomcat_keystore_password.setDoc("Password to be used with the KeyManager keystore.");
+        
+        tomcat_truststore_password = new KnownKey("tomcat_truststore_password");
+        tomcat_truststore_password.setDefault("changeit");
+        tomcat_truststore_password.setDoc("Password to be used with the TrustManager keystore.");
 
         ssl_allow_untrusted_certs = new KnownKey("ssl_allow_untrusted_certs");
         ssl_allow_untrusted_certs.setDefault("false");
@@ -893,5 +905,13 @@ public class LC {
         search_dbfirst_term_percentage_cutoff = new KnownKey("search_dbfirst_term_percentage_cutoff");
         search_dbfirst_term_percentage_cutoff.setDefault("0.8");
         search_dbfirst_term_percentage_cutoff.setDoc("Internal Query Generation parameter");
+
+        zmstat_log_directory = new KnownKey("zmstat_log_directory");
+        zmstat_log_directory.setDefault("${zimbra_home}" + FS + "zmstat");
+        zmstat_log_directory.setDoc("where zmstat csv files are saved");
+
+        zmstat_interval = new KnownKey("zmstat_interval");
+        zmstat_interval.setDefault("30");
+        zmstat_interval.setDoc("how often samples are taken by zmstat (seconds)");
     }
 }

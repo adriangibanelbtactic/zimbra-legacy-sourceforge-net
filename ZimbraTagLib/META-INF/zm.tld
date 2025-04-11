@@ -421,6 +421,28 @@
         </attribute>
 
     </tag>
+    
+    <tag>
+        <description>
+            Iterates over all time zones.
+        </description>
+        <name>forEachTimeZone</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ForEachTimeZoneTag</tag-class>
+        <body-content>scriptless</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZTimeZoneBean</variable-class>
+            <scope>NESTED</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+    </tag>
 
     <tag>
         <description>
@@ -3104,6 +3126,12 @@
         <name>truncate</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>java.lang.String truncate(java.lang.String,int,boolean)</function-signature>
+    </function>
+
+    <function>
+        <name>containsAddress</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.Boolean containsAddress(java.util.Set,java.lang.String)</function-signature>
     </function>
 
     <function>

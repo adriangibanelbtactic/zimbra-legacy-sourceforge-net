@@ -118,6 +118,7 @@ my %updateFuncs = (
 	"4.5.4_GA" => \&upgrade454GA,
 	"4.5.5_GA" => \&upgrade455GA,
 	"4.5.6_GA" => \&upgrade456GA,
+	"4.5.7_GA" => \&upgrade457GA,
 	"5.0.0_BETA1" => \&upgrade500BETA1,
 	"5.0.0_BETA2" => \&upgrade500BETA2,
 	"5.0.0_RC1" => \&upgrade500RC1,
@@ -158,6 +159,7 @@ my @versionOrder = (
 	"4.5.4_GA",
 	"4.5.5_GA",
 	"4.5.6_GA",
+	"4.5.7_GA",
   "5.0.0_BETA1",
   "5.0.0_BETA2",
   "5.0.0_RC1",
@@ -289,6 +291,8 @@ sub upgrade {
 		main::progress("This appears to be 4.5.5_GA\n");
 	} elsif ($startVersion eq "4.5.6_GA") {
 		main::progress("This appears to be 4.5.6_GA\n");
+	} elsif ($startVersion eq "4.5.7_GA") {
+		main::progress("This appears to be 4.5.7_GA\n");
 	} elsif ($startVersion eq "5.0.0_BETA1") {
 		main::progress("This appears to be 5.0.0_BETA1\n");
 	} elsif ($startVersion eq "5.0.0_BETA2") {
@@ -306,7 +310,7 @@ sub upgrade {
 
   if ($targetVersion eq "4.5.2_GA") {
     $needMysqlTableCheck=1;
-  }
+		}
 
 	if (isInstalled("zimbra-store")) {
 
@@ -1256,11 +1260,43 @@ sub upgrade456GA {
 
 	return 0;
 }
+sub upgrade457GA {
+	my ($startBuild, $targetVersion, $targetBuild) = (@_);
+	main::progress("Updating from 4.5.7_GA\n");
+  if (isInstalled("zimbra-ldap")) {
+    #bug 17887
+    main::runAsZimbra("$ZMPROV mcf zimbraHttpNumThreads 100");
+    main::runAsZimbra("$ZMPROV mcf zimbraHttpSSLNumThreads 50");
+    #bug 17794
+    main::runAsZimbra("$ZMPROV mcf zimbraMtaMyDestination localhost");
+    #bug 18388
+	  my $threads = (split(/\s+/, `su - zimbra -c "$ZMPROV gcf zimbraPop3NumThreads"`))[-1];
+    main::runAsZimbra("$ZMPROV mcf zimbraPop3NumThreads 100")
+      if ($threads eq "20");
+  }
+  if (isInstalled("zimbra-mta")) {
+    # migrate amavis data 
+    migrateAmavisDB("2.5.2");
+  }
+
+  if (isInstalled("zimbra-store")) {
+    # 19749
+    updateMySQLcnf();
+		if (startSql()) { return 1; }
+		main::runAsZimbra("perl -I${scriptDir} ${scriptDir}/migrateLargeMetadata.pl -a");
+		stopSql();
+  }
+
+  if (isInstalled("zimbra-logger")) {
+    updateLoggerMySQLcnf();
+  }
+	return 0;
+}
 sub upgrade500BETA1 {
 	my ($startBuild, $targetVersion, $targetBuild) = (@_);
 	main::progress("Updating from 5.0.0_BETA1\n");
 	return 0;
-}
+    }
 
 sub upgrade500BETA2 {
 	my ($startBuild, $targetVersion, $targetBuild) = (@_);
@@ -1533,6 +1569,51 @@ sub movePostfixQueue {
 	`/opt/zimbra/bin/zmfixperms.sh`;
 }
 
+sub updateLoggerMySQLcnf {
+
+  my $mycnf = "/opt/zimbra/conf/my.logger.cnf";
+  my $mysql_pidfile = main::getLocalConfig("logger_mysql_pidfile");
+  $mysql_pidfile = "/opt/zimbra/logger/db/mysql.pid" if ($mysql_pidfile eq "");
+  if (-e "$mycnf") {
+    unless (open(MYCNF, "$mycnf")) {
+      Migrate::myquit(1, "${mycnf}: $!\n");
+    }
+    my @CNF = <MYCNF>;
+    close(MYCNF);
+    my $i=0;
+    my $mycnfChanged = 0;
+    my $tmpfile = "/tmp/my.cnf.$$";;
+    my $zimbra_user = `zmlocalconfig -m nokey zimbra_user 2> /dev/null` || "zmbra";;
+    open(TMP, ">$tmpfile");
+    foreach (@CNF) {
+      if (/^port/ && $CNF[$i+1] !~ m/^user/) {
+        print TMP;
+        print TMP "user         = $zimbra_user\n";
+        $mycnfChanged=1;
+        next;
+      } elsif (/^err-log/ && $CNF[$i+1] !~ m/^pid-file/) {
+        print TMP;
+        print TMP "pid-file = ${mysql_pidfile}\n";
+        $mycnfChanged=1;
+        next;
+      } elsif (/^skip-external-locking/) {
+        # 19749 remove skip-external-locking
+        print TMP "external-locking\n";
+        $mycnfChanged=1;
+        next;
+      }
+      print TMP;
+      $i++;
+    }
+    close(TMP);
+  
+    if ($mycnfChanged) {
+      `mv $mycnf ${mycnf}.${startVersion}`;
+      `cp -f $tmpfile $mycnf`;
+      `chmod 644 $mycnf`;
+    } 
+  }
+}
 sub updateMySQLcnf {
 
   my $mycnf = "/opt/zimbra/conf/my.cnf";
@@ -1558,6 +1639,11 @@ sub updateMySQLcnf {
       } elsif (/^err-log/ && $CNF[$i+1] !~ m/^pid-file/) {
         print TMP;
         print TMP "pid-file = ${mysql_pidfile}\n";
+        $mycnfChanged=1;
+        next;
+      } elsif (/^skip-external-locking/) {
+        # 19749 remove skip-external-locking
+        print TMP "external-locking\n";
         $mycnfChanged=1;
         next;
       }
@@ -1668,9 +1754,12 @@ sub migrateLdap {
 			`mkdir /opt/zimbra/openldap-data`;
 			`touch /opt/zimbra/openldap-data/DB_CONFIG`;
 			`chown -R zimbra:zimbra /opt/zimbra/openldap-data`;
-			main::runAsZimbra("/opt/zimbra/openldap/sbin/slapadd -f /opt/zimbra/conf/slapd.conf -l /opt/zimbra/openldap-data.prev/ldap.bak");
+			main::runAsZimbra("/opt/zimbra/openldap/sbin/slapadd -b '' -f /opt/zimbra/conf/slapd.conf -l /opt/zimbra/openldap-data.prev/ldap.bak");
+		} else {
+                        stopLdap();
+                        main::runAsZimbra("/opt/zimbra/sleepycat/bin/db_recover -h /opt/zimbra/openldap-data");
+			main::runAsZimbra("/opt/zimbra/openldap/sbin/slapindex -b '' -f /opt/zimbra/conf/slapd.conf");
 		}
-		main::runAsZimbra("/opt/zimbra/openldap/sbin/slapindex -f /opt/zimbra/conf/slapd.conf");
 		if (startLdap()) {return 1;} 
 	}
   return;
@@ -1720,6 +1809,14 @@ sub migrateAmavisDB($) {
   }
 }
 
+
+sub verifyDatabaseIntegrity {
+  if (-x "/opt/zimbra/libexec/zmdbintegrityreport") {
+    main::progress("Verifying integrity of databases.\n");
+	  main::runAsZimbra("/opt/zimbra/libexec/zmdbintegrityreport -v -r");
+  }
+  return;
+}
 
 sub verifyMysqlConfig {
   my $mysqlConf = "/opt/zimbra/conf/my.cnf";

@@ -75,6 +75,7 @@ import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.FileUtil;
+import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.util.Zimbra;
 
 public class FileUploadServlet extends ZimbraServlet {
@@ -111,6 +112,13 @@ public class FileUploadServlet extends ZimbraServlet {
         public String getContentType()  { return file.getContentType(); }
         public InputStream getInputStream() throws IOException {
             return file.getInputStream();
+        }
+        
+        public long getSize() {
+            if (this.file == null) {
+                return 0;
+            }
+            return this.file.getSize();
         }
 
         boolean accessedAfter(long checkpoint)  { return time > checkpoint; }
@@ -293,6 +301,8 @@ public class FileUploadServlet extends ZimbraServlet {
     }
 
 	public void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
+        ZimbraLog.clearContext();
+        
 		int status = HttpServletResponse.SC_OK;
         List<FileItem> items = null;
         String attachmentId = null;

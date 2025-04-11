@@ -65,7 +65,6 @@ public class ZimbraSuite extends TestSuite
         suite.addTest(new TestSuite(TestEmailUtil.class));
         suite.addTest(new TestSuite(TestOutOfOffice.class));
         suite.addTest(new TestSuite(TestDbUtil.class));
-        suite.addTest(new TestSuite(TestTableMaintenance.class));
         suite.addTest(new TestSuite(TestUnread.class));
         suite.addTest(new TestSuite(TestTags.class));
         suite.addTest(new TestSuite(TestItemCache.class));
@@ -80,6 +79,8 @@ public class ZimbraSuite extends TestSuite
         suite.addTest(new TestSuite(TestPop3Import.class));
         suite.addTest(new TestSuite(TestFilter.class));
         suite.addTest(new TestSuite(TestPop3ImapAuth.class));
+        suite.addTest(new TestSuite(TestNotification.class));
+        suite.addTest(new TestSuite(TestMaxMessageSize.class));
 
         synchronized (sAdditionalTests) {
             for (Test additional : sAdditionalTests) {

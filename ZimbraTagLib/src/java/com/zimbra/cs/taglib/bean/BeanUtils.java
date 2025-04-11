@@ -27,26 +27,25 @@ package com.zimbra.cs.taglib.bean;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.taglib.ZJspSession;
 import com.zimbra.cs.zclient.ZEmailAddress;
-import com.zimbra.cs.zclient.ZFolder;
-import com.zimbra.cs.zclient.ZMailbox;
-import com.zimbra.cs.zclient.ZTag;
-import com.zimbra.cs.zclient.ZFilterCondition;
 import com.zimbra.cs.zclient.ZFilterAction;
-import com.zimbra.cs.zclient.ZFilterAction.ZKeepAction;
 import com.zimbra.cs.zclient.ZFilterAction.ZDiscardAction;
-import com.zimbra.cs.zclient.ZFilterAction.ZStopAction;
 import com.zimbra.cs.zclient.ZFilterAction.ZFileIntoAction;
-import com.zimbra.cs.zclient.ZFilterAction.ZTagAction;
+import com.zimbra.cs.zclient.ZFilterAction.ZKeepAction;
 import com.zimbra.cs.zclient.ZFilterAction.ZMarkAction;
 import com.zimbra.cs.zclient.ZFilterAction.ZRedirectAction;
+import com.zimbra.cs.zclient.ZFilterAction.ZStopAction;
+import com.zimbra.cs.zclient.ZFilterAction.ZTagAction;
+import com.zimbra.cs.zclient.ZFilterCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZAddressBookCondition;
+import com.zimbra.cs.zclient.ZFilterCondition.ZAttachmentExistsCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZBodyCondition;
-import com.zimbra.cs.zclient.ZFilterCondition.ZSizeCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZDateCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZHeaderCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZHeaderExistsCondition;
-import com.zimbra.cs.zclient.ZFilterCondition.ZAttachmentExistsCondition;
-import com.zimbra.cs.zclient.ZFolder.Color;
+import com.zimbra.cs.zclient.ZFilterCondition.ZSizeCondition;
+import com.zimbra.cs.zclient.ZFolder;
+import com.zimbra.cs.zclient.ZMailbox;
+import com.zimbra.cs.zclient.ZTag;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -60,9 +59,10 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
-import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -310,30 +310,39 @@ public class BeanUtils {
         return df;
     }
 
-    public static String displayMsgDate(PageContext pc, Date msg) {
-        GregorianCalendar cal = new GregorianCalendar();
+    public static String displayMsgDate(PageContext pc, Date msg) throws ServiceException, JspException {
+        ZMailbox mbox = ZJspSession.getZMailbox(pc);
+        TimeZone tz = mbox.getPrefs().getTimeZone();
+        Calendar cal = Calendar.getInstance(tz);
         cal.set(Calendar.SECOND, 0);
         cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.HOUR, 0);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+
         long nowTime = cal.getTimeInMillis();
         long msgTime = msg.getTime();
-        
+
         if (msgTime >= nowTime) {
             // show hour and return
-            return getDateFormat(pc, DateTimeFmt.DTF_TIME_SHORT).format(msg);
+            DateFormat df = getDateFormat(pc, DateTimeFmt.DTF_TIME_SHORT);
+            df.setTimeZone(tz);
+            return df.format(msg);
         }
-        
+
         long nowYear = cal.get(Calendar.YEAR);
         cal.setTimeInMillis(msgTime);
         long msgYear = cal.get(Calendar.YEAR);
-        
+
         if (nowYear == msgYear) {
-            return getDateFormat(pc, DateTimeFmt.DTF_DATE_MEDIUM).format(msg);            
+            DateFormat df = getDateFormat(pc, DateTimeFmt.DTF_DATE_MEDIUM);
+            df.setTimeZone(tz);
+            return df.format(msg);
         } else {
-            return getDateFormat(pc, DateTimeFmt.DTF_DATE_SHORT).format(msg);                        
+            DateFormat df = getDateFormat(pc, DateTimeFmt.DTF_DATE_SHORT);
+            df.setTimeZone(tz);
+            return df.format(msg);
         }
     }
-    
+
     public static String getAttr(PageContext pc, String attr) throws JspException, ServiceException {
         ZMailbox mbox = ZJspSession.getZMailbox(pc);
         List<String> val = mbox.getAccountInfo(false).getAttrs().get(attr);
@@ -538,5 +547,9 @@ public class BeanUtils {
 
     public static boolean actionSet(Map param, String action) {
         return param.containsKey(action) || param.containsKey(action+".x");
+    }
+
+    public static boolean containsAddress(Set<String> aliases, String email) {
+        return aliases.contains(email);
     }
 }
