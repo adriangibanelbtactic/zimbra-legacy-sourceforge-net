@@ -2635,9 +2635,9 @@ Grouper_XFormItem.prototype.getInsetCssClass = function () {
 // output the label
 Grouper_XFormItem.prototype.outputHTMLStart = function (html, updateScript, indent, currentCol) {
 	html.append(
-			"<div class=", this.getBorderCssClass(), ">",
+			"<div class='", this.getBorderCssClass(), "'>",
 				"<span ", this.getLabelCssString(),">", this.getLabel(), "</span>",
-				"<div class=", this.getInsetCssClass(),">"
+				"<div class='", this.getInsetCssClass(),"'>"
 		);
 }
 
@@ -3959,17 +3959,23 @@ XFormItemFactory.createItemType("_BUTTON_GRID_", "button_grid", Button_Grid_XFor
 Button_Grid_XFormItem.prototype.numCols = 5;
 Button_Grid_XFormItem.prototype.cssClass = "xform_button_grid_medium";
 Button_Grid_XFormItem.prototype.forceUpdate = true;
-
+Button_Grid_XFormItem.prototype.toggleMode = true;
 
 //	methods
 Button_Grid_XFormItem.prototype.constructWidget = function () {
 	var changeHandler = this.getExternalChangeHandler();
 	var attributes = {
 		numCols:this.getNumCols(),
-		choices:choices.getChoiceObject(),
 		cssClass:this.getCssClass(),
 		onChange:changeHandler,
-		addBracketingCells:(this.getAlign() == _CENTER_)
+		addBracketingCells:(this.getAlign() == _CENTER_),
+		toggleMode:this.getInheritedProperty("toggleMode")
+	}
+	var choices = this.getChoices();
+	if(choices.constructor == XFormChoices) {
+		attributes.choices = choices.getChoiceObject();
+	} else {
+		attributes.choices = choices;
 	}
 	var multiple = this.getMultiple();
 	if (multiple !== null) attributes.multiple = multiple;

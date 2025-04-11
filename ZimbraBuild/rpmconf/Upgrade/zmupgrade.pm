@@ -117,7 +117,11 @@ my %updateFuncs = (
 	"4.5.3_GA" => \&upgrade453GA,
 	"4.5.4_GA" => \&upgrade454GA,
 	"4.5.5_GA" => \&upgrade455GA,
+	"4.5.6_GA" => \&upgrade456GA,
 	"5.0.0_BETA1" => \&upgrade500BETA1,
+	"5.0.0_BETA2" => \&upgrade500BETA2,
+	"5.0.0_RC1" => \&upgrade500RC1,
+	"5.0.0_RC2" => \&upgrade500RC2,
 	"5.0.0_GA" => \&upgrade500GA,
 );
 
@@ -153,7 +157,11 @@ my @versionOrder = (
 	"4.5.3_GA",
 	"4.5.4_GA",
 	"4.5.5_GA",
+	"4.5.6_GA",
   "5.0.0_BETA1",
+  "5.0.0_BETA2",
+  "5.0.0_RC1",
+  "5.0.0_RC2",
   "5.0.0_GA",
 );
 
@@ -279,8 +287,16 @@ sub upgrade {
 		main::progress("This appears to be 4.5.4_GA\n");
 	} elsif ($startVersion eq "4.5.5_GA") {
 		main::progress("This appears to be 4.5.5_GA\n");
+	} elsif ($startVersion eq "4.5.6_GA") {
+		main::progress("This appears to be 4.5.6_GA\n");
 	} elsif ($startVersion eq "5.0.0_BETA1") {
 		main::progress("This appears to be 5.0.0_BETA1\n");
+	} elsif ($startVersion eq "5.0.0_BETA2") {
+		main::progress("This appears to be 5.0.0_BETA2\n");
+	} elsif ($startVersion eq "5.0.0_RC1") {
+		main::progress("This appears to be 5.0.0_RC1\n");
+	} elsif ($startVersion eq "5.0.0_RC2") {
+		main::progress("This appears to be 5.0.0_RC2\n");
 	} elsif ($startVersion eq "5.0.0_GA") {
 		main::progress("This appears to be 5.0.0_GA\n");
 	} else {
@@ -1226,9 +1242,43 @@ sub upgrade455GA {
 	main::progress("Updating from 4.5.5_GA\n");
 	return 0;
 }
+sub upgrade456GA {
+	my ($startBuild, $targetVersion, $targetBuild) = (@_);
+	main::progress("Updating from 4.5.6_GA\n");
+  # bug 16425 rewrite default perms on localconfig.xml
+  main::setLocalConfig("upgrade_dummy", "1");
+  main::deleteLocalConfig("upgrade_dummy");
+
+  # bug 17879
+  if (isInstalled("zimbra-store")) {
+    updateMySQLcnf();
+  }
+
+	return 0;
+}
 sub upgrade500BETA1 {
 	my ($startBuild, $targetVersion, $targetBuild) = (@_);
 	main::progress("Updating from 5.0.0_BETA1\n");
+	return 0;
+}
+
+sub upgrade500BETA2 {
+	my ($startBuild, $targetVersion, $targetBuild) = (@_);
+	main::progress("Updating from 5.0.0_BETA2\n");
+
+  # bug 16425 rewrite default perms on localconfig.xml
+  main::setLocalConfig("upgrade_dummy", "1");
+  main::deleteLocalConfig("upgrade_dummy");
+	return 0;
+}
+sub upgrade500RC1 {
+	my ($startBuild, $targetVersion, $targetBuild) = (@_);
+	main::progress("Updating from 5.0.0_RC1\n");
+	return 0;
+}
+sub upgrade500RC2 {
+	my ($startBuild, $targetVersion, $targetBuild) = (@_);
+	main::progress("Updating from 5.0.0_RC2\n");
 	return 0;
 }
 sub upgrade500GA {
@@ -1300,7 +1350,7 @@ sub startSql {
 		main::progress("Starting mysql\n");
 		my $rc = 0xffff & system("su - zimbra -c \"/opt/zimbra/bin/mysql.server start > /dev/null 2>&1\"");
     my $timeout = sleep 10;
-    while (!isSqlRunning() && $timeout <= 120 ) {
+    while (!isSqlRunning() && $timeout <= 1200 ) {
 		  $rc = 0xffff & system("su - zimbra -c \"/opt/zimbra/bin/mysql.server start > /dev/null 2>&1\"");
       $timeout += sleep 10;
     }
@@ -1486,6 +1536,8 @@ sub movePostfixQueue {
 sub updateMySQLcnf {
 
   my $mycnf = "/opt/zimbra/conf/my.cnf";
+  my $mysql_pidfile = main::getLocalConfig("mysql_pidfile");
+  $mysql_pidfile = "/opt/zimbra/db/mysql.pid" if ($mysql_pidfile eq "");
   if (-e "$mycnf") {
     unless (open(MYCNF, "$mycnf")) {
       Migrate::myquit(1, "${mycnf}: $!\n");
@@ -1503,6 +1555,11 @@ sub updateMySQLcnf {
         print TMP "user         = $zimbra_user\n";
         $mycnfChanged=1;
         next;
+      } elsif (/^err-log/ && $CNF[$i+1] !~ m/^pid-file/) {
+        print TMP;
+        print TMP "pid-file = ${mysql_pidfile}\n";
+        $mycnfChanged=1;
+        next;
       }
       print TMP;
       $i++;
@@ -1510,7 +1567,7 @@ sub updateMySQLcnf {
     close(TMP);
   
     if ($mycnfChanged) {
-      `mv $mycnf ${mycnf}.3.2.0_M2`;
+      `mv $mycnf ${mycnf}.${startVersion}`;
       `cp -f $tmpfile $mycnf`;
       `chmod 644 $mycnf`;
     } 

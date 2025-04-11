@@ -306,6 +306,14 @@ function() {
 			ZaZimbraAdmin._killSplash();
 		
 	} catch (ex) {
+
+		if(ex && ex.code != ZmCsfeException.NO_AUTH_TOKEN && ex.code != ZmCsfeException.SVC_AUTH_EXPIRED) {
+			if(!ZaSettings.initialized)
+				ZaSettings.init();
+			else
+				ZaZimbraAdmin._killSplash();
+		}	
+					
 		this._handleException(ex, "ZaZimbraAdmin.prototype.startup", null, true);
 	}
 }

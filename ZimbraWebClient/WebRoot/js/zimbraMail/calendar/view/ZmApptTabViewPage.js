@@ -75,6 +75,9 @@ function() {
 };
 
 
+// Static counter for generating fake ZmContact ids.  (Bug 17862/17892)
+ZmApptTabViewPage.__pseudoIdCounter = 1;
+
 // Consts
 
 ZmApptTabViewPage.UPLOAD_FIELD_NAME = "attUpload";
@@ -492,22 +495,6 @@ function(appt, mode) {
 		now.setTime(now.getTime() + ZmCalViewController.DEFAULT_APPOINTMENT_DURATION);
 		this._endTimeSelect.set(now);
 
-		// bug 9969: remove the all day duration for display
-		// HACK: This is a total hack because there are two types
-		//       of all day appointment objects. Non-recurring ones
-		//       have their start time set to the current time (for
-		//       some unknown reason) and their end time set to the
-		//       the start time + the default appointment duration.
-		//       Recurring appointments have their start time and
-		//       end time set to 00:00:00 which means that when
-		//       editing it will look like the event ends on the
-		//       day *following* the actual end day. So this hack
-		//       is here until I can figure out why the two are
-		//       different.
-        var isNewFromQuickAdd = mode == ZmAppt.MODE_NEW_FROM_QUICKADD;
-        if (!isNewFromQuickAdd && ed.getHours() == 0 && ed.getMinutes() == 0 && ed.getSeconds() == 0) {
-			ed.setHours(-12);
-		}
 	} else {
 		this._startTimeSelect.set(appt.getStartDate());
 		this._endTimeSelect.set(appt.getEndDate());
@@ -553,6 +540,15 @@ function(appt) {
 		this._recurDialog.setRepeatEndValues(appt);
 	} else {
 		appt.repeatType = repeatType != "CUS" ? repeatType : "NON";
+
+		// bug fix #17048 - reset weekly day to reflect start date in case user changed it
+		if (appt.repeatType == "WEE" &&
+			appt.repeatCustomCount == 1 &&
+			appt.repeatWeeklyDays.length == 1)
+		{
+			var day = ZmAppt.SERVER_WEEK_DAYS[appt.startDate.getDay()];
+			appt.repeatWeeklyDays = [day];
+		}
 	}
 };
 
@@ -986,7 +982,14 @@ function(text, el, match) {
 		DBG.println(AjxDebug.DBG1, "ZmApptTabViewPage: match empty in autocomplete callback; text: " + text);
 		return;
 	}
-	var attendee = match.item;
+	var attendee;
+	if (match.item) {
+		attendee = match.item;
+	}
+	else {
+		attendee = new ZmContact(this._appCtxt, 'pseudoId'+this.__pseudoIdCounter++);
+		attendee.setAttr(ZmContact.F_email, match.fullAddress);
+	}
 	var type = el._attType;
 	this.parent.updateAttendees(attendee, type, ZmApptComposeView.MODE_ADD);
 };

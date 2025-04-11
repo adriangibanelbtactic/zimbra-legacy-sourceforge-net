@@ -22,7 +22,9 @@ $(ISYNC_DIR)/build/Deployment/Zimbra.prefPane:
 	(cd $(ISYNC_DIR); xcodebuild -configuration Deployment)
 
 $(ISYNC_DEST_ROOT)/Zimbra.pmproj:
-	cp $(ISYNC_DIR)/Zimbra.pmproj $@
+	plutil -convert xml1 $(ISYNC_DIR)/Zimbra.pmproj -o $(ISYNC_DIR)/Zimbra.plist
+	sed -i -e 's/0.9.19/$(ISYNC_VERSION_TAG)/g' $(ISYNC_DIR)/Zimbra.plist
+	plutil -convert binary1 $(ISYNC_DIR)/Zimbra.plist -o $@
 	cp $(ISYNC_DIR)/License.rtf $(ISYNC_DEST_ROOT)
 
 $(ISYNC_DEST_ROOT)/InstallerResources: $(ISYNC_DIR)/build/Deployment/Zimbra.prefPane
@@ -30,6 +32,8 @@ $(ISYNC_DEST_ROOT)/InstallerResources: $(ISYNC_DIR)/build/Deployment/Zimbra.pref
 	cp $(ISYNC_DIR)/InstallerResources/* $@
 
 $(ISYNC_DIR)/Info.plist: force
+	touch $@
+	chmod 744 $@
 	sed -e "s/@@ISYNC_VERSION_TAG@@/$(ISYNC_VERSION_TAG)/" -e "s/@@VERSION_TAG@@/$(VERSION_TAG)/" $(ISYNC_DIR)/Info-production.plist > $@ 
 
 $(PACKAGE_DIR)/$(CUR_PACKAGE_NAME).$(PACKAGE_EXT):

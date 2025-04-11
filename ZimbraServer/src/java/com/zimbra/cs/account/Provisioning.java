@@ -1150,6 +1150,25 @@ public abstract class Provisioning {
     
     public static final String A_zimbraSyncWindowSize = "zimbraSyncWindowSize";
     
+    /*
+     * Backup/Restore
+     */
+    public static final String A_zimbraBackupTarget = "zimbraBackupTarget";
+    public static final String A_zimbraBackupReportEmailRecipients = "zimbraBackupReportEmailRecipients";
+    public static final String A_zimbraBackupReportEmailSender = "zimbraBackupReportEmailSender";
+    public static final String A_zimbraBackupReportEmailSubjectPrefix = "zimbraBackupReportEmailSubjectPrefix";
+
+    /*
+     * whether to use <> or account's real address for out of office 
+     * and new mail notifications 
+     */
+    public static final String A_zimbraAutoSubmittedNullReturnPath = "zimbraAutoSubmittedNullReturnPath";    
+
+    /*
+     * Cross mailbox search
+     */
+    public static final String A_zimbraExcludeFromCMBSearch = "zimbraExcludeFromCMBSearch";
+    
     private static Provisioning sProvisioning;
 
     public synchronized static Provisioning getInstance() {

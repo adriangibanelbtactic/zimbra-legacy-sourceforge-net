@@ -61,6 +61,7 @@ function ZmContact(appCtxt, id, list, type) {
 ZmContact.prototype = new ZmItem;
 ZmContact.prototype.constructor = ZmContact;
 
+
 // fields
 ZmContact.F_assistantPhone	= "assistantPhone";
 ZmContact.F_birthday		= "birthday";

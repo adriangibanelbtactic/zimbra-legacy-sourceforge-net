@@ -200,6 +200,34 @@ checkUser() {
   fi
 }
 
+checkRecentBackup() {
+  isInstalled zimbra-store
+  if [ x$PKGINSTALLED != "x" ]; then
+    if [ -x "bin/checkValidBackup" ]; then
+      echo "Checking for a recent backup"
+      `bin/checkValidBackup > /dev/null 2>&1`
+      if [ $? != 0 ]; then
+        echo "WARNING: Unable to find a system backup started within the last" 
+        echo "24hrs.  It is recommended to perform a full system backup and"
+        echo "copy it to a safe location prior to performing an upgrade."
+        echo ""
+        while :; do
+          askYN "Do you wish to continue without a backup?" "N"
+          if [ $response = "no" ]; then
+            askYN "Exit?" "N"
+            if [ $response = "yes" ]; then
+              echo "Exiting."
+              exit 1
+            fi
+          else
+            break
+          fi
+        done
+      fi
+    fi
+  fi
+}
+
 checkRequired() {
 
   if ! cat /etc/hosts | perl -ne 'if (/^\s*127\.0\.0\.1/ && !/^\s*127\.0\.0\.1\s+localhost/) { exit 11; }'; then
@@ -289,32 +317,6 @@ EOF
     exit 1
   fi
 
-  echo "Checking for required space..."
-  # /tmp must have 1GB
-  # /opt/zimbra must have 5GB
-  #!/bin/bash
-  TMPKB=`df -Pk /tmp | tail -1 | awk '{print $4}'`
-  AVAIL=$(($TMPKB / 1048576))
-  if [ $AVAIL -lt  1 ]; then
-    echo "/tmp must have at least 1GB of availble space to install."
-    echo "${AVAIL}GB is not enough space to install ZCS."
-    GOOD=no
-  fi
-  
-  ZIMBRA=`df -Pk /opt/zimbra | tail -1 | awk '{print $4}'`
-  AVAIL=$(($ZIMBRA / 1048576))
-  if [ $AVAIL -lt 5 ]; then
-    echo "/opt/zimbra requires at least 5GB of space to install."
-    echo "${AVAIL}GB is not enough space to install."
-    GOOD=no
-  fi
-  if [ $GOOD = "no" ]; then
-    echo ""
-    echo "Installation cancelled."
-    echo ""
-    exit 1
-  fi
-
   # limitation of ext3
   if [ -d "/opt/zimbra/db/data" ]; then
     echo "Checking current number of databases..."
@@ -330,7 +332,46 @@ EOF
       fi
     fi
   fi
+
+  checkRecentBackup
   
+}
+
+
+checkRequiredSpace() {
+  echo "Checking required space for zimbra-core"
+  TMPKB=`df -Pk /tmp | tail -1 | awk '{print $4}'`
+  AVAIL=$(($TMPKB / 1024))
+  if [ $AVAIL -lt  100 ]; then
+    echo "/tmp must have at least 100MB of availble space to install."
+    echo "${AVAIL}MB is not enough space to install ZCS."
+    GOOD=no
+  fi
+ 
+  isInstalled zimbra-store
+  isToBeInstalled zimbra-store
+  if [ "x$PKGINSTALLED" != "x" -o "x$PKGTOBEINSTALLED" != "x" ]; then
+    echo "checking space for zimbra-store"
+    ZIMBRA=`df -Pk /opt/zimbra | tail -1 | awk '{print $4}'`
+    AVAIL=$(($ZIMBRA / 1048576))
+    if [ $AVAIL -lt 5 ]; then
+      echo "/opt/zimbra requires at least 5GB of space to install."
+      echo "${AVAIL}GB is not enough space to install."
+      GOOD=no
+    fi
+  fi
+  if [ $GOOD = "no" ]; then
+    if [ x"$SKIPSPACECHECK" != "xyes" ]; then
+      echo ""
+      echo "Installation cancelled."
+      echo ""
+      exit 1
+    else 
+      echo ""
+      echo "Installation will contine by request." 
+      echo ""
+    fi
+  fi
 }
 
 checkExistingInstall() {
@@ -383,6 +424,12 @@ determineVersionType() {
     else 
       ZMTYPE_INSTALLABLE="NETWORK"
     fi
+  elif [ "$PACKAGEEXT" = "deb" ]; then
+    if [ x"`dpkg -f ./packages/zimbra-core* Description | grep Network`" = "x" ]; then
+      ZMTYPE_INSTALLABLE="FOSS"
+    else 
+      ZMTYPE_INSTALLABLE="NETWORK"
+    fi
   fi
 
   if [ x"$UNINSTALL" = "xyes" ] || [ x"$AUTOINSTALL" = "xyes" ]; then
@@ -424,6 +471,10 @@ verifyLicenseAvailable() {
   if [ $PACKAGEEXT = "rpm" ]; then
     if [ x"`rpm --qf '%{description}' -qp ./packages/zimbra-core* | grep Network`" = "x" ]; then
      return
+    fi
+  elif [ "$PACKAGEEXT" = "deb" ]; then
+    if [ x"`dpkg -f ./packages/zimbra-core* Description | grep Network`" = "x" ]; then
+      return
     fi
   else 
     return
@@ -1084,6 +1135,7 @@ getInstallPackages() {
     fi
 
   done
+  checkRequiredSpace
 
   echo ""
   echo "Installing:"
@@ -1194,6 +1246,17 @@ setupCrontab() {
   cat /tmp/crontab.zimbra.proc >> /tmp/crontab.zimbra
 
   crontab -u zimbra /tmp/crontab.zimbra
+}
+
+isToBeInstalled() {
+  pkg=$1
+  PKGTOBEINSTALLED=""
+  for i in $INSTALL_PACKAGES; do
+    if [ "x$pkg" = "x$i" ]; then
+      PKGTOBEINSTALLED=$i
+      continue
+    fi
+  done
 }
 
 isInstalled () {

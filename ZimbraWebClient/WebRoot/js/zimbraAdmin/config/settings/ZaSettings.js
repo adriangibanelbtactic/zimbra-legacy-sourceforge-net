@@ -54,7 +54,7 @@ ZaSettings.init = function () {
 				zimlets = resp.Body.GetAdminExtensionZimletsResponse.zimlets.zimlet;
 			}
 		} catch (ex) {
-			//go on
+			ZaSettings.postInit();
 		}
 		if(zimlets && zimlets.length > 0) {
 			var includes = new Array();	
@@ -78,7 +78,7 @@ ZaSettings.init = function () {
 				if(includes.length > 0)
 					AjxInclude(includes, null,new AjxCallback(this, ZaSettings.postInit));	
 			} catch (ex) {
-				//go on
+				ZaSettings.postInit();
 			}
 					
 		} else {
@@ -194,6 +194,7 @@ ZaSettings.SKIN_PREFS_ENABLED = true;
 ZaSettings.LICENSE_ENABLED = true;
 ZaSettings.ZIMLETS_ENABLED = true;
 ZaSettings.ADMIN_ZIMLETS_ENABLED = true;
+ZaSettings.TOOLS_ENABLED = true;
 
 // initialization for settings: [name, type, data type, default value]
 ZaSettings.INIT = new Object();
