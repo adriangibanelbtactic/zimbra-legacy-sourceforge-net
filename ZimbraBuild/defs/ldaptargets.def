@@ -1,0 +1,92 @@
+
+# __LDAP
+
+ldap: CUR_DEST_ROOT := $(LDAP_DEST_ROOT)
+ldap: CUR_PACKAGE_SPEC := $(BUILD_ROOT)/zimbraldap.spec
+ldap: CUR_PACKAGE_NAME := zimbra-ldap
+ldap: $(PACKAGE_DIR) ldap_stage ldap_pkg_spec_$(PACKAGE_EXT)
+	(cd $(CUR_DEST_ROOT); \
+		$(PACKAGING_COMMAND) $(PACKAGING_OPTIONS) )
+
+ldap_pkg_spec_pkg: $(BUILD_ROOT)/resources/zimbra-ldap $(BUILD_ROOT)/zimbra-ldap.Info.plist $(BUILD_ROOT)/zimbra-ldap.Description.plist
+
+$(BUILD_ROOT)/zimbra-ldap.Description.plist:
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbra-ldap.Description.plist | \
+	sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+	-e 's/@@RELEASE@@/$(RELEASE)/' \
+	-e 's/@@MAJOR@@/$(MAJOR)/' \
+	-e 's/@@MINOR@@/$(MINOR)/' > $@
+
+$(BUILD_ROOT)/zimbra-ldap.Info.plist:
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbra-ldap.Info.plist | \
+	sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+	-e 's/@@RELEASE@@/$(RELEASE)/' \
+	-e 's/@@MAJOR@@/$(MAJOR)/' \
+	-e 's/@@MINOR@@/$(MINOR)/' > $@
+
+$(BUILD_ROOT)/resources/zimbra-ldap:
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbra-ldap.postinstall $@/postupgrade
+	chmod 755 $@/postupgrade
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbra-ldap.postinstall $@/postinstall
+	chmod 755 $@/postinstall
+#       cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbraldap.pre $@/preinstall
+#       echo "#!/bin/bash" > $@/postinst
+#       echo "sh /opt/zimbra/bin/zmfixperms.sh" >> $@/postinst
+#       cat $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbraldap.post >> $@/postinstall
+#       chmod 555 $@/*
+
+ldap_pkg_spec_deb: $(LDAP_DEST_ROOT)/DEBIAN/control
+
+$(LDAP_DEST_ROOT)/DEBIAN: force
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbraldap.pre $@/preinst
+	echo "#!/bin/bash" > $@/postinst
+	echo "sh /opt/zimbra/bin/zmfixperms.sh" >> $@/postinst
+	cat $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbraldap.post >> $@/postinst
+	chmod 555 $@/*
+
+$(LDAP_DEST_ROOT)/DEBIAN/control: $(LDAP_DEST_ROOT)/DEBIAN force
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbraldap.deb | \
+	sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+	-e 's/@@RELEASE@@/$(RELEASE)/' \
+	-e 's/@@ARCH@@/$(ARCH)/' > $@
+
+ldap_pkg_spec_rpm: $(BUILD_ROOT)/zimbraldap.spec
+
+$(BUILD_ROOT)/zimbraldap.spec:
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbraldap.pre $(BUILD_ROOT)
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbraldap.post $(BUILD_ROOT)
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbraldap.spec | \
+		sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+		-e 's/@@RELEASE@@/$(RELEASE)/' \
+		-e 's/^Copyright:/$(RPMCOPYRIGHTSTR):/' \
+		-e '/^%pre$$/ r zimbraldap.pre' \
+		-e '/^%post$$/ r zimbraldap.post' > $(BUILD_ROOT)/zimbraldap.spec
+	rm -f zimbraldap.pre
+	rm -f zimbraldap.post
+	echo "%attr(-, zimbra, zimbra) /opt/zimbra/openldap-$(LDAP_VERSION)" >> \
+		$(BUILD_ROOT)/zimbraldap.spec
+
+ldap_stage: $(LDAP_COMPONENTS)
+
+$(LDAP_DEST_DIR):
+	mkdir -p $@
+
+$(LDAP_DEST_DIR)/$(LDAP_DIR): $(LDAP_DEST_DIR) 
+	@echo "*** Creating openldap"
+	(cd $(LDAP_DEST_DIR); tar xzf $(LDAP_SOURCE).tgz;)
+	cp $(SERVICE_DIR)/conf/ldap/DB_CONFIG \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/var/openldap-data
+	cp $(SERVICE_DIR)/conf/ldap/slapd.conf.production \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/etc/openldap/slapd.conf
+	cp $(SERVICE_DIR)/conf/ldap/amavisd.schema \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/etc/openldap/schema
+	cp $(SERVICE_DIR)/conf/ldap/zimbra.schema \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/etc/openldap/schema
+	cp $(SERVICE_DIR)/conf/ldap/zimbra.ldif \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/etc/openldap/zimbra.ldif
+	cp $(SERVICE_DIR)/conf/ldap/zimbra_mimehandlers.ldif \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/etc/openldap/zimbra_mimehandlers.ldif
+	cp $(SERVICE_DIR)/conf/ldap/widgets.ldif \
+		$(LDAP_DEST_DIR)/$(LDAP_DIR)/etc/openldap/widgets.ldif

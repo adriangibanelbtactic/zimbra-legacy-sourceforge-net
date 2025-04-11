@@ -1,0 +1,108 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+#
+# This script sets up ldap query filters used by postfix.
+#
+
+if [ $# -eq 1 ]; then
+    ldap_host="$1"
+    ldap_port=389
+elif [ $# -eq 2 ]; then
+    ldap_host="$1"
+    ldap_port="$2"
+else 
+    echo Usage: `basename $0` ldap_host [ ldap_port ]
+    exit
+fi
+
+confdir=/opt/zimbra/conf
+mkdir -p ${confdir}
+
+cat<<EOF > ${confdir}/ldap-vmm.cf
+server_host = ${ldap_host}
+server_port = ${ldap_port}
+search_base =
+query_filter = (&(zimbraMailDeliveryAddress=%s)(zimbraMailStatus=enabled))
+result_attribute = zimbraMailDeliveryAddress
+version = 3
+bind = no
+timeout = 30
+EOF
+
+cat<<EOF > ${confdir}/ldap-vmd.cf
+server_host = ${ldap_host}
+server_port = ${ldap_port}
+search_base =
+query_filter = (&(zimbraDomainName=%s)(zimbraDomainType=local)(zimbraMailStatus=enabled))
+result_attribute = zimbraDomainName
+version = 3
+bind = no
+timeout = 30
+EOF
+
+cat<<EOF > ${confdir}/ldap-vam.cf
+server_host = ${ldap_host}
+server_port = ${ldap_port}
+search_base =
+query_filter = (&(|(zimbraMailDeliveryAddress=%s)(zimbraMailAlias=%s)(zimbraMailCatchAllAddress=%s))(zimbraMailStatus=enabled))
+result_attribute = zimbraMailDeliveryAddress,zimbraMailForwardingAddress,zimbraMailCatchAllForwardingAddress
+version = 3
+bind = no
+timeout = 30
+EOF
+
+cat<<EOF > ${confdir}/ldap-vad.cf
+server_host = ${ldap_host}
+server_port = ${ldap_port}
+search_base =
+query_filter = (&(zimbraDomainName=%s)(zimbraDomainType=alias)(zimbraMailStatus=enabled))
+result_attribute = zimbraDomainName
+version = 3
+bind = no
+timeout = 30
+EOF
+
+cat<<EOF > ${confdir}/ldap-scm.cf
+server_host = ${ldap_host}
+server_port = ${ldap_port}
+search_base = 
+query_filter = (&(|(zimbraMailDeliveryAddress=%s)(zimbraMailAlias=%s)(zimbraMailCatchAllAddress=%s))(zimbraMailStatus=enabled))
+result_attribute = zimbraMailCanonicalAddress,zimbraMailCatchAllCanonicalAddress
+version = 3
+bind = no
+timeout = 30
+EOF
+
+cat<<EOF > ${confdir}/ldap-transport.cf
+server_host = ${ldap_host}
+server_port = ${ldap_port}
+search_base =
+query_filter = (&(zimbraMailDeliveryAddress=%s)(zimbraMailStatus=enabled))
+result_attribute = zimbraMailTransport
+version = 3
+bind = no
+timeout = 30
+EOF

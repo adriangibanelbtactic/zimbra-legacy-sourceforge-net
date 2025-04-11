@@ -1,0 +1,93 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+
+JAVA_HOME=/opt/zimbra/java
+
+TOMCAT=/opt/zimbra/tomcat/conf
+
+MODE=$1
+
+if [ "x$MODE" = "x" ]; then
+	MODE="mixed"
+else
+	shift
+fi
+
+updateWebConfig() {
+
+	if [ $MODE = "http" ]; then
+		sed -e 's/\(.*HTTPSBEGIN\).*/\1/' -e 's/.*\(HTTPSEND.*\)/\1/' \
+			-e 's/\(.*HTTPBEGIN\).*/\1 -->/' -e 's/.*\(HTTPEND.*\)/<!-- \1/' \
+			/opt/zimbra/tomcat/conf/server.xml > \
+			/tmp/server.xml.$$
+		if [ -f /opt/zimbra/cyrus-sasl/etc/saslauthd.conf.in ]; then
+			sed -e 's/^zimbra_url: http:/zimbra_url: https:/' \
+				/opt/zimbra/cyrus-sasl/etc/saslauthd.conf.in > \
+				/tmp/saslauthd.conf.in.$$
+		fi
+	else
+		if [ -f /opt/zimbra/cyrus-sasl/etc/saslauthd.conf.in ]; then
+			sed -e 's/^zimbra_url: https:/zimbra_url: http:/' \
+				/opt/zimbra/cyrus-sasl/etc/saslauthd.conf.in > \
+				/tmp/saslauthd.conf.in.$$
+		fi
+		if [ $MODE = "https" ]; then
+			sed -e 's/\(.*HTTPSBEGIN\).*/\1 -->/' -e 's/.*\(HTTPSEND.*\)/<!-- \1/' \
+				-e 's/\(.*HTTPBEGIN\).*/\1/' -e 's/.*\(HTTPEND.*\)/\1/' \
+				/opt/zimbra/tomcat/conf/server.xml > \
+				/tmp/server.xml.$$
+		else
+			# MIXED - enable both
+			sed -e 's/\(.*HTTPSBEGIN\).*/\1 -->/' -e 's/.*\(HTTPSEND.*\)/<!-- \1/' \
+				-e 's/\(.*HTTPBEGIN\).*/\1 -->/' -e 's/.*\(HTTPEND.*\)/<!-- \1/' \
+				/opt/zimbra/tomcat/conf/server.xml > \
+				/tmp/server.xml.$$
+		fi
+	fi
+	if [ -f /tmp/server.xml.$$ ]; then
+		mv -f /tmp/server.xml.$$ /opt/zimbra/tomcat/conf/server.xml
+	fi
+	if [ -f /tmp/saslauthd.conf.in.$$ ]; then
+		mv -f /tmp/saslauthd.conf.in.$$ /opt/zimbra/cyrus-sasl/etc/saslauthd.conf.in
+	fi
+
+	sed -e "s/.*PROTOCOL MODE.*/<env-entry-value>$MODE<\/env-entry-value><!-- PROTOCOL MODE -->/" \
+		/opt/zimbra/tomcat/webapps/zimbra/WEB-INF/web.xml > /tmp/web.xml.$$
+	mv -f /tmp/web.xml.$$ /opt/zimbra/tomcat/webapps/zimbra/WEB-INF/web.xml
+	
+	if [ $MODE = "http" ]; then
+		zmprov mcf zimbraMailPort 80 zimbraMailSSLPort 0
+	else
+		if [ $MODE = "https" ]; then
+			zmprov mcf zimbraMailPort 0 zimbraMailSSLPort 443
+		else
+			zmprov mcf zimbraMailPort 80 zimbraMailSSLPort 443
+		fi
+	fi
+
+}
+
+updateWebConfig

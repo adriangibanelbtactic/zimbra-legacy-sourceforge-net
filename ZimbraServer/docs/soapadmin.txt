@@ -1,0 +1,901 @@
+-----------------------------
+ urn:zimbraAdmin
+-----------------------------
+
+Attributes for all commands can have multiple values:
+
+  <a n="name1">{value}</a>
+  <a n="name2">{value}</a>  
+  <a n="name1">{value}</a>  
+
+Note that name1 appears twice. 
+
+When updating multiple attributes, you need to specify all the old values at the same time you specify new ones.
+
+----------------------------
+ <AuthRequest xmlns="urn:zimbraAdmin">
+   <name>...</name>
+   <password>...</password>
+ </AuthRequest>
+ 
+ <AuthResponse>
+   <authToken>...</authToken>
+   <lifetime>...</lifetime>
+ </AuthResponse>
+
+Note: Only works with admin accounts
+
+----------------------------
+ <DelegateAuthRequest xmlns="urn:zimbraAdmin" [duration="{duration}"]>
+   <account by="id|name">...</account> 
+ </DelegateAuthRequest>
+ 
+ <DelegateAuthResponse>
+   <authToken>...</authToken>
+   <lifetime>...</lifetime>
+ </DelegateAuthResponse>
+
+Used to request a new auth token that is valid for the specified account. The id of the auth token will be the id of the target account,
+and the requesting admin's id will be stored in the auth token for auditing purposes.
+
+{duration} = lifetime in seconds of the newly-created authtoken. defaults to 1 hour. Can't be longer then zimbraAuthTokenLifetime.
+
+----------------------------
+ 
+<CreateAccountRequest>
+  <name>...</name>
+  <password>...</password>*
+  <a n="attr-name>...</a>+
+</CreateAccountRequest>
+
+<CreateAccountResponse>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>  
+</CreateAccountResponse>
+
+Notes:
+
+  accounts without passwords can't be logged into
+
+  name must include domain (uid@name), and domain specified in name must exist
+
+  default value for zimbraAccountStatus is "active"  
+
+-----------------------------
+
+<GetAccountRequest [applyCos="{apply-cos}"]>
+  <account by="id|name">...</account>
+</GetAccountRequest>
+
+<GetAccountResponse>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>  
+</GetAccountResponse>
+
+{apply-cos} = 0|1 (1 is default)
+
+ if {apply-cos} is 1, then COS rules apply and unset attrs on an account will get their value from the COS.
+
+ if {apply-cos} is 0, then only attributes directly set on the account will be returned
+
+-----------------------------
+
+<GetAllAdminAccountsRequest/>
+
+<GetAllAdminAccountsResponse>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>  
+</GetAllAdminAccountsResponse>
+
+-----------------------------
+
+<ModifyAccountRequest>
+  <id>{value-of-zimbraId}</id>
+  <a n="...">...</a>+
+</ModifyAccountRequest>
+
+<ModifyAccountResponse>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>  
+</ModifyAccountResponse>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<RenameAccountRequest>
+  <id>{value-of-zimbraId}</id>
+  <newName>{new-account-name}</newName>
+</RenameAccountRequest>
+
+<RenameAccountResponse>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>  
+</RenameAccountResponse>
+
+-----------------------------
+
+<DeleteAccountRequest>
+  <id>{value-of-zimbraId}</id>
+</DeleteAccountRequest>
+
+<DeleteAccountResponse/>
+
+-----------------------------
+
+<SetPasswordRequest>
+  <id>{value-of-zimbraId}</id>
+  <newPassword>...</newPassword>
+</SetPasswordRequest>
+
+<SetPasswordResponse/>
+
+-----------------------------
+
+<AddAccountAliasRequest>
+  <id>{value-of-zimbraId}</id>
+  <alias>...</alias>
+</AddAliasRequest>
+
+<AddAccountAliasResponse/>
+
+-----------------------------
+
+<RemoveAccountAliasRequest>
+  <id>{value-of-zimbraId}</id>
+  <alias>...</alias>
+</RemoveAccountAliasRequest>
+
+<RemoveAccountAliasResponse/>
+
+-----------------------------
+
+<SearchAccountsRequest [limit="..."] [offset="..."] [domain="{domain-name}"] [applyCos="{apply-cos}"]
+         [attrs="a1,a2,a3"] [sortBy="{sort-by}"] [sortAscending="{sort-ascending}"] [types="{type}"]>
+  <query>...</query>
+</SearchAccountsRequest>
+
+<SearchAccountsResponse more="{more-flag}" [searchTotal="{search-total}"]>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>
+  <alias name="{name}" id="{id}">
+    <a n="...">...</a>+  
+  </alias>
+  <dl name="{name}" id="{id}">
+    <a n="...">...</a>+  
+  </dl>
+</SearchAccountsResponse>
+
+Notes:
+SearchAccountsRequest
+	<query> - query string should be an LDAP-style filter string (RFC 2254)
+	limit - the number of accounts to return (0 is default and means all)
+	offset - the starting offset (0, 25, etc)
+	domain - the domain name to limit the search to
+	applyCos - whether or not (0/1) to apply the COS policy to account. specify 0 if only
+	           requesting attrs that aren't inherited from COS
+	attrs - comma-seperated list of attrs to return ("displayName", "zimbraId", "zimbraAccountStatus")
+	sortBy - name of attribute to sort on. default is the account name.
+	sortAscending - whether to sort in ascending order (0/1), 1 is default
+    more-flag = true if more accounts left to return
+    search-total = total number of accounts that matched search (not affected by limit/offset)
+    types = comma-separated list of types to return. legal values are: 
+            accounts|distributionlists|aliases 
+            (default is accounts)
+
+-----------------------------
+
+<GetAllAccountsRequest>
+  [<domain by="id|name">...</domain>]
+<GetAllAccountsRequest/>
+
+<GetAllAccountsResponse>
+  <account name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </account>  
+</GetAllAccountsResponse>
+
+-----------------------------
+
+<CreateDomainRequest>
+  <name>...</name>
+  <a n="...">...</a>+
+</CreateDomainRequest>
+
+<CreateDomainResponse>
+  <domain name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </domain>  
+</CreateDomainResponse>
+
+Notes:
+
+  extra attrs:
+
+  description
+  zimbraNotes
+
+-----------------------------
+
+<GetDomainRequest [applyConfig="{apply-config}"]>
+  <domain by="id|name">...</domain>
+</GetDomainRequest>
+
+<GetDomainResponse>
+  <domain name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </domain>
+</GetDomainResponse>
+
+{apply-config} = 0|1 (1 is default)
+
+ if {apply-config} is 1, then certain unset attrs on an account will get their value from the global config.
+
+ if {apply-config} is 0, then only attributes directly set on the server will be returned
+
+-----------------------------
+
+<GetAllDomainsRequest/>
+
+<GetAllDomainsResponse>
+  <domain name="{name}" id="{id}">  
+    <a n="...">...</a>+
+  </domain>+
+</GetAllDomainsResponse>
+
+-----------------------------
+
+<ModifyDomainRequest>
+  <id>{value-of-zimbraId}</id>
+  <a n="...">...</a>+
+</ModifyDomainRequest>
+
+<ModifyDomainResponse>
+  <domain name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </domain>
+</ModifyDomainResponse>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<DeleteDomainRequest>
+  <id>{value-of-zimbraId}</id>
+</DeleteDomainRequest>
+
+<DeleteDomainResponse/>
+
+-----------------------------
+<CreateCosRequest>
+  <name>...</name>
+  <a n="...">...</a>+
+</CreateCosRequest>
+
+<CreateCosResponse>
+  <cos name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </cos>
+</CreateCosResponse>
+
+Notes:
+
+  extra attrs:
+
+  description
+  zimbraNotes
+
+-----------------------------
+
+<GetCosRequest>
+  <cos by="id|name">...</cos>
+</GetCosRequest>
+
+<GetCosResponse>
+  <cos name="{name}" id="{id}">
+    <a [c="{cos-attr}"] n="...">...</a>+    
+  </cos>
+</GetCosResponse>
+
+{cos-attr} = 0 (default) means the attrs applies to any account's that belong to the cos
+             1 means the attr applies only to the cos object itself
+
+-----------------------------
+
+<GetAllCosRequest/>
+
+<GetAllCosResponse>
+  <cos name="{name}" id="{id}">
+    <a [c="{cos-attr}"] n="...">...</a>+    
+  </cos>+  
+</GetAllCosResponse>
+
+-----------------------------
+
+<ModifyCosRequest>
+  <id>{value-of-zimbraId}</id>
+  <a n="...">...</a>+
+</ModifyCosRequest>
+
+<ModifyCosResponse>
+  <cos name="{name}" id="{id}">
+    <a [c="{cos-attr}"] n="...">...</a>+    
+  </cos>+  
+</ModifyCosResponse>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<RenameCosRequest>
+  <id>{value-of-zimbraId}</id>
+  <newName>{new-cos-name}</newName>
+</RenameCosRequest>
+
+<RenameCosResponse>
+  <cos name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </cos>  
+</RenameCosResponse>
+
+-----------------------------
+
+<DeleteCosRequest>
+  <id>{value-of-zimbraId}</id>
+</DeleteCosRequest>
+
+<DeleteCosResponse/>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+<CreateServerRequest>
+  <name>...</name>
+  <a n="...">...</a>+
+</CreateServerRequest>
+
+<CreateServerResponse>
+  <server name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </server>
+</CreateServerResponse>
+
+Notes:
+
+  extra attrs:
+
+  description
+  zimbraNotes
+
+-----------------------------
+
+<GetServerRequest [applyConfig="{apply-config}]">
+  <server by="id|name|serviceHostname">...</server>
+</GetServerRequest>
+
+<GetServerResponse>
+  <server name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </server>
+</GetServerResponse>
+
+{apply-config} = 0|1 (1 is default)
+
+by "serviceHostname" will return the server that has zimbraServiceHostname set to the specified value.
+
+ if {apply-config} is 1, then certain unset attrs on an account will get their value from the global config.
+
+ if {apply-config} is 0, then only attributes directly set on the server will be returned
+
+-----------------------------
+
+<GetAllServersRequest/>
+
+<GetAllServersResponse>
+  <server name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </server>+
+</GetAllServerResponse>
+
+-----------------------------
+
+<ModifyServerRequest>
+  <id>{value-of-zimbraId}</id>
+  <a n="...">...</a>+
+</ModifyServerRequest>
+
+<ModifyServerResponse>
+  <server name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </server>
+</ModifyServerResponse>]
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<DeleteServerRequest>
+  <id>{value-of-zimbraId}</id>
+</DeleteServerRequest>
+
+<DeleteServerResponse/>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<GetConfigRequest>
+ <a n="....">
+</GetServerRequest>
+
+<GetConfigResponse>
+  <a n="...">...</a>+
+</GetConfigResponse>
+
+-----------------------------
+<GetAllConfigRequest/>
+
+<GetAllConfigResponse>
+  <a n="...">...</a>+
+</GetAllConfigResponse>
+
+-----------------------------
+<ModifyConfigRequest>
+  <a n="...">...</a>+
+</ModifyConfigRequest>
+
+<ModifyConfigResponse/>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<GetServerAggregateStatsRequest>
+ <statName>...</statName>
+ <startTime>{date-time}</startTime>
+ <endTime>{date-time}</endTime>
+ <period>...</period>
+</GetServerAggregateStatsRequest>
+
+<GetServerAggregateStatsResponse>
+  <s n="..." t="{date-time}">{stat-value}</s>*
+</GetServerAggregateStatsResponse>
+
+{date-time} format is number of seconds in 1970, utc time.
+
+-----------------------------
+<GetServiceStatusRequest/>
+
+<GetServiceStatusResponse>
+<status server="..." service="..." t="{date-time}">{value}</status>*
+</GetServiceStatusResponse>
+
+{date-time} format is number of seconds in 1970, utc time.
+
+-----------------------------
+
+<PurgeMessagesRequest>
+    [<mbox id="{account-id}"/>]
+</PurgeMessagesRequest>
+
+purges aged messages out of trash, spam, and entire mailbox
+  (if <mbox> element is omitted, purges all mailboxes on server)
+-----------------------------
+
+<ReIndexRequest action="start|status|cancel">
+  <mbox id="{account-id}"/>
+</ReIndexRequest>  
+
+<ReIndexResponse status="started" | "running" | "cancelled">
+  [<progress numSucceeded="SUCCEEDED" numFailed="FAILED" numRemaining="REMAINING">]
+</ReIndexResponse>
+   -- Progress data is currently ONLY returned by the "status" and "cancelled" calls 
+
+---------------------------
+
+<DeleteMailboxRequest>
+  <mbox id="{account-id}"/>
+</DeleteMailboxRequest>
+
+the request includes the account ID (uuid) of the target mailbox
+on success, the response includes the mailbox ID (numeric) of the deleted mailbox
+the <mbox> element is left out of the response if no mailbox existed for that account
+
+<DeleteMailboxResponse>
+  [<mbox mbxid="{mailbox-id}"/>]
+</DeleteMailboxResponse>
+
+-----------------------------
+<GetMailboxRequest>
+  <mbox id="{account-id}"/>
+</GetMailboxRequest>
+
+<GetMailboxResponse>
+  <mbox mbxid="{mailbox-id}" s="{size-in-bytes}"/>
+</GetMailboxResponse>
+
+-----------------------------
+
+Runs ANALYZE TABLE or OPTIMIZE TABLE on all tables that have grown
+significantly since the last table maintenance.
+
+<MaintainTablesRequest/>
+
+<MaintainTablesResponse numTables="{number of tables maintained}"/>
+
+-----------------------------
+
+Runs the server-side unit test suite.
+
+<UnitTestRequest/>
+
+</UnitTestResponse
+    numExecuted="{number of tests that were executed}"
+    numFailed="{number of failed tests}"
+    output="{test output}"/>
+
+-----------------------------
+All the Check* SOAP calls potentially return the following two things:
+
+<code>{code}</code>
+<message>{message}</message>
+
+where:
+
+code is one of the following Strings:
+
+ code                         description
+ -------                      -----------
+ check.OK                     everything went ok 
+ check.UNKNOWN_HOST           unable to resolve a hostname
+ check.CONNECTION_REFUSED     connection to a port was refused 
+ check.SSL_HANDSHAKE_FAILURE  SSL connect problem, most likely untrusted certificate
+ check.COMMUNICATION_FAILURE  generic communication failure
+ check.AUTH_FAILED            authentication failed. invalid credentials (bad dn/password)
+ check.AUTH_NOT_SUPPORTED     authentication flavor not supported. LDAP server probably 
+                              configured to not allow passwords
+ check.NAME_NOT_FOUND         unable to resolve an LDAP name. most likely invalid search base
+ check.INVALID_SEARCH_FILTER  invalid ldap search filter
+ check.FAILURE                generic failure
+
+message is the detailed Java stack trace, used mainly for diagnosotics where the code
+isn't specific enough. Not user-friendly, but still useful for debugging problems.
+
+Any SOAP faults returned indicate a problem with the request itself, not the thing being
+checked.
+
+----------------------------------------
+
+<CheckHostnameResolveRequest>
+ <hostname>...</hostname>
+</CheckHostnameResolveRequest>
+
+<CheckHostnameResolveResponse>
+  <code>...</code>
+  <message>...</message>*
+</CheckHostnameResolveResponse>
+
+------------------------------------------------------------
+
+<CheckGalConfigRequest>
+  <a n='zimbraGalMode'>ldap</a>
+  <a n='zimbraGalLdapURL'>...</a>
+  <a n='zimbraGalLdapSearchBase'>...</a>
+  <a n='zimbraGalLdapFilter'>...</a>
+  <a n='zimbraGalLdapBindDn'>...</a>*
+  <a n='zimbraGalLdapBindPassword'>...</a>*
+  <query limit="...">...</query>
+</CheckGalConfigRequest>
+
+<CheckGalConfigResponse>
+  <code>...</code>
+  <message>...</message>*
+  <cn>...</cn>*
+</CheckGalConfigResponse>
+
+notes: 
+ - zimbraGalMode must be set to ldap, even if you eventually want to set it to "both".
+ - bindDn/bindPassword are optional if server allows anonymous binds
+
+------------------------------------------------------------
+
+<CheckAuthConfigRequest>
+  <a n='zimbraAuthMech'>ldap</a>
+  <a n='zimbraAuthLdapURL'>...</a>
+  <a n='zimbraAuthLdapBindDn'>...</a>
+  <a n='zimbraAuthLdapSearchFilter'>...</a>
+  <a n='zimbraAuthLdapSearchBase'>...</a>
+  <a n='zimbraAuthLdapSearchBindDn'>...</a>
+  <a n='zimbraAuthLdapSearchBindPassword'>...</a>
+  <name>...</name>
+  <password>...</password>
+</CheckAuthConfigRequest>
+
+<CheckAuthConfigResponse>
+  <code>...</code>
+  <message>...</message>*
+  <bindDn>{dn-computed-from-supplied-binddn-and-name}</bindDn>
+</CheckAuthConfigResponse>
+
+notes:
+  - zimbraAuthMech must be set to ldap/ad. There is no reason to check zimbra.
+  - zimbraAuthLdapURL must be set
+  - either zimbraAuthLdapBindDn or zimbraAuthLdapSearchFilter must be set
+  
+  The following are optional, and only looked at if zimbraAuthLdapSearchFilter is set:
+     - zimbraAuthLdapSearchBase is optional and defaults to ""
+     - zimbraAuthLdapSearchBind{Dn,Password} are both optional
+ 
+-----------------------------------
+
+<CreateVolumeRequest>
+  <volume type="..." name="..." rootpath="..."
+          compressBlobs="..." compressionThreshold="..."/>
+</CreateVolumeRequest>
+
+<CreateVolumeResponse>
+  <volume id="{id}"/>
+</CreateVolumeResponse>
+
+Notes:
+
+  id: ID of volume
+  type: type of volume;
+        1 = primary message volume
+        2 = secondary message volume
+        10 = index volume
+  name: name or description of volume
+  rootPath: absolute path to root of volume, e.g. /opt/zimbra/store
+  compressBlobs: boolean value that specifies whether blobs in this
+    volume are compressed
+  compressionThreshold: long value that specifies the maximum uncompressed
+    file size, in bytes, of blobs that will not be compressed
+    (in other words blobs larger than this threshold are compressed)
+
+-----------------------------
+
+<GetVolumeRequest id="{id}"/>
+
+<GetVolumeResponse>
+  <volume id="{id}" type="..." name="..." rootpath="..."
+          compressBlobs="..." compressionThreshold="..."/>
+</GetVolumeResponse>
+
+-----------------------------
+
+<GetAllVolumesRequest/>
+
+<GetAllVolumesResponse>
+  <volume .../>+  <!-- each volume element is same as in GetVolumeResponse -->
+</GetAllVolumeResponse>
+
+-----------------------------
+
+<ModifyVolumeRequest id="{id}">
+  <volume [type="..."] [name="..."] [rootpath="..."]
+          [compressBlobs="..."] [compressionThreshold="..."]/>
+</ModifyVolumeRequest>
+
+<ModifyVolumeResponse/>
+
+-----------------------------
+
+<DeleteVolumeRequest id="{id}"/>
+
+<DeleteVolumeResponse/>
+
+-----------------------------
+
+<GetCurrentVolumesRequest/>
+
+<GetCurrentVolumesResponse>
+  <volume type="1" id="{id}"/>
+  [<volume type="2" id="{id}"/>]  <!-- optional -->
+  <volume type="10" id="{id}"/>
+</GetCurrentVolumesResponse>
+
+-----------------------------
+
+<SetCurrentVolumeRequest type="{type}" id="{id}"/>
+
+<SetCurrentVolumeResponse/>
+
+Notes:
+
+  type: 1 (primary message), 2 (secondary message) or 10 (index)
+  Each SetCurrentVolumeRequest can set only one current volume type.
+
+-----------------------------
+
+<CreateDistributionListRequest>
+  <name>...</name>
+  <a n="...">...</a>+
+</CreateDistributionListRequest>
+
+<CreateDistributionListResponse>
+  <dl name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </dl>  
+</CreateDistributionListResponse>
+
+Notes:
+
+  extra attrs:
+
+  description
+  zimbraNotes
+
+-----------------------------
+
+<GetDistributionListRequest [limit="{limit}"] [offset="{offset}"]
+                            [sortAscending="{sort-ascending}"]>
+  <dl by="id|name">...</dl>
+</GetDistributionListRequest>
+
+<GetDistributionListResponse more="{more-flag}" [total="{total}"]>
+  <dl name="{name}" id="{id}">
+    <dlm>{member}</dlm>+
+    <a n="...">...</a>+
+  </dl>
+</GetDistributionListResponse>
+
+Notes:
+
+    limit - the number of accounts to return (0 is default and means
+            all)
+    offset - the starting offset (0, 25, etc)
+    sort-ascending - whether to sort in ascending order (0/1), 1 is
+                     default
+
+    more-flag = true if more accounts left to return
+    total = total number of distribution lists (not affected by limit/offset)
+
+-----------------------------
+
+<GetAllDistributionListsRequest>
+  [<domain by="id|name">...</domain>]
+</GetAllDistributionListsRequest>
+
+<GetAllDistributionListsResponse>
+  <dl name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </dl>
+</GetAllDistributionListsResponse>
+
+-----------------------------
+
+<AddDistributionListMemberRequest>
+  <id>{value-of-zimbraId}</id>
+  <dlm>{member}</dlm>
+</AddDistributionListMemeberRequest>
+
+<AddDistributionListMemberResponse>
+</AddDistributionListMemeberResponse>
+
+-----------------------------
+
+<RemoveDistributionListMemberRequest>
+  <id>{value-of-zimbraId}</id>
+  <dlm>{member}</dlm>
+</RemoveDistributionListMemberRequest>
+
+<RemoveDistributionListMemberResponse>
+</RemoveDistributionListMemberResponse>
+
+-----------------------------
+
+<ModifyDistributionListRequest>
+  <id>{value-of-zimbraId}</id>
+  <a n="...">...</a>+
+</ModifyDistributionListRequest>
+  
+
+<ModifyDistributionListResponse>
+  <dl name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </dl>
+</ModifyDistributionListResponse>
+
+Notes:
+
+  an empty attribute value removes the specified attr
+
+-----------------------------
+
+<DeleteDistributionListRequest>
+  <id>{value-of-zimbraId}</id>
+</DeleteDistributionListRequest>
+
+<DeleteDistributionListResponse/>
+
+-----------------------------
+
+<AddDistributionListAliasRequest>
+  <id>{value-of-zimbraId}</id>
+  <alias>...</alias>
+</AddAliasRequest>
+
+<AddDistributionListAliasResponse/>
+
+-----------------------------
+
+<RemoveDistributionListAliasRequest>
+  <id>{value-of-zimbraId}</id>
+  <alias>...</alias>
+</RemoveDistributionListAliasRequest>
+
+<RemoveDistributionListAliasResponse/>
+
+-----------------------------
+
+<RenameDistributionListRequest>
+  <id>{value-of-zimbraId}</id>
+  <newName>{new-account-name}</newName>
+</RenameDistributionListRequest>
+
+<RenameDistributionListResponse>
+  <dl name="{name}" id="{id}">
+    <a n="...">...</a>+
+  </dl>  
+</RenameDistributionListResponse>
+
+-----------------------------
+
+<GetClusterStatusRequest/>
+
+<GetClusterStatusResponse>
+  <clusterName>{cluster-name}</clusterName>	
+  <servers>
+    <server name="{server-name}" status="{1-or-0}"/>*
+  </servers>
+  <services>
+    <service name="{service-name}" status="{state-string-from-console}"  owner="{server-name}" lastOwner="{server-name}" restarts="{number}"/>*
+  </services>
+</GetClusterStatusResponse>
+
+-----------------------------
+
+<FailoverClusterServiceRequest>
+  <service name="{service-name}" newServer="{server-name}"/>
+</FailOverClusterServiceRequest>
+
+<FailoverCluserServiceResponse/>
+
+-----------------------------
+
+<GetVersionInfoRequest/>
+
+<GetVersionInfoResponse>
+  <info version="{version-string}" release="{release-string}" buildDate="{YYYYMMDD-hhmm}" buildHost="{host-name}"/>
+</GetVersionInfoResponse>
+
+-----------------------------
+
+<GetLicenseInfoRequest/>
+
+<GetLicenseInfoResponse>
+  <expiration date={date-YYYYMMDD-format}></expiration>
+</GetLicenseInfoResponse>
+
+-----------------------------
+

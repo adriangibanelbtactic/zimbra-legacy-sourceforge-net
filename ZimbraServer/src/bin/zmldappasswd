@@ -1,0 +1,122 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+#
+# Change password for zimbra_ldap_password, and optionally for
+# ldap_root_password.  Updates both the Zimbra local config file and
+# ldap configs, and reruns zimbra.ldif
+#
+source `dirname $0`/zmshutil || exit 1
+zmsetvars \
+    zimbra_home \
+    zimbra_ldap_userdn
+
+#
+# Usage.
+#
+usage() {
+    cat<<EOF
+Usage: $ zmldappasswd [ --root ] newpassword
+
+By default, this script changes zimbra_ldap_password.  If the --root
+option is specified, then ldap_root_passwd is changed.  In both cases,
+slapd.conf is modified and zimbra.ldif reloaded.
+
+EOF
+}
+
+#
+# Parse command line
+#
+if [ "x$1" = "x--root" ]; then
+    password_key="ldap_root_password"
+    shift # lose --root option
+else
+    password_key="zimbra_ldap_password"
+fi
+
+if [ $# -ne 1 ]; then
+    usage
+    exit 1
+fi
+newpassword="$1"
+
+#
+# Change the password in the config file.
+# TODO: notify app server that the password has changed,
+# for now you will have to restart tomcat
+#
+echo "Updating local config"
+if ! ${zimbra_home}/bin/zmlocalconfig -f -e ${password_key}=${newpassword}; then
+    echo Error: command failed: ${zimbra_home}/bin/zmlocalconfig -e ${password_key}='#'
+    exit 1
+fi
+
+#
+# Stop ldap
+#
+echo "Stopping ldap"
+${zimbra_home}/bin/ldap stop
+
+#
+# Get the SHA password.  We have modified one of these above.
+#
+zmsetvars ldap_root_password zimbra_ldap_password
+root_sha=`${zimbra_home}/openldap/sbin/slappasswd -s ${ldap_root_password}`
+zimbra_sha=`${zimbra_home}/openldap/sbin/slappasswd -s ${zimbra_ldap_password}`
+config_dir="${zimbra_home}/openldap/etc/openldap"
+
+#
+# Update slapd.conf
+#
+echo "Updating ldap configuration"
+sed -e "s|^rootpw.*|rootpw ${root_sha}|" \
+	/opt/zimbra/conf/slapd.conf > /tmp/slapd.conf.$$
+mv -f /tmp/slapd.conf.$$ /opt/zimbra/conf/slapd.conf
+
+#
+# Start ldap
+#
+echo "Starting ldap"
+${zimbra_home}/bin/ldap start > /dev/null 2>&1
+
+#
+# Update zimbra.ldif
+#
+echo "Updating zimbra.ldif"
+sed -e "s|^userPassword.*|userPassword: ${zimbra_sha}|" \
+	${config_dir}/zimbra.ldif > /tmp/zimbra.ldif.$$
+mv -f /tmp/zimbra.ldif.$$ ${config_dir}/zimbra.ldif
+
+#
+# Rerun zimbra.ldif
+#
+echo "Running ldapmodify"
+ldapmodify -c -w ${ldap_root_password} -D ${zimbra_ldap_userdn} \
+	-x -f /opt/zimbra/openldap/etc/openldap/zimbra.ldif > /dev/null 2>&1
+echo "Password change complete."
+echo ""
+echo "You may need to restart tomcat, if it is running."
+echo ""

@@ -1,0 +1,310 @@
+#!/usr/bin/perl
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+
+#use strict;
+
+use strict;
+
+BEGIN {
+	our $Basedir = "/opt/zimbra/zimbramon";
+};
+our $Basedir = "/opt/zimbra/zimbramon";
+
+my $configfile = "$Basedir/zimbra.cf";
+
+use lib "/opt/zimbra/zimbramon/lib/Zimbra/Mon";
+use lib "/opt/zimbra/zimbramon/lib";
+
+use Zimbra::Mon::Logger;
+
+use Getopt::Std;
+
+my $localHostName = getHostName();
+
+my $ldapMasterHere = isLdapMaster();
+
+my $services;
+my %allservices = ( 
+	"antivirus" => "/opt/zimbra/bin/zmantivirusctl", 
+	"antispam" => "/opt/zimbra/bin/zmantispamctl", 
+	"mta" => "/opt/zimbra/bin/zmmtactl", 
+	"mailbox" => "/opt/zimbra/bin/zmmailboxctl", 
+	"logger" => "/opt/zimbra/bin/zmloggerctl", 
+	"snmp" => "/opt/zimbra/bin/zmswatchctl", 
+	"ldap" => "/opt/zimbra/bin/ldap",
+	"spell" => "/opt/zimbra/bin/zmspellctl",
+);
+
+my %GlobalOpts = ();
+
+my %DESC = (
+	"start" => "Start services",
+	"startup" => "Start services",
+	"stop" => "Stop services",
+	"shutdown" => "Stop services",
+	"maintenance" => "Toggle maintenance mode",
+	"status" => "Display service status",
+);
+
+my %COMMANDS = (
+	"start" => \&doStartup,
+	"startup" => \&doStartup,
+	"stop" => \&doShutdown,
+	"shutdown" => \&doShutdown,
+	"maintenance" => \&setMaintenanceMode,
+	"status" => \&doStatus,
+);
+
+my %REMOTECOMMANDS = (
+	"start" => "startup",
+	"startup" => "startup",
+	"stop" => "shutdown",
+	"shutdown" => "shutdown",
+	"maintenance" => "maintenance",
+	"status" => "status",
+);
+
+sub runRemoteCommand {
+	my $cmd = shift;
+	my $cstr = "HOST:$GlobalOpts{H} $REMOTECOMMANDS{$cmd}";
+
+	open (REMOTE, "echo $cstr | /opt/zimbra/bin/zmrc $GlobalOpts{H} |") or 
+		die "Can't contact $GlobalOpts{H}";
+
+	while (<REMOTE>) {
+		if (/^STARTCMD: (\S+) .*/) {
+			#print "Host $1 starting\n";
+		} elsif (/^ENDCMD: (\S+) .*/) {
+			print "Host $1 complete\n";
+			exit; # Since the pipe doesn't always like to close...
+		} else {
+			print "$_";
+		}
+	}
+	close REMOTE;
+}
+
+sub doStatus {
+	$services = getEnabledServices();
+	if (scalar(keys %$services) == 0) {
+		return 1;
+	}
+	my $status = 0;
+	print "Host $localHostName\n";
+	foreach (sort keys %{$services}) {
+		my $rc = 0xffff & system ("$allservices{$_} status >/dev/null 2>&1");
+		$rc = $rc >> 8;
+		if ($rc) {$status = $rc;}
+		my $stat = sprintf "\t%-20s %10s\n",$_,($rc)?"Stopped":"Running";
+		print "$stat";
+	}
+	return $status;
+}
+
+sub startLdap {
+	print "\tStarting ldap...";
+	my $rc = 0xffff & system("/opt/zimbra/bin/ldap start > /tmp/zmcontrol.out.$$ 2>&1");
+	$rc = $rc >> 8;
+	print "Done.\n";
+	return $rc;
+}
+
+sub doStartup {
+	Zimbra::Mon::Logger::Log ("info", "Starting services");
+	print "Host $localHostName\n";
+	my $rc = 0;
+	my $rrc = 0;
+	if ($ldapMasterHere) {
+		my $ldapStopped = 0xffff & system("/opt/zimbra/bin/ldap status > /dev/null 2>&1");
+		if ($ldapStopped) {
+			$rrc = startLdap();
+		}
+	}
+	if ($rrc) {
+		$rc = 1;
+		my $out = `cat /tmp/zmcontrol.out.$$`;
+		print "FAILED\n";
+		print "$out\n\n";
+		exit (1);
+	}
+	unlink "/tmp/zmcontrol.out.$$";
+	$services = getEnabledServices();
+	if (scalar(keys %$services) == 0) {
+		return 1;
+	}
+	if (defined ($$services{"ldap"}) ) {
+		my $ldapStopped = 0xffff & system("/opt/zimbra/bin/ldap status > /dev/null 2>&1");
+		if ($ldapStopped) {
+			$rrc = startLdap();
+		}
+	}
+	if ($rrc) {
+		$rc = 1;
+		my $out = `cat /tmp/zmcontrol.out.$$`;
+		print "FAILED\n";
+		print "$out\n\n";
+		exit (1);
+	}
+	foreach (sort keys %{$services}) {
+		if ($_ eq "ldap") {next;}
+		Zimbra::Mon::Logger::Log ("info", "Starting $_");
+		print "\tStarting $_...";
+		$rrc = 0xffff & system ("$allservices{$_} start > /tmp/zmcontrol.out.$$ 2>&1");
+		$rrc = $rrc >> 8;
+		if ($rrc) {
+			$rc = 1;
+			my $out = `cat /tmp/zmcontrol.out.$$`;
+			print "FAILED\n";
+			print "$out\n\n";
+		} else {
+			print "Done.\n";
+		}
+		unlink "/tmp/zmcontrol.out.$$";
+	}
+	return $rc;
+}
+
+sub doShutdown {
+	Zimbra::Mon::Logger::Log ("info", "Stopping services");
+	print "Host $localHostName\n";
+	my $rc = 0;
+	my $rrc = 0;
+	foreach (sort keys %allservices) {
+		Zimbra::Mon::Logger::Log ("info", "Stopping $_");
+		if ($_ eq "ldap" && !(-d "/opt/zimbra/openldap-2.2.28") ) { next; }
+		if ($_ eq "mta" && !(-d "/opt/zimbra/postfix-2.2.3") ) { next; }
+		if ($_ eq "snmp" && !(-f "/opt/zimbra/bin/zmswatchctl") ) { next; }
+		print "\tStopping $_...";
+		$rrc = 0xffff & system ("$allservices{$_} stop > /tmp/zmcontrol.out.$$ 2>&1");
+		$rrc = $rrc >> 8;
+		if ($rrc) {
+			$rc = 1;
+			my $out = `cat /tmp/zmcontrol.out.$$`;
+			print "FAILED\n";
+			print "$out\n\n";
+		} else {
+			print "Done\n";
+		}
+		unlink "/tmp/zmcontrol.out.$$";
+	}
+	return $rc;
+}
+
+sub setMaintenanceMode {
+	my $mode = shift;
+}
+
+sub getLocalConfig {
+	my $key = shift;
+	if (defined ($ENV{zmsetvars})) {
+		return $ENV{$key};
+	}
+	open CONF, "/opt/zimbra/bin/zmlocalconfig -q -m shell |";
+	my @conf = <CONF>;
+	close CONF;
+
+	chomp @conf;
+
+	foreach (@conf) {
+		my ($key, $val) = split '=', $_, 2;
+		$val =~ s/;$//;
+		$val =~ s/'$//;
+		$val =~ s/^'//;
+		$ENV{$key} = $val;
+	}
+	$ENV{zmsetvars} = 'true';
+	return $ENV{$key};
+}
+
+sub getEnabledServices {
+	if (open (ZMPROV, "/opt/zimbra/bin/zmprov gs $localHostName |")) {
+		my @lines = <ZMPROV>;
+		close ZMPROV;
+
+		my %s = ();
+		foreach (@lines) {
+			if (m/^zimbraServiceEnabled: (.*)/) {
+				#print "Found service: $1\n";
+				$s{$1} = $1;
+			}
+		}
+		return \%s;
+	} else {
+		print "Can't contact ldap!\n";
+		exit 1;
+	}
+}
+
+sub isLdapMaster {
+	return (getLocalConfig("ldap_is_master") eq "true");
+}
+
+sub getHostName {
+	return (getLocalConfig("zimbra_server_hostname"));
+}
+
+sub displayVersion {
+	my $release = `rpm -q --queryformat "%{version}_%{release}" zimbra-core`;
+	my $inst = localtime (`rpm -q --queryformat "%{installtime}" zimbra-core`);
+	print "\nRelease $release installed $inst\n\n";
+}
+
+sub usage {
+	displayVersion();
+	print "$0 [-v -h -H <host>] command [args]\n";
+	print "\n";
+	print "\t-v:	display version\n";
+	print "\t-h:	print usage statement\n";
+	print "\t-H:	Host name (localhost)\n";
+	print "\n";
+	print "\tCommand in:\n";
+	foreach ( sort keys %COMMANDS ) {
+		print "\t\t" . sprintf( "%-20s%30s", $_, $DESC{$_} ) ."\n";
+	}
+
+	print "\n";
+	exit 1;
+}
+
+$| = 1;
+
+unless ( getopts( 'vhH:', \%GlobalOpts ) ) { usage(); }
+
+if ( ! $GlobalOpts{H} ) { $GlobalOpts{H} = $localHostName; chomp $GlobalOpts{H}; }
+
+if ( $GlobalOpts{h} ) { usage(); }
+if ( $GlobalOpts{v} ) { displayVersion(); exit 1;}
+
+# Commands: start, stop, maintenance and status
+my $command = $ARGV[0];
+
+unless (defined ($COMMANDS{$command})) {usage();}
+
+if ($GlobalOpts{H} ne $localHostName) {
+	exit (runRemoteCommand ($command));
+}
+
+exit (&{$COMMANDS{$command}}($ARGV[1]));

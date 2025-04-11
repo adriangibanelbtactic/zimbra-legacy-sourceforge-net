@@ -1,0 +1,145 @@
+#!/bin/sh
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+CONF=/opt/zimbra/conf
+TCONF=/opt/zimbra/tomcat/conf
+B=/opt/zimbra/ssl
+BASE=${B}/ssl
+
+JAVA_HOME=/opt/zimbra/java
+
+TOMCAT=/opt/zimbra/tomcat/conf
+
+rm -rf ${BASE}/newCA
+mkdir -p ${BASE}/ca
+mkdir -p ${BASE}/newCA/newcerts
+touch ${BASE}/newCA/index.txt
+mkdir -p ${BASE}/cert
+mkdir -p ${BASE}/server
+
+mkdir -p ${TCONF}
+
+getHostInfo() {
+
+	H=`/opt/zimbra/bin/zmlocalconfig -m nokey zimbra_server_hostname`;
+
+}
+
+createConf() {
+	cat ${CONF}/zmssl.cnf.in | sed -e "s/@@HOSTNAME@@/$H/" > ${BASE}/zmssl.cnf
+}
+
+createSerial() {
+	if [ -f ${BASE}/ca/ca.srl ]; then
+		SER=`cat ${BASE}/ca/ca.srl`
+		SER=`expr $SER + 1`
+		 if [ $SER -lt 10 ]; then
+		 	SER="0$SER"
+		 fi
+	else
+		SER="02"
+	fi
+	echo "$SER" > ${BASE}/ca/ca.srl
+}
+
+importCA() {
+	echo "** Importing CA"
+	echo
+
+	# rm -f ${JAVA_HOME}/jre/lib/security/cacerts
+
+	keytool -import -noprompt -keystore \
+		${JAVA_HOME}/jre/lib/security/cacerts -file \
+		${BASE}/ca/ca.pem -alias my_ca -storepass changeit
+}
+
+createKeyStore() {
+
+	echo "** Creating keystore"
+	echo
+
+	rm -f ${TCONF}/keystore
+
+	keytool -genkey -dname "CN=$H, OU=Zimbra, O=Zimbra, L=NA, S=NA, C=US" \
+		-alias tomcat -keyalg RSA -keysize 1024 -keystore ${TCONF}/keystore \
+		-storetype JKS -storepass zimbra -keypass zimbra
+
+}
+
+createCertReq() {
+
+	echo "** Creating server cert request"
+	echo
+
+	openssl req -new -nodes -out ${BASE}/server/server.csr \
+		-keyout ${BASE}/server/server.key -newkey rsa:1024 \
+		-config ${BASE}/zmssl.cnf -batch
+
+	keytool -certreq -keyalg RSA -alias tomcat -file \
+		${BASE}/server/tomcat.csr -keystore \
+		${TCONF}/keystore -storepass zimbra
+
+	cp ${BASE}/server/tomcat.csr /tmp/tomcat.csr.$$
+	cat /tmp/tomcat.csr.$$ | sed -e \
+		's/NEW CERTIFICATE REQUEST/CERTIFICATE REQUEST/' \
+		> ${BASE}/server/tomcat.csr
+
+}
+
+signCertReq() {
+
+	echo "** Signing cert request"
+	echo
+
+	openssl ca -out ${BASE}/server/server.crt -notext \
+		-config ${BASE}/zmssl.cnf -in ${BASE}/server/server.csr \
+		-keyfile ${BASE}/ca/ca.key -cert ${BASE}/ca/ca.pem -batch
+
+	openssl x509 -CA ${BASE}/ca/ca.pem -CAkey ${BASE}/ca/ca.key \
+		-CAserial ${BASE}/ca/ca.srl -req -in ${BASE}/server/tomcat.csr \
+		-out ${BASE}/server/tomcat.crt -days 365
+
+	cp ${BASE}/server/server.crt ${CONF}/slapd.crt
+	cp ${BASE}/server/server.key ${CONF}/slapd.key
+	mkdir -p ${CONF}/ca
+	cp ${BASE}/ca/ca.key ${CONF}/ca/ca.key
+	cp ${BASE}/ca/ca.pem ${CONF}/ca/ca.pem
+
+}
+
+getHostInfo
+
+createConf
+
+createSerial
+
+importCA
+
+createKeyStore
+
+createCertReq
+
+signCertReq
+

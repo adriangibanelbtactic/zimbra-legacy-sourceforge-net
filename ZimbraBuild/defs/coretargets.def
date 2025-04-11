@@ -1,0 +1,235 @@
+# __CORE
+
+core: CUR_DEST_ROOT := $(CORE_DEST_ROOT) 
+core: CUR_PACKAGE_SPEC := $(BUILD_ROOT)/zimbracore.spec 
+core: CUR_PACKAGE_NAME := zimbra-core
+core: $(PACKAGE_DIR) core_stage core_pkg_spec_$(PACKAGE_EXT)
+	(cd $(CUR_DEST_ROOT); \
+		$(PACKAGING_COMMAND) $(PACKAGING_OPTIONS) )
+
+core_pkg_spec_pkg: $(BUILD_ROOT)/resources/zimbra-core $(BUILD_ROOT)/zimbra-core.Info.plist $(BUILD_ROOT)/zimbra-core.Description.plist
+	rm -rf $(CORE_DEST_DIR)/$(JAVA_FILE)$(JAVA_VERSION)
+
+$(BUILD_ROOT)/zimbra-core.Description.plist:
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbra-core.Description.plist | \
+		sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+		-e 's/@@RELEASE@@/$(RELEASE)/' \
+		-e 's/@@MAJOR@@/$(MAJOR)/' \
+		-e 's/@@MINOR@@/$(MINOR)/' > $@
+	
+$(BUILD_ROOT)/zimbra-core.Info.plist:
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbra-core.Info.plist | \
+		sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+		-e 's/@@RELEASE@@/$(RELEASE)/' \
+		-e 's/@@MAJOR@@/$(MAJOR)/' \
+		-e 's/@@MINOR@@/$(MINOR)/' > $@
+	
+$(BUILD_ROOT)/resources/zimbra-core:
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbra-core.postflight $@/postflight
+	chmod 755 $@/postflight
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbra-core.postinstall $@/postinstall
+	chmod 755 $@/postinstall
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbra-core.preupgrade $@/preupgrade
+	chmod 755 $@/preupgrade
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbra-core.postupgrade $@/postupgrade
+	chmod 755 $@/postupgrade
+#	echo "#!/bin/bash" > $@/postinst
+#	echo "sh /opt/zimbra/bin/zmfixperms.sh" >> $@/postinst
+#	cat $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbracore.post >> $@/postinstall
+#	chmod 555 $@/*
+
+core_pkg_spec_deb: $(CORE_DEST_ROOT)/DEBIAN/control
+
+$(CORE_DEST_ROOT)/DEBIAN: force
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbracore.pre $@/preinst
+	echo "#!/bin/bash" > $@/postinst
+	echo "sh /opt/zimbra/bin/zmfixperms.sh" >> $@/postinst
+	cat $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbracore.post >> $@/postinst
+	chmod 555 $@/*
+
+$(CORE_DEST_ROOT)/DEBIAN/control: $(CORE_DEST_ROOT)/DEBIAN force
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbracore.deb | \
+		sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+		-e 's/@@RELEASE@@/$(RELEASE)/' \
+		-e 's/@@ARCH@@/$(ARCH)/' \
+		-e 's/^Copyright:/$(RPMCOPYRIGHTSTR):/' \
+		-e '/^%pre$$/ r zimbracore.pre' \
+		-e '/^%post$$/ r zimbracore.post' > $@
+
+core_pkg_spec_rpm: $(BUILD_ROOT)/zimbracore.spec
+
+$(BUILD_ROOT)/zimbracore.spec:
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbracore.pre $(BUILD_ROOT)
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zimbracore.post $(BUILD_ROOT)
+	cat $(PACKAGE_CONF_DIR)/Spec/zimbracore.spec | \
+		sed -e 's/@@VERSION@@/$(VERSION_TAG)/' \
+		-e 's/@@RELEASE@@/$(RELEASE)/' \
+		-e 's/@@COMPAT_LIBSTDC@@/$(COMPAT_LIBSTDC)/' \
+		-e 's/^Copyright:/$(RPMCOPYRIGHTSTR):/' \
+		-e '/^%pre$$/ r zimbracore.pre' \
+		-e '/^%post$$/ r zimbracore.post' > $(BUILD_ROOT)/zimbracore.spec
+	rm -f zimbracore.pre
+	rm -f zimbracore.post
+	(cd $(CORE_DEST_ROOT); find opt -type f -o -type l -maxdepth 2 \
+		| sed -e 's|^|%attr(-, zimbra, zimbra) /|' >> \
+		$(BUILD_ROOT)/zimbracore.spec )
+	echo "%attr(755, root, root) /opt/zimbra/bin" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(755, zimbra, zimbra) /opt/zimbra/doc" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(755, root, root) /opt/zimbra/libexec" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, zimbra, zimbra) /opt/zimbra/conf" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, zimbra, zimbra) /opt/zimbra/db" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, root, root) /opt/zimbra/jdk1.5.0_05" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, root, root) /opt/zimbra/lib" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+	echo "%attr(-, zimbra, zimbra) /opt/zimbra/zimbramon" >> \
+		$(BUILD_ROOT)/zimbracore.spec
+
+core_stage: $(CORE_COMPONENTS)
+
+$(CORE_DEST_DIR):
+	mkdir -p $@
+	cp $(ENV_FILE_SOURCE) $(CORE_DEST_DIR)/$(ENV_FILE_DEST)
+	cp $(PROFILE_SOURCE) $(CORE_DEST_DIR)/$(PROFILE_DEST)
+	cp $(EXRC_SOURCE) $(CORE_DEST_DIR)/$(EXRC_DEST)
+
+$(CORE_DEST_DIR)/doc:
+	mkdir -p $@
+	cp $(LICENSE_DIR)/zimbra/zpl-full.txt $@/ZPL.txt
+	cp $(SERVICE_DIR)/docs/soap*txt $@
+
+$(CORE_DEST_DIR)/zimbramon: $(CORE_DEST_DIR)/zimbramon/lib $(CORE_DEST_DIR)/zimbramon/crontabs $(CORE_DEST_DIR) 
+	@echo "*** Creating zimbramon"
+	mkdir -p $@
+	(cd $(CORE_DEST_DIR)/zimbramon; tar xzf $(MRTG_SOURCE).tgz)
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/mrtg/work
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/mrtg/conf
+	cp $(PACKAGE_CONF_DIR)/Conf/mrtg.cfg $(CORE_DEST_DIR)/zimbramon/mrtg/conf
+	(cd $(CORE_DEST_DIR)/zimbramon; tar xzf $(RRD_SOURCE).tar.gz)
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/rrdtool/work
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/rrdtool/work
+	cp -f $(PACKAGE_CONF_DIR)/Img/connection_failed.gif \
+		$(CORE_DEST_DIR)/zimbramon/rrdtool/work
+	cp -f $(PACKAGE_CONF_DIR)/Img/data_not_available.gif \
+		$(CORE_DEST_DIR)/zimbramon/rrdtool/work
+
+$(CORE_DEST_DIR)/zimbramon/crontabs:
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Env/crontabs/crontab $(CORE_DEST_DIR)/zimbramon/crontabs/
+	cp $(PACKAGE_CONF_DIR)/Env/crontabs/crontab.logger $(CORE_DEST_DIR)/zimbramon/crontabs/
+	cp $(PACKAGE_CONF_DIR)/Env/crontabs/crontab.mta $(CORE_DEST_DIR)/zimbramon/crontabs/
+	cp $(PACKAGE_CONF_DIR)/Env/crontabs/crontab.store $(CORE_DEST_DIR)/zimbramon/crontabs/
+
+$(CORE_DEST_DIR)/zimbramon/lib:
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/lib
+	(cd $(CORE_DEST_DIR)/zimbramon/lib; \
+	tar xzf $(PERL_LIB_SOURCE)/builds/$(BUILD_PLATFORM)/perllib.tgz)
+	cp -R $(BUILD_ROOT)/lib/Zimbra $(CORE_DEST_DIR)/zimbramon/lib
+
+$(CORE_DEST_DIR)/lib: $(WEBAPP_DIR)/service.war $(LDAP_DEST_DIR)/$(LDAP_DIR) $(MTA_DEST_DIR)/$(BDB_DIR) pcre_$(BUILD_PLATFORM) $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT)
+	mkdir -p $@
+	cp -pr $(SERVICE_DIR)/build/dist/lib/* $@
+	cp -pr $(LDAP_DEST_DIR)/$(LDAP_DIR)/lib/* $@
+	cp -pr $(MTA_DEST_DIR)/$(BDB_DIR)/lib/* $@
+	cp -pr $(SERVICE_DIR)/build/dist/lib/* $@
+	cp -pr $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $@
+	(cd $@; tar xzf $(THIRD_PARTY)/mysql/$(BUILD_PLATFORM)/mysql-$(MYSQL_CLIENT_VERSION).tgz)
+
+$(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT):
+	(cd $(NATIVE_DIR); make TOMCAT_HOME=$(TOMCAT_HOME) JAVA_BINARY=$(JAVA_BINARY))
+
+$(NATIVE_DIR)/build/zmtomcatstart:
+	(cd $(NATIVE_DIR); make TOMCAT_HOME=$(TOMCAT_HOME) JAVA_BINARY=$(JAVA_BINARY) )
+
+pcre_MACOSX: 
+	mkdir -p $(CORE_DEST_DIR)/lib
+	(cd $(CORE_DEST_DIR)/lib; tar xzf $(THIRD_PARTY)/pcre/builds/$(BUILD_PLATFORM)/pcre.tgz)
+
+pcre_FC4: ;
+
+pcre_FC3: ;
+
+pcre_RHEL4: ;
+
+pcre_DEBIAN3.1: ;
+
+pcre_SuSEES9: ;
+
+$(CORE_DEST_DIR)/jdk1.5.0_05:
+	@echo "*** Creating java"
+	(cd $(CORE_DEST_DIR); tar xzf $(JAVA_SOURCE).tgz;)
+
+$(CORE_DEST_DIR)/db: $(WEBAPP_DIR)/service.war
+	mkdir -p $@
+	cp -R $(SERVICE_DIR)/src/db/db.sql $@
+	cp -R $(SERVICE_DIR)/src/db/loggerdb.sql $@
+	cp -R $(SERVICE_DIR)/src/db/create_database.sql $@
+	cp -R $(SERVICE_DIR)/build/versions-init.sql $@
+
+$(CORE_DEST_DIR)/conf: $(WEBAPP_DIR)/service.war
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Conf/swatchrc $@/swatchrc.in
+	cp $(PACKAGE_CONF_DIR)/Conf/logswatchrc $@/logswatchrc
+	cp -R $(SERVICE_DIR)/conf/localconfig.xml $@/localconfig.xml
+	grep -vi stats $(SERVICE_DIR)/build/dist/conf/log4j.properties.production > $@/log4j.properties
+	cp $(PACKAGE_CONF_DIR)/Conf/zmssl.cnf.in $@
+	cp $(SERVICE_DIR)/conf/amavisd.conf.in $@
+	cp $(SERVICE_DIR)/conf/clamd.conf.in $@
+	cp $(SERVICE_DIR)/conf/freshclam.conf.in $@
+	cp $(SERVICE_DIR)/conf/postfix_header_checks.in $@
+	cp $(SERVICE_DIR)/conf/salocal.cf $@
+	cp $(SERVICE_DIR)/conf/zmmta.cf $@
+	cp $(SERVICE_DIR)/conf/zimbra.ld.conf $@
+	cp $(SERVICE_DIR)/conf/my.logger.cnf $@
+	cp $(SERVICE_DIR)/conf/postfix_recipient_restrictions.cf $@
+	mkdir -p $@/spamassassin
+	cp $(SERVICE_DIR)/conf/spamassassin/[^C]* $@/spamassassin
+
+$(CORE_DEST_DIR)/libexec: $(NATIVE_DIR)/build/zmtomcatstart 
+	@echo "*** Installing libexec"
+	mkdir -p $@/util/modules
+	cp -f -R $(SERVICE_DIR)/build/dist/libexec/zm*init $@
+	cp -f $(PACKAGE_CONF_DIR)/Install/zmsetup.pl $@/zmsetup.pl
+	cp -f $(PACKAGE_CONF_DIR)/Install/postinstall.pm $@/postinstall.pm
+	cp -f $(PACKAGE_CONF_DIR)/Install/Util/addUser.sh $@/addUser.sh
+	cp $(NATIVE_DIR)/build/zmtomcatstart $@
+
+$(CORE_DEST_DIR)/bin:
+	mkdir -p $@
+	cp -R $(SERVICE_DIR)/build/dist/bin/[a-z]* $@
+	rm -f $@/zm*init
+	mv $@/tomcat.production $@/tomcat
+	rm -f $(CORE_DEST_DIR)/bin/zmtransserver.bat
+	rm -f $(CORE_DEST_DIR)/bin/ldap
+	mv $(CORE_DEST_DIR)/bin/ldap.production $(CORE_DEST_DIR)/bin/ldap
+	cp $(PACKAGE_CONF_DIR)/Build/get_plat_tag.sh $@
+	cp $(ZIMBRA_BIN_DIR)/swatch $@
+	cp $(ZIMBRA_BIN_DIR)/swatch $@/logswatch
+	cp $(ZIMBRA_BIN_DIR)/zmswatchctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmlogswatchctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmlogrotate $@
+	cp $(ZIMBRA_BIN_DIR)/zmgengraphs $@
+	cp $(ZIMBRA_BIN_DIR)/zmcreatecert $@
+	cp $(ZIMBRA_BIN_DIR)/zmcertinstall $@
+	cp $(ZIMBRA_BIN_DIR)/zmroll_catalina.sh $@
+	cp $(ZIMBRA_BIN_DIR)/zmtlsctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmfixperms.sh $@
+	cp $(ZIMBRA_BIN_DIR)/zmsyslogsetup $@
+	cp $(SERVICE_DIR)/src/bin/zmstatuslog $@
+	cp $(LDAP_DEST_ROOT)/opt/zimbra/$(LDAP_DIR)/bin/ldapsearch $@
+	cp $(ZIMBRA_BIN_DIR)/zmantispamctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmantivirusctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmcontrol $@
+	cp $(ZIMBRA_BIN_DIR)/zmloggerctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmmailboxctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmmtactl $@
+	cp $(ZIMBRA_BIN_DIR)/zmspellctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmapachectl $@
+

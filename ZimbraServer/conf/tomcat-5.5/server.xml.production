@@ -1,0 +1,50 @@
+<Server port="8005" shutdown="SHUTDOWN">
+
+  <GlobalNamingResources>
+    <!-- Used by Manager webapp -->
+    <Resource name="UserDatabase" auth="Container"
+              type="org.apache.catalina.UserDatabase"
+       description="User database that can be updated and saved"
+           factory="org.apache.catalina.users.MemoryUserDatabaseFactory"
+          pathname="conf/tomcat-users.xml" />
+  </GlobalNamingResources>
+
+
+  <Service name="Catalina">
+    <!-- user services connector, no SSL -->
+	<!-- HTTPBEGIN -->
+    <Connector port="80"
+        enableLookups="false" redirectPort="443"
+        maxThreads="100" minSpareThreads="100" maxSpareThreads="100"/>
+	<!-- HTTPEND -->
+    <!-- user services connector, SSL -->
+	<!-- HTTPSBEGIN 
+    <Connector port="443"
+        enableLookups="false"
+        maxThreads="100" minSpareThreads="100" maxSpareThreads="100"
+        scheme="https" secure="true"
+        clientAuth="false" sslProtocol="TLS"
+        keystoreFile="/opt/zimbra/tomcat/conf/keystore" keystorePass="zimbra"/>
+	HTTPSEND -->
+    <!-- admin services connector; requires SSL -->
+    <Connector port="7071"
+        enableLookups="false"
+        maxThreads="50" minSpareThreads="50" maxSpareThreads="50"
+        scheme="https" secure="true"
+        clientAuth="false" sslProtocol="TLS"
+        keystoreFile="/opt/zimbra/tomcat/conf/keystore" keystorePass="zimbra"/>
+
+    <Engine name="Catalina" defaultHost="localhost">
+      <Realm className="org.apache.catalina.realm.UserDatabaseRealm"
+             resourceName="UserDatabase" />
+
+      <Host name="localhost" appBase="webapps" autoDeploy="false">
+          <DefaultContext reloadable="false"/>
+	  <Context path="/" docBase="${catalina.home}/webapps/zimbra" debug="0" />
+      </Host>
+
+      <Valve className="org.apache.catalina.valves.AccessLogValve"
+             pattern="common"/>
+    </Engine>
+  </Service>
+</Server>
