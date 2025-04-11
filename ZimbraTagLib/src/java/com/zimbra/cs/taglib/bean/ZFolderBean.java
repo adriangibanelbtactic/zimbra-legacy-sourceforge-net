@@ -25,6 +25,8 @@
 package com.zimbra.cs.taglib.bean;
 
 import com.zimbra.cs.zclient.ZFolder;
+import com.zimbra.cs.zclient.ZFolder.Color;
+import com.zimbra.cs.zclient.ZFolder.View;
 import com.zimbra.cs.zclient.ZGrant;
 import com.zimbra.cs.zclient.ZMailbox;
 import com.zimbra.cs.zclient.ZMountpoint;
@@ -67,14 +69,7 @@ public class ZFolderBean {
      * @return path
      */
     public String getRootRelativePath() { return mFolder.getRootRelativePath(); }
-
-    /**
-     * @return Returns the folder's absolute path, with special chars in the names
-     * URL encoded.
-     *
-     */
-    public String getPathUrlEncoded() { return mFolder.getPathUrlEncoded(); }
-
+    
     /**
      * 
      * @return parent id of folder, or null if root folder.
@@ -94,6 +89,11 @@ public class ZFolderBean {
      * @return number of unread items in folder
      */
     public int getMessageCount() { return mFolder.getMessageCount(); }
+
+    /**
+     * @return size of folder in bytes
+     */
+    public long getSize() { return mFolder.getSize(); }
     
     /** @return Returns the "hint" as to which view to use to display the folder's
      *  contents.
@@ -119,7 +119,13 @@ public class ZFolderBean {
      * 
      * @return color
      */
-    public String getColor() { return mFolder.getColor().name(); }
+    public String getColor() {
+        Color color = mFolder.getColor();
+        if (color == Color.defaultColor) {
+            color = (getIsContactView() || getIsTaskView()) ? Color.gray :  Color.orange;
+        }
+        return color.name();
+    }
 
     /**
      * remote URL (RSS, iCal, etc) this folder syncs to
@@ -133,7 +139,7 @@ public class ZFolderBean {
      * 
      * @return effective perms
      */
-    public String getEffectivePerm() { return mFolder.getEffectivePerm(); }
+    public String getEffectivePerm() { return mFolder.getEffectivePerms(); }
     
     /**
      * url to the folder on rest interface for rest-enabled apps (such as wiki and notebook)
@@ -141,6 +147,18 @@ public class ZFolderBean {
      * @return URL, if returned from server.
      */
     public String getRestURL() { return mFolder.getRestURL(); }
+
+    /**
+     * return url with trailing slash removed
+     *
+     * @return URL, if returned from server.
+     */
+    public String getRestURLAsFile() {
+        String url = mFolder.getRestURL();
+        if (url.endsWith("/"))
+            url = url.substring(0, url.length()-1);
+        return url;
+    }
     
     /**
      * @return return grants or empty list if no grants
@@ -152,6 +170,8 @@ public class ZFolderBean {
      */
     public List<ZFolder> getSubFolders() { return mFolder.getSubFolders(); }
 
+    public int getSubFolderCount() { return mFolder.getSubFolders().size(); }
+
     public boolean getHasChildren() { return !mFolder.getSubFolders().isEmpty(); }
     
     public boolean getIsSearchFolder() { return mFolder instanceof ZSearchFolder; }
@@ -161,6 +181,7 @@ public class ZFolderBean {
     //public ZFolder getSubFolderByPath(String path);
     
     public boolean getIsInbox() { return mFolder.getId().equals(ZFolder.ID_INBOX); }
+    public boolean getIsChats() { return mFolder.getId().equals(ZFolder.ID_CHATS); }
     public boolean getIsTrash() { return mFolder.getId().equals(ZFolder.ID_TRASH); }
     public boolean getIsSpam() { return mFolder.getId().equals(ZFolder.ID_SPAM); }
     public boolean getIsSent() { return mFolder.getId().equals(ZFolder.ID_SENT); }    
@@ -181,10 +202,56 @@ public class ZFolderBean {
     public boolean getIsConversationView() { return mFolder.getDefaultView() == ZFolder.View.conversation; }        
     public boolean getIsAppointmentView() { return mFolder.getDefaultView() == ZFolder.View.appointment; }
     public boolean getIsWikiView() { return mFolder.getDefaultView() == ZFolder.View.wiki; }
+    public boolean getIsTaskView() { return mFolder.getDefaultView() == ZFolder.View.task; }
     
     public boolean getIsSystemFolder() { return mFolder.isSystemFolder(); }
     
     public boolean getIsMountPoint() { return mFolder instanceof ZMountpoint; }
+
+    public boolean getIsInTrash() {
+        if (getId().equals(ZFolder.ID_TRASH))
+            return true;
+
+        ZFolder parent = mFolder.getParent();
+        while (parent != null) {
+            if (parent.getId().equals(ZFolder.ID_TRASH))
+                return true;
+            parent = parent.getParent();
+        }
+        return false;
+    }
+
+    /**
+     * @return owner display name if mountpoint, otherwise null
+     */
+    public String getOwnerDisplayName() {
+        return mFolder instanceof ZMountpoint ?
+                ((ZMountpoint) mFolder ).getOwnerDisplayName() : null;
+    }
+
+    /**
+     * @return owner id if mountpoint, otherwise null
+     */
+    public String getOwnerId() {
+        return mFolder instanceof ZMountpoint ?
+                ((ZMountpoint) mFolder ).getOwnerId() : null;
+    }
+
+    /**
+     * @return remote id f mountpoint, otherwise null
+     */
+    public String getRemoteId() {
+        return mFolder instanceof ZMountpoint ?
+                ((ZMountpoint) mFolder ).getRemoteId() : null;
+    }
+
+    /**
+     * @return canonical remote id if mountpoint, otherwise null
+     */
+    public String getCanonicalRemoteId() {
+        return mFolder instanceof ZMountpoint ?
+                ((ZMountpoint) mFolder ).getCanonicalRemoteId() : null;
+    }
 
     public boolean getIsFeed() { return mFolder.getRemoteURL() != null; }
 
@@ -224,7 +291,7 @@ public class ZFolderBean {
 
     public boolean getIsMessageFolderMoveSource() {
         return (getIsMessageView() || getIsConversationView() || getIsNullView()) &&
-                !(getIsSystemFolder() || getIsSearchFolder());
+                !getIsSystemFolder();
     }
 
     public boolean getIsMessageFolderDeleteTarget() {
@@ -237,8 +304,84 @@ public class ZFolderBean {
                 !(getIsDrafts() || getIsMountPoint() || getIsSearchFolder() || getRemoteURL() != null);
     }
 
+    public boolean getIsAppointmentMoveTarget() {
+        //TODO: handle perm check on mountpoint!
+        return getIsAppointmentView() && !(getIsMountPoint() || getRemoteURL() != null);
+    }
+
     public boolean getIsContactCreateTarget() {
         return (getIsContactView()) &&
                 !(getIsDrafts() || getIsMountPoint() || getIsSearchFolder() || getRemoteURL() != null);
+    }
+
+    public String getStyleColor() {
+        return getStyleColor(mFolder.getColor(), mFolder.getDefaultView());
+    }
+
+    public static String getStyleColor(Color color, View view) {
+        switch(color) {
+            case blue:
+                return "Blue";
+            case cyan:
+                return "Cyan";
+            case green:
+                return "Green";
+            case purple:
+                return "Purple";
+            case red:
+                return "Red";
+            case yellow:
+                return "Yellow";
+            case pink:
+                return "Pink";
+            case gray:
+                return "Gray";
+            case orange:
+                return "Orange";
+            default:
+                if (view == View.contact || view == View.task)
+                    return "Gray";
+                else
+                    return "Orange";
+        }
+    }
+
+    public String getImage() {
+        if (getIsSearchFolder()) {
+            return "common/SearchFolder.gif";
+        } else if (getIsAppointmentView()) {
+            if (getIsMountPoint()) {
+                return "calendar/SharedCalendarFolder.gif";
+            } else {
+                return "calendar/CalendarFolder.gif";
+            }
+        } else if (getIsContactView()) {
+            if (getIsMountPoint()) {
+                return "contacts/SharedContactsFolder.gif";
+            } else if (getIsAutoContacts()) {
+                return "contacts/EmailedContacts.gif";
+            } else {
+                return "contacts/ContactsFolder.gif";
+            }
+        } else if (getIsSystemFolder()) {
+            if (getIsInbox())
+                return "mail/Inbox.gif";
+            else if (getIsTrash())
+                return "common/Trash.gif";
+            else if (getIsSpam())
+                return "mail/SpamFolder.gif";
+            else if (getIsSent())
+                return "mail/SentFolder.gif";
+            else if (getIsDrafts())
+                return "mail/DraftFolder.gif";
+            else
+                return "common/Folder.gif";
+        } else if (getIsMailView() && getIsFeed()) {
+            return "mail/RSS.gif";
+        } else if (getIsMountPoint()) {
+            return "mail/SharedMailFolder.gif";
+        } else {
+            return "common/Folder.gif";
+        }
     }
 }

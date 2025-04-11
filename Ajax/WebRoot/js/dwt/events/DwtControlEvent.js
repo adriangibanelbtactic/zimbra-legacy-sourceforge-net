@@ -15,11 +15,19 @@
  */
 
 
-function DwtControlEvent() {
+DwtControlEvent = function() {
 	this.reset();
 }
 DwtControlEvent.prototype = new DwtEvent;
 DwtControlEvent.prototype.constructor = DwtControlEvent;
+
+// type of control event
+//      RESIZE	       -- for setSize
+//      MOVE	       -- for setLocation
+//      RESIZE | MOVE  -- for setBounts (bitwise or)
+
+DwtControlEvent.RESIZE = 1;
+DwtControlEvent.MOVE = 2;
 
 DwtControlEvent.prototype.toString = 
 function() {
@@ -27,7 +35,7 @@ function() {
 }
 
 DwtControlEvent.prototype.reset = 
-function() {
+function(type) {
 	this.oldX = Dwt.DEFAULT;
 	this.oldY = Dwt.DEFAULT;
 	this.oldWidth = Dwt.DEFAULT;
@@ -36,4 +44,5 @@ function() {
 	this.newY = Dwt.DEFAULT;
 	this.newWidth = Dwt.DEFAULT;
 	this.newHeight = Dwt.DEFAULT;
+	this.type = type || null;
 }

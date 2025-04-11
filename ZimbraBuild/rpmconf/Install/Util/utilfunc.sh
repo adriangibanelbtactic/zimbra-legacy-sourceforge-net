@@ -200,77 +200,6 @@ checkUser() {
   fi
 }
 
-checkDatabaseIntegrity() {
-  isInstalled zimbra-store
-  if [ x$PKGINSTALLED != "x" ]; then
-    if [ -x "bin/zmdbintegrityreport" ]; then
-      if [ x$DEFAULTFILE = "x" -o x$CLUSTERUPGRADE = "xyes" ]; then
-        while :; do
-          askYN "Do you want to verify message store database integrity?" "Y"
-          if [ $response = "no" ]; then
-            break
-          elif [ $response = "yes" ]; then
-            echo "Verifying integrity of message store databases.  This may take a while."
-            su - zimbra -c "/opt/zimbra/bin/mysqladmin -s ping" 2>/dev/null
-            if [ $? != 0 ]; then
-              su - zimbra -c "/opt/zimbra/bin/mysql.server start" 2> /dev/null
-              for ((i = 0; i < 60; i++)) do
-                su - zimbra -c "/opt/zimbra/bin/mysqladmin -s ping" 2>/dev/null
-                if [ $? = 0 ]; then
-                  break
-                fi
-                sleep 2
-              done
-            fi
-            perl -I/opt/zimbra/zimbramon/lib bin/zmdbintegrityreport -v -r
-            if [ $? != 0 ]; then
-              exit $?
-            fi
-            break
-          else
-            break
-          fi
-        done
-      else 
-        echo "Automated install detected...continuing."
-      fi
-    fi
-  fi
-}
-
-checkRecentBackup() {
-  isInstalled zimbra-store
-  if [ x$PKGINSTALLED != "x" ]; then
-    if [ -x "bin/checkValidBackup" ]; then
-      echo "Checking for a recent backup"
-      `bin/checkValidBackup > /dev/null 2>&1`
-      if [ $? != 0 ]; then
-        echo "WARNING: Unable to find a system backup started within the last" 
-        echo "24hrs.  It is recommended to perform a full system backup and"
-        echo "copy it to a safe location prior to performing an upgrade."
-        echo ""
-        if [ x$DEFAULTFILE = "x" -o x$CLUSTERUPGRADE = "xyes" ]; then
-          while :; do
-            askYN "Do you wish to continue without a backup?" "N"
-            if [ $response = "no" ]; then
-              askYN "Exit?" "N"
-              if [ $response = "yes" ]; then
-                echo "Exiting."
-                exit 1
-              fi
-            else
-              break
-            fi
-          done
-        else
-          echo "Automated install detected...continuing."
-        fi
-      fi
-    fi
-  fi
-}
-
-
 checkRequired() {
 
   if ! cat /etc/hosts | perl -ne 'if (/^\s*127\.0\.0\.1/ && !/^\s*127\.0\.0\.1\s+localhost/) { exit 11; }'; then
@@ -360,6 +289,38 @@ EOF
     exit 1
   fi
 
+  echo "Checking for required space..."
+  # /tmp must have 1GB
+  # /opt/zimbra must have 5GB
+  #!/bin/bash
+  TMPKB=`df -Pk /tmp | tail -1 | awk '{print $4}'`
+  AVAIL=$(($TMPKB / 1048576))
+  if [ $AVAIL -lt  1 ]; then
+    echo "/tmp must have at least 1GB of availble space to install."
+    echo "${AVAIL}GB is not enough space to install ZCS."
+    GOOD=no
+  fi
+  
+  ZIMBRA=`df -Pk /opt/zimbra | tail -1 | awk '{print $4}'`
+  AVAIL=$(($ZIMBRA / 1048576))
+  if [ $AVAIL -lt 5 ]; then
+    echo "/opt/zimbra requires at least 5GB of space to install."
+    echo "${AVAIL}GB is not enough space to install."
+    GOOD=no
+  fi
+  if [ $GOOD = "no" ]; then
+    if [ x"$SKIPSPACECHECK" != "xyes" ]; then
+      echo ""
+      echo "Installation cancelled."
+      echo ""
+      exit 1
+    else 
+      echo ""
+      echo "Installation will contine by request." 
+      echo ""
+    fi
+  fi
+
   # limitation of ext3
   if [ -d "/opt/zimbra/db/data" ]; then
     echo "Checking current number of databases..."
@@ -375,48 +336,7 @@ EOF
       fi
     fi
   fi
-
-  checkRecentBackup
-
-  checkDatabaseIntegrity
-
-}
-
-
-checkRequiredSpace() {
-  echo "Checking required space for zimbra-core"
-  TMPKB=`df -Pk /tmp | tail -1 | awk '{print $4}'`
-  AVAIL=$(($TMPKB / 1024))
-  if [ $AVAIL -lt  100 ]; then
-    echo "/tmp must have at least 100MB of availble space to install."
-    echo "${AVAIL}MB is not enough space to install ZCS."
-    GOOD=no
-  fi
- 
-  isInstalled zimbra-store
-  isToBeInstalled zimbra-store
-  if [ "x$PKGINSTALLED" != "x" -o "x$PKGTOBEINSTALLED" != "x" ]; then
-    echo "checking space for zimbra-store"
-    ZIMBRA=`df -Pk /opt/zimbra | tail -1 | awk '{print $4}'`
-    AVAIL=$(($ZIMBRA / 1048576))
-    if [ $AVAIL -lt 5 ]; then
-      echo "/opt/zimbra requires at least 5GB of space to install."
-      echo "${AVAIL}GB is not enough space to install."
-      GOOD=no
-    fi
-  fi
-  if [ $GOOD = "no" ]; then
-    if [ x"$SKIPSPACECHECK" != "xyes" ]; then
-      echo ""
-      echo "Installation cancelled."
-      echo ""
-      exit 1
-    else 
-      echo ""
-      echo "Installation will contine by request." 
-      echo ""
-    fi
-  fi
+  
 }
 
 checkExistingInstall() {
@@ -503,6 +423,13 @@ determineVersionType() {
 
 verifyLicenseAvailable() {
 
+  if [ x"$LICENSE" != "x" ] && [ -e $LICENSE ]; then
+    if [ ! -d "/opt/zimbra/conf" ]; then
+      mkdir -p /opt/zimbra/conf
+    fi
+    cp -f $LICENSE /opt/zimbra/conf/ZCSLicense.xml
+  fi
+
   if [ x"$AUTOINSTALL" = "xyes" ] || [ x"$UNINSTALL" = "xyes" ] || [ x"$SOFTWAREONLY" = "yes" ]; then
     return
   fi
@@ -526,6 +453,7 @@ verifyLicenseAvailable() {
   fi
 
   echo "Checking for available license file..."
+
 
   # use the tool if it exists
   if [ -f "/opt/zimbra/bin/zmlicense" ]; then
@@ -847,6 +775,8 @@ restoreCerts() {
   fi
   if [ -f "$SAVEDIR/keystore" -a -d "/opt/zimbra/tomcat/conf" ]; then
     cp $SAVEDIR/keystore /opt/zimbra/tomcat/conf/keystore
+  elif [ -f "$SAVEDIR/keystore" -a -d "/opt/zimbra/jetty/etc" ]; then
+    cp $SAVEDIR/keystore /opt/zimbra/jetty/etc/keystore
   fi
   if [ -f "$SAVEDIR/perdition.key" ]; then
     cp $SAVEDIR/perdition.key /opt/zimbra/conf/perdition.key 
@@ -870,7 +800,12 @@ restoreCerts() {
   if [ -f "$SAVEDIR/ca.pem" ]; then
     cp $SAVEDIR/ca.pem /opt/zimbra/conf/ca/ca.pem 
   fi
-  chown zimbra:zimbra /opt/zimbra/java/jre/lib/security/cacerts /opt/zimbra/tomcat/conf/keystore /opt/zimbra/conf/smtpd.key /opt/zimbra/conf/smtpd.crt /opt/zimbra/conf/slapd.crt /opt/zimbra/conf/perdition.pem /opt/zimbra/conf/perdition.key
+  if [ -f "/opt/zimbra/tomcat/conf/keystore" ]; then
+    chown zimbra:zimbra /opt/zimbra/tomcat/conf/keystore
+  elif [ -f "/opt/zimbra/jetty/etc/keystore" ]; then
+    chown zimbra:zimbra /opt/zimbra/jetty/etc/keystore
+  fi
+  chown zimbra:zimbra /opt/zimbra/java/jre/lib/security/cacerts /opt/zimbra/conf/smtpd.key /opt/zimbra/conf/smtpd.crt /opt/zimbra/conf/slapd.crt /opt/zimbra/conf/perdition.pem /opt/zimbra/conf/perdition.key
   chown -R zimbra:zimbra /opt/zimbra/conf/ca
 }
 
@@ -882,6 +817,8 @@ saveExistingConfig() {
   cp -f /opt/zimbra/java/jre/lib/security/cacerts $SAVEDIR
   if [ -f "/opt/zimbra/tomcat/conf/keystore" ]; then
     cp -f /opt/zimbra/tomcat/conf/keystore $SAVEDIR
+  elif [ -f "/opt/zimbra/jetty/etc/keystore" ]; then
+    cp -f /opt/zimbra/jetty/etc/keystore $SAVEDIR
   fi
   if [ -f "/opt/zimbra/conf/perdition.key" ]; then
     cp -f /opt/zimbra/conf/perdition.key $SAVEDIR
@@ -941,8 +878,10 @@ removeExistingInstall() {
       echo ""
       echo "Backing up ldap"
       echo ""
-      /opt/zimbra/openldap/sbin/slapcat -f /opt/zimbra/conf/slapd.conf \
-        -b '' -l /opt/zimbra/openldap-data/ldap.bak
+      if [ -f "/opt/zimbra/openldap/sbin/slapcat" ]; then
+        /opt/zimbra/openldap/sbin/slapcat -f /opt/zimbra/conf/slapd.conf \
+         -l /opt/zimbra/openldap-data/ldap.bak
+      fi
     fi
 
     echo ""
@@ -982,13 +921,23 @@ removeExistingInstall() {
     fi
     echo ""
     echo "Removing deployed webapp directories"
-    /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbra
-    /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbra.war
-    /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbraAdmin
-    /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbraAdmin.war
-    /bin/rm -rf /opt/zimbra/tomcat/webapps/service
-    /bin/rm -rf /opt/zimbra/tomcat/webapps/service.war
-    /bin/rm -rf /opt/zimbra/tomcat/work
+    if [ -d "/opt/zimbra/tomcat/webapps/" ]; then
+      /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbra
+      /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbra.war
+      /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbraAdmin
+      /bin/rm -rf /opt/zimbra/tomcat/webapps/zimbraAdmin.war
+      /bin/rm -rf /opt/zimbra/tomcat/webapps/service
+      /bin/rm -rf /opt/zimbra/tomcat/webapps/service.war
+      /bin/rm -rf /opt/zimbra/tomcat/work
+    elif [ -d "/opt/zimbra/jetty/webapps" ]; then
+      /bin/rm -rf /opt/zimbra/jetty/webapps/zimbra
+      /bin/rm -rf /opt/zimbra/jetty/webapps/zimbra.war
+      /bin/rm -rf /opt/zimbra/jetty/webapps/zimbraAdmin
+      /bin/rm -rf /opt/zimbra/jetty/webapps/zimbraAdmin.war
+      /bin/rm -rf /opt/zimbra/jetty/webapps/service
+      /bin/rm -rf /opt/zimbra/jetty/webapps/service.war
+      /bin/rm -rf /opt/zimbra/jetty/work
+    fi
   fi
 
   if [ $REMOVE = "yes" ]; then
@@ -1180,7 +1129,6 @@ getInstallPackages() {
     fi
 
   done
-  checkRequiredSpace
 
   echo ""
   echo "Installing:"
@@ -1293,17 +1241,6 @@ setupCrontab() {
   crontab -u zimbra /tmp/crontab.zimbra
 }
 
-isToBeInstalled() {
-  pkg=$1
-  PKGTOBEINSTALLED=""
-  for i in $INSTALL_PACKAGES; do
-    if [ "x$pkg" = "x$i" ]; then
-      PKGTOBEINSTALLED=$i
-      continue
-    fi
-  done
-}
-
 isInstalled () {
   pkg=$1
   PKGINSTALLED=""
@@ -1361,19 +1298,15 @@ getPlatformVars() {
       PREREQ_LIBS="/usr/lib/libstdc++.so.6"
     elif [ $PLATFORM = "MANDRIVA2006" ]; then
       PREREQ_PACKAGES="sudo libidn11 curl fetchmail libgmp3 libxml2 libstdc++6 openssl"
-    elif [ $PLATFORM = "FC4" -o $PLATFORM = "FC5" -o $PLATFORM = "FC3" ]; then
+    elif [ $PLATFORM = "FC3" -o $PLATFORM = "FC4" ]; then
       PREREQ_PACKAGES="sudo libidn curl fetchmail gmp bind-libs vixie-cron"
-      if [ $PLATFORM = "FC5" ]; then
-        PREREQ_LIBS="/usr/lib/libstdc++.so.6"
-      else 
-        PREREQ_LIBS="/usr/lib/libstdc++.so.5"
-      fi
-    elif [ $PLATFORM = "FC5" -o $PLATFORM = "FC6" -o $PLATFORM = "F7" ]; then
+      PREREQ_LIBS="/usr/lib/libstdc++.so.5"
+    elif [ $PLATFORM = "FC5" -o $PLATFORM = "FC6" ]; then
       PREREQ_PACKAGES="sudo libidn curl fetchmail gmp bind-libs vixie-cron"
       PREREQ_LIBS="/usr/lib/libstdc++.so.6"
-    elif [ $PLATFORM = "FC5_64" -o $PLATFORM = "FC6_64" -o $PLATFORM = "F7_64" ]; then
-      PREREQ_PACKAGES="sudo libidn curl fetchmail gmp bind-libs vixie-cron"
-      PREREQ_LIBS="/usr/lib/libstdc++.so.6 /usr/lib64/libstdc++.so.6"
+    elif [ $PLATFORM = "FC5_64" -o $PLATFORM = "FC6_64" ]; then
+      PREREQ_PACKAGES="sudo libidn curl fetchmail gmp compat-libstdc++-296 compat-libstdc++-33"
+      PREREQ_LIBS="/usr/lib/libstdc++.so.6 /usr/lib64/libstdc++.so.5"
     elif [ $PLATFORM = "RHEL5_64" -o $PLATFORM = "CentOS5_64" ]; then
       PREREQ_PACKAGES="sudo libidn curl fetchmail gmp compat-libstdc++-296 compat-libstdc++-33"
       PREREQ_LIBS="/usr/lib/libstdc++.so.6 /usr/lib64/libstdc++.so.6"

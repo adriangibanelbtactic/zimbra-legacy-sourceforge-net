@@ -24,23 +24,23 @@
  */
 package com.zimbra.cs.service.mail;
 
+import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
-import com.zimbra.cs.operation.GetItemOperation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class GetItem extends MailDocumentHandler {
 
-    private static final String[] TARGET_ITEM_PATH = new String[] { MailService.E_ITEM, MailService.A_ID };
-    private static final String[] TARGET_FOLDER_PATH = new String[] { MailService.E_ITEM, MailService.A_FOLDER };
+    private static final String[] TARGET_ITEM_PATH = new String[] { MailConstants.E_ITEM, MailConstants.A_ID };
+    private static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.E_ITEM, MailConstants.A_FOLDER };
     private static final String[] RESPONSE_ITEM_PATH = new String[] { };
     protected String[] getProxiedIdPath(Element request) {
         if (getXPath(request, TARGET_ITEM_PATH) != null)    return TARGET_ITEM_PATH;
@@ -55,32 +55,52 @@ public class GetItem extends MailDocumentHandler {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
         OperationContext octxt = zsc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
-        Element target = request.getElement(MailService.E_ITEM);
-        String id = target.getAttribute(MailService.A_ID, null);
-        String folder = target.getAttribute(MailService.A_FOLDER, null);
-        String path = target.getAttribute(MailService.A_PATH, null);
+        Element target = request.getElement(MailConstants.E_ITEM);
+        String id = target.getAttribute(MailConstants.A_ID, null);
+        String folder = target.getAttribute(MailConstants.A_FOLDER, null);
+        String path = target.getAttribute(MailConstants.A_PATH, null);
 
-        GetItemOperation op;
+        MailItem item;
+        
         if (id != null) {
             // get item by id
-            op = new GetItemOperation(session, octxt, mbox, Requester.SOAP, new ItemId(id, zsc).getId(), MailItem.TYPE_UNKNOWN);
+            item = getItemById(octxt, mbox, new ItemId(id, zsc).getId(), MailItem.TYPE_UNKNOWN);
         } else if (folder != null) {
             // get item by name within containing folder id
-            String name = target.getAttribute(MailService.A_NAME);
-            op = new GetItemOperation(session, octxt, mbox, Requester.SOAP, name, new ItemId(folder, zsc).getId(), MailItem.TYPE_UNKNOWN);
+            String name = target.getAttribute(MailConstants.A_NAME);
+            item = getItemByPath(octxt, mbox, name, new ItemId(folder, zsc).getId(), MailItem.TYPE_UNKNOWN);
         } else if (path != null) {
             // get item by user-root-relative absolute path
-            op = new GetItemOperation(session, octxt, mbox, Requester.SOAP, path, MailItem.TYPE_UNKNOWN);
+            item = getItemByPath(octxt, mbox, path, Mailbox.ID_FOLDER_USER_ROOT, MailItem.TYPE_UNKNOWN); 
         } else {
             throw ServiceException.INVALID_REQUEST("must specify 'id' or 'path' or 'l' / 'name'", null);
         }
-        op.schedule();
-        MailItem item = op.getItem();
 
-        Element response = zsc.createElement(MailService.GET_ITEM_RESPONSE);
-        ToXML.encodeItem(response, zsc, item);
+        Element response = zsc.createElement(MailConstants.GET_ITEM_RESPONSE);
+        ToXML.encodeItem(response, ifmt, octxt, item, ToXML.NOTIFY_FIELDS);
         return response;
     }
+    
+    public static MailItem[] getItemsById(OperationContext oc, Mailbox mbox, List<Integer> ids, byte type) throws ServiceException {
+        return mbox.getItemById(oc, ids, type);
+    }
+    
+    public static MailItem getItemById(OperationContext oc, Mailbox mbox, int id, byte type) throws ServiceException {
+        return mbox.getItemById(oc, id, type);
+    }
+    
+    public static MailItem getItemByImapId(OperationContext oc, Mailbox mbox, int imapId, int folderId) throws ServiceException {
+        return mbox.getItemByImapId(oc, imapId, folderId);
+    }
+    
+    public static MailItem getItemByPath(OperationContext oc, Mailbox mbox, String path, int folderId, byte type) throws ServiceException {
+        return mbox.getItemByPath(oc, path, folderId);
+    }
+    
+    public static MailItem getItemByPath(OperationContext oc, Mailbox mbox, String path, byte type) throws ServiceException {
+        return getItemByPath(oc, mbox, path, Mailbox.ID_FOLDER_USER_ROOT, type);
+    }
+    
 }

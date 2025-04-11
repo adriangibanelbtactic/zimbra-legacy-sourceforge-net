@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: PresenceRouter.java,v $
+ * $Revision: 3138 $
+ * $Date: 2005-12-01 02:13:26 -0300 (Thu, 01 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
 import org.jivesoftware.util.LocaleUtils;
@@ -50,8 +37,7 @@ public class PresenceRouter extends BasicModule {
     private PresenceManager presenceManager;
     private SessionManager sessionManager;
     private MulticastRouter multicastRouter;
-    private String serverName;
-
+    
     /**
      * Constructs a presence router.
      */
@@ -83,9 +69,15 @@ public class PresenceRouter extends BasicModule {
 
     private void handle(Presence packet) {
         JID recipientJID = packet.getTo();
+        
+        boolean recipJIDThisServer = false;
+        if (recipientJID != null && XMPPServer.getInstance().getServerNames().contains(recipientJID.getDomain()))
+            recipJIDThisServer = true;
+        
         // Check if the packet was sent to the server hostname
-        if (recipientJID != null && recipientJID.getNode() == null &&
-                recipientJID.getResource() == null && serverName.equals(recipientJID.getDomain())) {
+        if (recipientJID != null && recipientJID.toBareJID() == null
+                    && recipientJID.getResource() == null 
+                    && recipJIDThisServer) {
             if (packet.getElement().element("addresses") != null) {
                 // Presence includes multicast processing instructions. Ask the multicastRouter
                 // to route this packet
@@ -99,9 +91,9 @@ public class PresenceRouter extends BasicModule {
             if (type == null || Presence.Type.unavailable == type) {
                 // check for local server target
                 if (recipientJID == null || recipientJID.getDomain() == null ||
-                        "".equals(recipientJID.getDomain()) || (recipientJID.getNode() == null &&
+                        "".equals(recipientJID.getDomain()) || (recipientJID.toBareJID() == null &&
                         recipientJID.getResource() == null) &&
-                        serverName.equals(recipientJID.getDomain())) {
+                        recipJIDThisServer) {
                     updateHandler.process(packet);
                 }
                 else {
@@ -158,7 +150,6 @@ public class PresenceRouter extends BasicModule {
 
     public void initialize(XMPPServer server) {
         super.initialize(server);
-        serverName = server.getServerInfo().getName();
         routingTable = server.getRoutingTable();
         updateHandler = server.getPresenceUpdateHandler();
         subscribeHandler = server.getPresenceSubscribeHandler();

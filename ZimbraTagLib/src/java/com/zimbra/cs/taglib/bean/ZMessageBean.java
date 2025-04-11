@@ -26,8 +26,10 @@ package com.zimbra.cs.taglib.bean;
 
 import com.zimbra.common.util.DateUtil;
 import com.zimbra.cs.zclient.ZEmailAddress;
+import com.zimbra.cs.zclient.ZInvite;
 import com.zimbra.cs.zclient.ZMessage;
 import com.zimbra.cs.zclient.ZMessage.ZMimePart;
+import com.zimbra.cs.zclient.ZShare;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -42,6 +44,7 @@ public class ZMessageBean {
 	private ZMessage mMsg;
     private Set<String> mUsedParts = new HashSet<String>();
     private int mExternalImages = 0;
+    private ZShare mShare = null;
 
     public ZMessageBean(ZMessage msg) {
 		mMsg = msg;
@@ -52,7 +55,13 @@ public class ZMessageBean {
     public int getExternalImageCount() {
         return mExternalImages;
     }
-    
+
+    public ZInvite getInvite() { return mMsg.getInvite(); }
+
+    public synchronized ZShare getShare() {
+        return mMsg.getShare();
+    }
+
     /**
      * @return comma-separated list of tag ids
      */
@@ -155,6 +164,15 @@ public class ZMessageBean {
         for (ZMimePart child: part.getChildren()) {
             addAttachments(list, child);
         }
+    }
+
+    public String getAttachmentIds() {
+        StringBuilder sb = new StringBuilder();
+        for (ZMimePartBean part : getAttachments()) {
+            if (sb.length() > 0) sb.append(",");
+            sb.append(part.getPartName());
+        }
+        return sb.toString();
     }
 
     public synchronized List<ZMimePartBean> getAttachments() {

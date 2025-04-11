@@ -32,6 +32,7 @@ import javax.servlet.http.HttpServletResponse;
 import org.dom4j.Document;
 import org.dom4j.Element;
 
+import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavElements;
 import com.zimbra.cs.dav.DavException;
@@ -41,7 +42,6 @@ import com.zimbra.cs.dav.LockMgr.LockScope;
 import com.zimbra.cs.dav.LockMgr.LockType;
 import com.zimbra.cs.dav.property.LockDiscovery;
 import com.zimbra.cs.dav.resource.DavResource;
-import com.zimbra.cs.dav.resource.UrlNamespace;
 import com.zimbra.cs.dav.service.DavMethod;
 
 public class Lock extends DavMethod {
@@ -49,7 +49,7 @@ public class Lock extends DavMethod {
 	public String getName() {
 		return LOCK;
 	}
-	public void handle(DavContext ctxt) throws DavException, IOException {
+	public void handle(DavContext ctxt) throws DavException, IOException, ServiceException {
 		if (!ctxt.hasRequestMessage()) {
 			throw new DavException("no request body", HttpServletResponse.SC_BAD_REQUEST, null);
 		}
@@ -88,7 +88,7 @@ public class Lock extends DavMethod {
 				throw new DavException("unrecognized type element "+v.toString(), HttpServletResponse.SC_BAD_REQUEST, null);
 		}
 		
-		DavResource rs = UrlNamespace.getResource(ctxt);
+		DavResource rs = ctxt.getRequestedResource();
 		LockMgr lockmgr = LockMgr.getInstance();
 		LockMgr.Lock lock = lockmgr.createLock(ctxt, rs, type, scope, d);
 		

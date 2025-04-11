@@ -31,53 +31,72 @@
  */
 package com.zimbra.cs.mime.handler;
 
-import java.io.InputStream;
-
 import javax.activation.DataSource;
 import javax.mail.internet.MimeMessage;
 
 import org.apache.lucene.document.Document;
 
-import com.zimbra.common.util.ByteUtil;
 import com.zimbra.cs.convert.AttachmentInfo;
 import com.zimbra.cs.mime.MimeHandler;
 import com.zimbra.cs.mime.MimeHandlerException;
 import com.zimbra.cs.util.JMSession;
 
+
 /**
  * @author schemers
  *
- *  class that creates a Lucene document from a JavaMail Message
+ *  class that creates a Lucene document from a Java Mail Message
  */
 public class MessageRFC822Handler extends MimeHandler {
 
-    @Override protected boolean runsExternally() {
+    private MimeMessage mMessage;
+
+    @Override
+    protected boolean runsExternally() {
         return false;
     }
 
-    @Override public void addFields(Document doc) {
-    }
-
-    @Override protected String getContentImpl() throws MimeHandlerException {
-        DataSource source = getDataSource();
-        InputStream is = null;
+    public void init(DataSource source) throws MimeHandlerException {
+        super.init(source);
         try {
-            // FIXME: should just read headers, not entire message
-            MimeMessage mm = new MimeMessage(JMSession.getSession(), is = source.getInputStream());
-            String subject = mm.getSubject();
-            return (subject != null ? subject : "");
+            mMessage = new MimeMessage(JMSession.getSession(), source.getInputStream());
         } catch (Exception e) {
             throw new MimeHandlerException(e);
-        } finally {
-            ByteUtil.closeStream(is);
         }
     }
 
-    @Override public boolean doConversion() {
+    /* (non-Javadoc)
+     * @see com.zimbra.cs.mime.MimeHandler#populate(org.apache.lucene.document.Document)
+     */
+    public void addFields(Document doc) {
+    }
+
+    /* (non-Javadoc)
+     * @see com.zimbra.cs.mime.MimeHandler#getContent()
+     */
+    protected String getContentImpl() throws MimeHandlerException {
+        try {
+            String toRet = mMessage.getSubject();
+            if (toRet != null)
+                return toRet;
+            else
+                return "";
+        } catch (Exception e) {
+            throw new MimeHandlerException(e);
+        }
+    }
+    
+    /**
+     * No need to convert rfc822 messages ever.
+     */
+    public boolean doConversion() {
         return false;
     }
 
-    @Override public String convert(AttachmentInfo doc, String baseURL) {
+    /* (non-Javadoc)
+     * @see com.zimbra.cs.mime.MimeHandler#convert(com.zimbra.cs.convert.AttachmentInfo, java.lang.String)
+     */
+    public String convert(AttachmentInfo doc, String baseURL) {
         throw new IllegalStateException("no need to convert message/rfc822 content");
     }
 }

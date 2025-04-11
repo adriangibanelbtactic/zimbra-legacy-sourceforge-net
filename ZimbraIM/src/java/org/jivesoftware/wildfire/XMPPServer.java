@@ -1,35 +1,21 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3144 $
+ * $Date: 2005-12-01 14:20:11 -0300 (Thu, 01 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
-import org.dom4j.Document;
-import org.dom4j.io.SAXReader;
 import org.jivesoftware.database.DbConnectionManager;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.util.LocaleUtils;
 import org.jivesoftware.util.Log;
+import org.jivesoftware.util.PropertyProvider;
 import org.jivesoftware.util.Version;
 import org.jivesoftware.wildfire.audit.AuditManager;
 import org.jivesoftware.wildfire.audit.spi.AuditManagerImpl;
@@ -51,15 +37,14 @@ import org.jivesoftware.wildfire.net.ServerTrafficCounter;
 import org.jivesoftware.wildfire.roster.RosterManager;
 import org.jivesoftware.wildfire.spi.*;
 import org.jivesoftware.wildfire.transport.TransportHandler;
-import org.jivesoftware.wildfire.update.UpdateManager;
 import org.jivesoftware.wildfire.user.UserManager;
 import org.jivesoftware.wildfire.vcard.VCardManager;
 import org.xmpp.packet.JID;
 
+import com.zimbra.cs.im.interop.Interop;
+
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -100,11 +85,11 @@ public class XMPPServer {
 
     private static XMPPServer instance;
 
-    private String name;
     private Version version;
     private Date startDate;
     private Date stopDate;
     private boolean initialized = false;
+    private List<String> mServerNames; 
 
     /**
      * All modules loaded by this server
@@ -131,10 +116,10 @@ public class XMPPServer {
      */
     private boolean setupMode = true;
 
-    private static final String STARTER_CLASSNAME =
-            "org.jivesoftware.wildfire.starter.ServerStarter";
-    private static final String WRAPPER_CLASSNAME =
-            "org.tanukisoftware.wrapper.WrapperManager";
+//    private static final String STARTER_CLASSNAME = "org.jivesoftware.wildfire.starter.ServerStarter";
+//    private static final String WRAPPER_CLASSNAME = "org.tanukisoftware.wrapper.WrapperManager";
+    
+    private RoutingTable mRoutingTable;
 
     /**
      * Returns a singleton instance of XMPPServer.
@@ -148,13 +133,14 @@ public class XMPPServer {
     /**
      * Creates a server and starts it.
      */
-    public XMPPServer() {
+    public XMPPServer(List<String> domainNames, PropertyProvider localConfig, PropertyProvider globalProperties) {
         // We may only have one instance of the server running on the JVM
         if (instance != null) {
             throw new IllegalStateException("A server is already running");
         }
+        JiveGlobals.setProviders(localConfig, globalProperties);
         instance = this;
-        start();
+        start(domainNames);
     }
 
     /**
@@ -166,7 +152,19 @@ public class XMPPServer {
         if (!initialized) {
             throw new IllegalStateException("Not initialized yet");
         }
-        return new XMPPServerInfoImpl(name, version, startDate, stopDate, getConnectionManager());
+        return new XMPPServerInfoImpl(mServerNames, version, startDate, stopDate, getConnectionManager());
+    }
+    
+    public boolean isShuttingDown() {
+        return false;
+    }
+    
+    public Collection<String> getServerNames() {
+        return mServerNames;
+    }
+    
+    public boolean isLocalDomain(String domain) {
+        return mServerNames.contains(domain);
     }
 
     /**
@@ -179,7 +177,7 @@ public class XMPPServer {
      */
     public boolean isLocal(JID jid) {
         boolean local = false;
-        if (jid != null && name != null && name.equals(jid.getDomain())) {
+        if (jid != null && mServerNames.contains(jid.getDomain())) {
             local = true;
         }
         return local;
@@ -195,7 +193,7 @@ public class XMPPServer {
      */
     public boolean isRemote(JID jid) {
         if (jid != null) {
-            if (!name.equals(jid.getDomain()) && componentManager.getComponent(jid) == null) {
+            if (!isLocal(jid) && componentManager.getComponent(jid) == null) {
                 return true;
             }
         }
@@ -210,20 +208,9 @@ public class XMPPServer {
      */
     public boolean matchesComponent(JID jid) {
         if (jid != null) {
-            return !name.equals(jid.getDomain()) && componentManager.getComponent(jid) != null;
+            return !isLocal(jid) && componentManager.getComponent(jid) != null;
         }
         return false;
-    }
-
-    /**
-     * Creates an XMPPAddress local to this server.
-     *
-     * @param username the user name portion of the id or null to indicate none is needed.
-     * @param resource the resource portion of the id or null to indicate none is needed.
-     * @return an XMPPAddress for the server.
-     */
-    public JID createJID(String username, String resource) {
-        return new JID(username, name, resource);
     }
 
     /**
@@ -245,7 +232,7 @@ public class XMPPServer {
         while (tokenizer.hasMoreTokens()) {
             String username = tokenizer.nextToken();
             try {
-                admins.add(createJID(username.toLowerCase().trim(), null));
+                admins.add(new JID(username.toLowerCase().trim()));
             }
             catch (IllegalArgumentException e) {
                 // Ignore usernames that when appended @server.com result in an invalid JID
@@ -290,24 +277,16 @@ public class XMPPServer {
     public void removeServerListener(XMPPServerListener listener) {
         listeners.remove(listener);
     }
-
-    private void initialize() throws FileNotFoundException {
-        locateWildfire();
+    
+    private void initialize(List<String> domainNames) throws FileNotFoundException {
+        mServerNames = new CopyOnWriteArrayList<String>(domainNames);
         
-        String domainProperty = System.getProperty("wildfireDomain");
-        if (domainProperty != null && domainProperty.length() > 0)
-            name = domainProperty;
-        else
-            name = JiveGlobals.getProperty("xmpp.domain", "127.0.0.1").toLowerCase();
-
         version = new Version(3, 1, 0, Version.ReleaseStatus.Release, 0);
-        if ("true".equals(JiveGlobals.getXMLProperty("setup"))) {
-            setupMode = false;
-        }
+        setupMode = false;
 
-        if (isStandAlone()) {
-            Runtime.getRuntime().addShutdownHook(new ShutdownHookThread());
-        }
+//        if (isStandAlone()) {
+//            Runtime.getRuntime().addShutdownHook(new ShutdownHookThread());
+//        }
 
         loader = Thread.currentThread().getContextClassLoader();
         componentManager = InternalComponentManager.getInstance();
@@ -315,73 +294,75 @@ public class XMPPServer {
         initialized = true;
     }
 
-    /**
-     * Finish the setup process. Because this method is meant to be called from inside
-     * the Admin console plugin, it spawns its own thread to do the work so that the
-     * class loader is correct.
-     */
-    public void finishSetup() {
-        if (!setupMode) {
-            return;
-        }
-        // Make sure that setup finished correctly.
-        if ("true".equals(JiveGlobals.getXMLProperty("setup"))) {
-            // Set the new server domain assigned during the setup process
-            String domainProperty = System.getProperty("wildfireDomain");
-            if (domainProperty != null && domainProperty.length() > 0)
-                name = domainProperty;
-            else
-                name = JiveGlobals.getProperty("xmpp.domain").toLowerCase();
+//    /**
+//     * Finish the setup process. Because this method is meant to be called from inside
+//     * the Admin console plugin, it spawns its own thread to do the work so that the
+//     * class loader is correct.
+//     */
+//    public void finishSetup() {
+//        assert(false);
+//        if (!setupMode) {
+//            return;
+//        }
+//        // Make sure that setup finished correctly.
+//        if ("true".equals(JiveGlobals.getXMLProperty("setup"))) {
+//            mServerNames = new ArrayList<String>();
+//            // Set the new server domain assigned during the setup process
+//            String domainProperty = System.getProperty("wildfireDomain");
+//            if (domainProperty != null && domainProperty.length() > 0)
+//                mServerNames.add(domainProperty.toLowerCase());
+//            else
+//                mServerNames.add(JiveGlobals.getProperty("xmpp.domain", "127.0.0.1").toLowerCase());
+//
+//            Thread finishSetup = new Thread() {
+//                public void run() {
+//                    try {
+//                        // TIM HACK
+////                        if (isStandAlone()) {
+////                            // If the user selected different ports for the admin console to run on,
+////                            // we need to restart the embedded Jetty instance to listen on the
+////                            // new ports.
+////                            if (!JiveGlobals.getXMLProperty("adminConsole.port").equals("9090") ||
+////                                    !JiveGlobals.getXMLProperty("adminConsole.securePort")
+////                                            .equals("9091")) {
+////                                // Wait a short period before shutting down the admin console.
+////                                // Otherwise, the page that requested the setup finish won't
+////                                // render properly!
+////                                Thread.sleep(1000);
+////                                ((AdminConsolePlugin) pluginManager.getPlugin("admin"))
+////                                        .restartListeners();
+////                            }
+////                        }
+//
+//                        verifyDataSource();
+//                        // First load all the modules so that modules may access other modules while
+//                        // being initialized
+//                        loadModules();
+//                        // Initize all the modules
+//                        initModules();
+//                        // Start all the modules
+//                        startModules();
+//                        // Initialize component manager (initialize before plugins get loaded)
+//                        InternalComponentManager.getInstance().start();
+//                    }
+//                    catch (Exception e) {
+//                        e.printStackTrace();
+//                        Log.error(e);
+//                        shutdownServer();
+//                    }
+//                }
+//            };
+//            // Use the correct class loader.
+//            finishSetup.setContextClassLoader(loader);
+//            finishSetup.start();
+//            // We can now safely indicate that setup has finished
+//            setupMode = false;
+//        }
+//    }
 
-            Thread finishSetup = new Thread() {
-                public void run() {
-                    try {
-                        // TIM HACK
-//                        if (isStandAlone()) {
-//                            // If the user selected different ports for the admin console to run on,
-//                            // we need to restart the embedded Jetty instance to listen on the
-//                            // new ports.
-//                            if (!JiveGlobals.getXMLProperty("adminConsole.port").equals("9090") ||
-//                                    !JiveGlobals.getXMLProperty("adminConsole.securePort")
-//                                            .equals("9091")) {
-//                                // Wait a short period before shutting down the admin console.
-//                                // Otherwise, the page that requested the setup finish won't
-//                                // render properly!
-//                                Thread.sleep(1000);
-//                                ((AdminConsolePlugin) pluginManager.getPlugin("admin"))
-//                                        .restartListeners();
-//                            }
-//                        }
-
-                        verifyDataSource();
-                        // First load all the modules so that modules may access other modules while
-                        // being initialized
-                        loadModules();
-                        // Initize all the modules
-                        initModules();
-                        // Start all the modules
-                        startModules();
-                        // Initialize component manager (initialize before plugins get loaded)
-                        InternalComponentManager.getInstance().start();
-                    }
-                    catch (Exception e) {
-                        e.printStackTrace();
-                        Log.error(e);
-                        shutdownServer();
-                    }
-                }
-            };
-            // Use the correct class loader.
-            finishSetup.setContextClassLoader(loader);
-            finishSetup.start();
-            // We can now safely indicate that setup has finished
-            setupMode = false;
-        }
-    }
-
-    public void start() {
+    public void start(List<String> domainNames) {
         try {
-            initialize();
+            initialize(domainNames);
 
             // If the server has already been setup then we can start all the server's modules
             if (!setupMode) {
@@ -395,12 +376,15 @@ public class XMPPServer {
                 startModules();
                 // Initialize component manager (initialize before plugins get loaded)
                 InternalComponentManager.getInstance().start();
+                
+                Interop.getInstance().start(this, componentManager);
+                
             }
             // Initialize statistics
             ServerTrafficCounter.initStatistics();
 
             // Load plugins (when in setup mode only the admin console will be loaded)
-            File pluginDir = new File(wildfireHome, "plugins");
+            File pluginDir = new File(wildfireHome, "im"+File.separator+"plugins");
             pluginManager = new PluginManager(pluginDir);
             pluginManager.start();
 
@@ -429,7 +413,7 @@ public class XMPPServer {
 
     private void loadModules() {
         // Load boot modules
-        loadModule(RoutingTableImpl.class.getName());
+        mRoutingTable = (RoutingTable)loadModule(JiveGlobals.getXMLProperty("routingTableImpl.className"));
         loadModule(AuditManagerImpl.class.getName());
         loadModule(RosterManager.class.getName());
         loadModule(PrivateStorage.class.getName());
@@ -441,7 +425,7 @@ public class XMPPServer {
         loadModule(MessageRouter.class.getName());
         loadModule(PresenceRouter.class.getName());
         loadModule(MulticastRouter.class.getName());
-        loadModule(PacketTransporterImpl.class.getName());
+//        loadModule(PacketTransporterImpl.class.getName());
         loadModule(PacketDelivererImpl.class.getName());
         loadModule(TransportHandler.class.getName());
         loadModule(OfflineMessageStrategy.class.getName());
@@ -463,7 +447,7 @@ public class XMPPServer {
         loadModule(IQDiscoInfoHandler.class.getName());
         loadModule(IQDiscoItemsHandler.class.getName());
         loadModule(IQOfflineMessagesHandler.class.getName());
-//        loadModule(MultiUserChatServerImpl.class.getName());
+        loadModule(MultiUserChatServerImpl.class.getName());
 
         // TIM HACK
 //        loadModule(MulticastDNSService.class.getName());
@@ -472,7 +456,7 @@ public class XMPPServer {
         loadModule(IQPrivacyHandler.class.getName());
         loadModule(DefaultFileTransferManager.class.getName());
         loadModule(FileTransferProxy.class.getName());
-        loadModule(UpdateManager.class.getName());
+//        loadModule(UpdateManager.class.getName());
         // Load this module always last since we don't want to start listening for clients
         // before the rest of the modules have been started
         loadModule(ConnectionManagerImpl.class.getName());
@@ -483,15 +467,17 @@ public class XMPPServer {
      *
      * @param module the name of the class that implements the Module interface.
      */
-    private void loadModule(String module) {
+    private Module loadModule(String module) {
         try {
             Class modClass = loader.loadClass(module);
             Module mod = (Module) modClass.newInstance();
             this.modules.put(modClass, mod);
+            return mod;
         }
         catch (Exception e) {
             e.printStackTrace();
             Log.error(LocaleUtils.getLocalizedString("admin.error"), e);
+            return null;
         }
     }
 
@@ -541,16 +527,16 @@ public class XMPPServer {
      * nothing.
      */
     public void restart() {
-        if (isStandAlone() && isRestartable()) {
-            try {
-                Class wrapperClass = Class.forName(WRAPPER_CLASSNAME);
-                Method restartMethod = wrapperClass.getMethod("restart", (Class []) null);
-                restartMethod.invoke(null, (Object []) null);
-            }
-            catch (Exception e) {
-                Log.error("Could not restart container", e);
-            }
-        }
+//        if (isStandAlone() && isRestartable()) {
+//            try {
+//                Class wrapperClass = Class.forName(WRAPPER_CLASSNAME);
+//                Method restartMethod = wrapperClass.getMethod("restart", (Class []) null);
+//                restartMethod.invoke(null, (Object []) null);
+//            }
+//            catch (Exception e) {
+//                Log.error("Could not restart container", e);
+//            }
+//        }
     }
 
     /**
@@ -559,32 +545,32 @@ public class XMPPServer {
      */
     public void stop() {
         // Only do a system exit if we're running standalone
-        if (isStandAlone()) {
-            // if we're in a wrapper, we have to tell the wrapper to shut us down
-            if (isRestartable()) {
-                try {
-                    Class wrapperClass = Class.forName(WRAPPER_CLASSNAME);
-                    Method stopMethod = wrapperClass.getMethod("stop", Integer.TYPE);
-                    stopMethod.invoke(null, 0);
-                }
-                catch (Exception e) {
-                    Log.error("Could not stop container", e);
-                }
-            }
-            else {
-                shutdownServer();
-                stopDate = new Date();
-                Thread shutdownThread = new ShutdownThread();
-                shutdownThread.setDaemon(true);
-                shutdownThread.start();
-            }
-        }
-        else {
+//        if (isStandAlone()) {
+//            // if we're in a wrapper, we have to tell the wrapper to shut us down
+//            if (isRestartable()) {
+//                try {
+//                    Class wrapperClass = Class.forName(WRAPPER_CLASSNAME);
+//                    Method stopMethod = wrapperClass.getMethod("stop", Integer.TYPE);
+//                    stopMethod.invoke(null, 0);
+//                }
+//                catch (Exception e) {
+//                    Log.error("Could not stop container", e);
+//                }
+//            }
+//            else {
+//                shutdownServer();
+//                stopDate = new Date();
+//                Thread shutdownThread = new ShutdownThread();
+//                shutdownThread.setDaemon(true);
+//                shutdownThread.start();
+//            }
+//        }
+//        else {
             // Close listening socket no matter what the condition is in order to be able
             // to be restartable inside a container.
             shutdownServer();
             stopDate = new Date();
-        }
+//        }
     }
 
     public boolean isSetupMode() {
@@ -592,14 +578,15 @@ public class XMPPServer {
     }
 
     public boolean isRestartable() {
-        boolean restartable;
-        try {
-            restartable = Class.forName(WRAPPER_CLASSNAME) != null;
-        }
-        catch (ClassNotFoundException e) {
-            restartable = false;
-        }
-        return restartable;
+//        boolean restartable;
+//        try {
+//            restartable = Class.forName(WRAPPER_CLASSNAME) != null;
+//        }
+//        catch (ClassNotFoundException e) {
+//            restartable = false;
+//        }
+//        return restartable;
+        return false;
     }
 
     /**
@@ -610,14 +597,19 @@ public class XMPPServer {
      * @return true if the server is running in standalone mode.
      */
     public boolean isStandAlone() {
-        boolean standalone;
-        try {
-            standalone = Class.forName(STARTER_CLASSNAME) != null;
-        }
-        catch (ClassNotFoundException e) {
-            standalone = false;
-        }
-        return standalone;
+//        if (false) {
+//            boolean standalone;
+//            try {
+//                standalone = Class.forName(STARTER_CLASSNAME) != null;
+//            }
+//            catch (ClassNotFoundException e) {
+//                standalone = false;
+//            }
+//            return standalone;
+//        } else {
+//            return false;
+//        }
+        return false;
     }
 
     /**
@@ -652,162 +644,77 @@ public class XMPPServer {
         }
     }
 
-    /**
-     * Verifies that the given home guess is a real Wildfire home directory.
-     * We do the verification by checking for the Wildfire config file in
-     * the config dir of jiveHome.
-     *
-     * @param homeGuess a guess at the path to the home directory.
-     * @param jiveConfigName the name of the config file to check.
-     * @return a file pointing to the home directory or null if the
-     *         home directory guess was wrong.
-     * @throws java.io.FileNotFoundException if there was a problem with the home
-     *                                       directory provided
-     */
-    private File verifyHome(String homeGuess, String jiveConfigName) throws FileNotFoundException {
-        File wildfireHome = new File(homeGuess);
-        File configFile = new File(wildfireHome, jiveConfigName);
-        if (!configFile.exists()) {
-            throw new FileNotFoundException();
-        }
-        else {
-            try {
-                return new File(wildfireHome.getCanonicalPath());
-            }
-            catch (Exception ex) {
-                throw new FileNotFoundException();
-            }
-        }
-    }
+//    /**
+//     * Verifies that the given home guess is a real Wildfire home directory.
+//     * We do the verification by checking for the Wildfire config file in
+//     * the config dir of jiveHome.
+//     *
+//     * @param homeGuess a guess at the path to the home directory.
+//     * @param jiveConfigName the name of the config file to check.
+//     * @return a file pointing to the home directory or null if the
+//     *         home directory guess was wrong.
+//     * @throws java.io.FileNotFoundException if there was a problem with the home
+//     *                                       directory provided
+//     */
+//    private File verifyHome(String homeGuess, String jiveConfigName) throws FileNotFoundException {
+//        File wildfireHome = new File(homeGuess);
+//        File configFile = new File(wildfireHome, jiveConfigName);
+//        if (!configFile.exists()) {
+//            throw new FileNotFoundException();
+//        }
+//        else {
+//            try {
+//                return new File(wildfireHome.getCanonicalPath());
+//            }
+//            catch (Exception ex) {
+//                throw new FileNotFoundException();
+//            }
+//        }
+//    }
 
-    /**
-     * <p>Retrieve the jive home for the container.</p>
-     *
-     * @throws FileNotFoundException If jiveHome could not be located
-     */
-    private void locateWildfire() throws FileNotFoundException {
-        String jiveConfigName = "conf" + File.separator + "wildfire.xml";
-        // First, try to load it wildfireHome as a system property.
-        if (wildfireHome == null) {
-            String homeProperty = System.getProperty("wildfireHome");
-            try {
-                if (homeProperty != null) {
-                    wildfireHome = verifyHome(homeProperty, jiveConfigName);
-                }
-            }
-            catch (FileNotFoundException fe) {
-                // Ignore.
-            }
-        }
+//    /**
+//     * <p>A thread to ensure the server shuts down no matter what.</p>
+//     * <p>Spawned when stop() is called in standalone mode, we wait a few
+//     * seconds then call system exit().</p>
+//     *
+//     * @author Iain Shigeoka
+//     */
+//    private class ShutdownHookThread extends Thread {
+//
+//        /**
+//         * <p>Logs the server shutdown.</p>
+//         */
+//        public void run() {
+//            shutdownServer();
+//            Log.info("Server halted");
+//            System.err.println("Server halted");
+//        }
+//    }
 
-        // If we still don't have home, let's assume this is standalone
-        // and just look for home in a standard sub-dir location and verify
-        // by looking for the config file
-        if (wildfireHome == null) {
-            try {
-                wildfireHome = verifyHome("..", jiveConfigName).getCanonicalFile();
-            }
-            catch (FileNotFoundException fe) {
-                // Ignore.
-            }
-            catch (IOException ie) {
-                // Ignore.
-            }
-        }
-
-        // If home is still null, no outside process has set it and
-        // we have to attempt to load the value from wildfire_init.xml,
-        // which must be in the classpath.
-        if (wildfireHome == null) {
-            InputStream in = null;
-            try {
-                in = getClass().getResourceAsStream("/wildfire_init.xml");
-                if (in != null) {
-                    SAXReader reader = new SAXReader();
-                    Document doc = reader.read(in);
-                    String path = doc.getRootElement().getText();
-                    try {
-                        if (path != null) {
-                            wildfireHome = verifyHome(path, jiveConfigName);
-                        }
-                    }
-                    catch (FileNotFoundException fe) {
-                        fe.printStackTrace();
-                    }
-                }
-            }
-            catch (Exception e) {
-                System.err.println("Error loading wildfire_init.xml to find home.");
-                e.printStackTrace();
-            }
-            finally {
-                try {
-                    if (in != null) {
-                        in.close();
-                    }
-                }
-                catch (Exception e) {
-                    System.err.println("Could not close open connection");
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        if (wildfireHome == null) {
-            System.err.println("Could not locate home");
-            throw new FileNotFoundException();
-        }
-        else {
-            // Set the home directory for the config file
-            JiveGlobals.setHomeDirectory(wildfireHome.toString());
-            // Set the name of the config file
-            JiveGlobals.setConfigName(jiveConfigName);
-        }
-    }
-
-    /**
-     * <p>A thread to ensure the server shuts down no matter what.</p>
-     * <p>Spawned when stop() is called in standalone mode, we wait a few
-     * seconds then call system exit().</p>
-     *
-     * @author Iain Shigeoka
-     */
-    private class ShutdownHookThread extends Thread {
-
-        /**
-         * <p>Logs the server shutdown.</p>
-         */
-        public void run() {
-            shutdownServer();
-            Log.info("Server halted");
-            System.err.println("Server halted");
-        }
-    }
-
-    /**
-     * <p>A thread to ensure the server shuts down no matter what.</p>
-     * <p>Spawned when stop() is called in standalone mode, we wait a few
-     * seconds then call system exit().</p>
-     *
-     * @author Iain Shigeoka
-     */
-    private class ShutdownThread extends Thread {
-
-        /**
-         * <p>Shuts down the JVM after a 5 second delay.</p>
-         */
-        public void run() {
-            try {
-                Thread.sleep(5000);
-                // No matter what, we make sure it's dead
-                System.exit(0);
-            }
-            catch (InterruptedException e) {
-                // Ignore.
-            }
-
-        }
-    }
+//    /**
+//     * <p>A thread to ensure the server shuts down no matter what.</p>
+//     * <p>Spawned when stop() is called in standalone mode, we wait a few
+//     * seconds then call system exit().</p>
+//     *
+//     * @author Iain Shigeoka
+//     */
+//    private class ShutdownThread extends Thread {
+//
+//        /**
+//         * <p>Shuts down the JVM after a 5 second delay.</p>
+//         */
+//        public void run() {
+//            try {
+//                Thread.sleep(5000);
+//              // No matter what, we make sure it's dead
+//                System.exit(0);
+//            }
+//            catch (InterruptedException e) {
+//              // Ignore.
+//            }
+//
+//        }
+//    }
 
     /**
      * Makes a best effort attempt to shutdown the server
@@ -817,6 +724,9 @@ public class XMPPServer {
         for (XMPPServerListener listener : listeners) {
             listener.serverStopping();
         }
+        
+        Interop.getInstance().stop();
+        
         // If we don't have modules then the server has already been shutdown
         if (modules.isEmpty()) {
             return;
@@ -856,7 +766,7 @@ public class XMPPServer {
      * @return the <code>RoutingTable</code> registered with this server.
      */
     public RoutingTable getRoutingTable() {
-        return (RoutingTable) modules.get(RoutingTableImpl.class);
+        return mRoutingTable;
     }
 
     /**
@@ -1070,16 +980,16 @@ public class XMPPServer {
         return UserManager.getInstance();
     }
 
-    /**
-     * Returns the <code>UpdateManager</code> registered with this server. The
-     * <code>UpdateManager</code> was registered with the server as a module while starting up
-     * the server.
-     *
-     * @return the <code>UpdateManager</code> registered with this server.
-     */
-    public UpdateManager getUpdateManager() {
-        return (UpdateManager) modules.get(UpdateManager.class);
-    }
+//    /**
+//     * Returns the <code>UpdateManager</code> registered with this server. The
+//     * <code>UpdateManager</code> was registered with the server as a module while starting up
+//     * the server.
+//     *
+//     * @return the <code>UpdateManager</code> registered with this server.
+//     */
+//    public UpdateManager getUpdateManager() {
+//        return (UpdateManager) modules.get(UpdateManager.class);
+//    }
 
     /**
      * Returns the <code>AuditManager</code> registered with this server. The

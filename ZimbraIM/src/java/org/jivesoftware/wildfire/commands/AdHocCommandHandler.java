@@ -1,27 +1,13 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $Revision: 3023 $
+ * $Date: 2005-11-02 18:00:15 -0300 (Wed, 02 Nov 2005) $
+ *
+ * Copyright (C) 2006 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.commands;
 
 import org.dom4j.DocumentHelper;
@@ -29,8 +15,8 @@ import org.dom4j.Element;
 import org.jivesoftware.wildfire.IQHandlerInfo;
 import org.jivesoftware.wildfire.XMPPServer;
 import org.jivesoftware.wildfire.auth.UnauthorizedException;
-import org.jivesoftware.wildfire.commands.admin.*;
-import org.jivesoftware.wildfire.commands.admin.group.*;
+//import org.jivesoftware.wildfire.commands.admin.*;
+//import org.jivesoftware.wildfire.commands.admin.group.*;
 import org.jivesoftware.wildfire.disco.*;
 import org.jivesoftware.wildfire.forms.spi.XDataFormImpl;
 import org.jivesoftware.wildfire.handler.IQHandler;
@@ -65,7 +51,6 @@ public class AdHocCommandHandler extends IQHandler
 
     private static final String NAMESPACE = "http://jabber.org/protocol/commands";
 
-    private String serverName;
     private IQHandlerInfo info;
     private IQDiscoInfoHandler infoHandler;
     private IQDiscoItemsHandler itemsHandler;
@@ -94,7 +79,7 @@ public class AdHocCommandHandler extends IQHandler
         return features.iterator();
     }
 
-    public Iterator<Element> getIdentities(String name, String node, JID senderJID) {
+    public Iterator<Element> getIdentities(String domain, String node, JID senderJID) {
         ArrayList<Element> identities = new ArrayList<Element>();
         Element identity = DocumentHelper.createElement("identity");
         identity.addAttribute("category", "automation");
@@ -122,7 +107,7 @@ public class AdHocCommandHandler extends IQHandler
         }
     }
 
-    public Iterator<Element> getItems(String name, String node, JID senderJID) {
+    public Iterator<Element> getItems(String domain, String node, JID senderJID) {
         List<Element> answer = new ArrayList<Element>();
         if (!NAMESPACE.equals(node)) {
             answer = Collections.emptyList();
@@ -133,7 +118,7 @@ public class AdHocCommandHandler extends IQHandler
                 // Only include commands that the sender can invoke (i.e. has enough permissions)
                 if (command.hasPermission(senderJID)) {
                     item = DocumentHelper.createElement("item");
-                    item.addAttribute("jid", serverName);
+                    item.addAttribute("jid", domain);
                     item.addAttribute("node", command.getCode());
                     item.addAttribute("name", command.getLabel());
 
@@ -146,7 +131,6 @@ public class AdHocCommandHandler extends IQHandler
 
     public void initialize(XMPPServer server) {
         super.initialize(server);
-        serverName = server.getServerInfo().getName();
         infoHandler = server.getIQDiscoInfoHandler();
         itemsHandler = server.getIQDiscoItemsHandler();
     }
@@ -195,18 +179,18 @@ public class AdHocCommandHandler extends IQHandler
 
     private void addDefaultCommands() {
         // TODO Complete when out of the box commands are implemented
-        addCommand(new GetNumberActiveUsers());
-        addCommand(new GetNumberOnlineUsers());
-        addCommand(new GetNumberUserSessions());
-        addCommand(new GetListActiveUsers());
-        addCommand(new GetUsersPresence());
-        addCommand(new GetListGroups());
-        addCommand(new GetListGroupUsers());
-        addCommand(new AddGroupUsers());
-        addCommand(new DeleteGroupUsers());
-        addCommand(new AddGroup());
-        addCommand(new UpdateGroup());
-        addCommand(new DeleteGroup());
+//        addCommand(new GetNumberActiveUsers());
+//        addCommand(new GetNumberOnlineUsers());
+//        addCommand(new GetNumberUserSessions());
+//        addCommand(new GetListActiveUsers());
+//        addCommand(new GetUsersPresence());
+//        addCommand(new GetListGroups());
+//        addCommand(new GetListGroupUsers());
+//        addCommand(new AddGroupUsers());
+//        addCommand(new DeleteGroupUsers());
+//        addCommand(new AddGroup());
+//        addCommand(new UpdateGroup());
+//        addCommand(new DeleteGroup());
     }
 
     private void startCommand(AdHocCommand command) {

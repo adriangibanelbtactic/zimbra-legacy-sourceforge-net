@@ -28,50 +28,65 @@
  */
 package com.zimbra.cs.service.mail;
 
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.index.SearchParams;
 import com.zimbra.cs.index.SearchParams.ExpandResults;
 import com.zimbra.cs.mailbox.Conversation;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.cs.operation.GetConversationByIdOperation;
-import com.zimbra.cs.operation.Operation.Requester;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.mailbox.Message;
+import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
  * @author schemers
  */
 public class GetConv extends MailDocumentHandler  {
-    
+
+    private static final String[] TARGET_CONV_PATH = new String[] { MailConstants.E_CONV, MailConstants.A_ID };
+    protected String[] getProxiedIdPath(Element request)  { return TARGET_CONV_PATH; }
+
     public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
         Mailbox.OperationContext octxt = zsc.getOperationContext();
-        Session session = getSession(context);
-        
-        Element econv = request.getElement(MailService.E_CONV);
-        int id = (int) econv.getAttributeLong(MailService.A_ID);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
+
+        Element econv = request.getElement(MailConstants.E_CONV);
+        ItemId iid = new ItemId(econv.getAttribute(MailConstants.A_ID), zsc);
 
         SearchParams params = new SearchParams();
-        params.setFetchFirst(ExpandResults.get(econv.getAttribute(MailService.A_FETCH, null)));
+        params.setFetchFirst(ExpandResults.get(econv.getAttribute(MailConstants.A_FETCH, null)));
         if (params.getFetchFirst() != ExpandResults.NONE) {
-            params.setWantHtml(econv.getAttributeBool(MailService.A_WANT_HTML, false));
-//            params.setMarkRead(econv.getAttributeBool(MailService.A_MARK_READ, false));
+            params.setWantHtml(econv.getAttributeBool(MailConstants.A_WANT_HTML, false));
+//          params.setMarkRead(econv.getAttributeBool(MailConstants.A_MARK_READ, false));
+
+            Set<String> headers = null;
+            for (Element eHdr : econv.listElements(MailConstants.A_HEADER)) {
+                if (headers == null)  headers = new HashSet<String>();
+                params.addInlinedHeader(eHdr.getAttribute(MailConstants.A_ATTRIBUTE_NAME));
+            }
         }
 
-        GetConversationByIdOperation op = new GetConversationByIdOperation(session, octxt, mbox, Requester.SOAP, id);
-        op.schedule();
-        Conversation conv = op.getResult();
+        Conversation conv = mbox.getConversationById(octxt, iid.getId());
 
-        Element response = zsc.createElement(MailService.GET_CONV_RESPONSE);
-        if (conv != null)
-        	ToXML.encodeConversation(response, zsc, conv, params);
-        else
-            throw MailServiceException.NO_SUCH_CONV(id);
+        if (conv == null)
+            throw MailServiceException.NO_SUCH_CONV(iid.getId());
+
+        List<Message> msgs = mbox.getMessagesByConversation(zsc.getOperationContext(), conv.getId(), Conversation.SORT_DATE_ASCENDING);
+        if (msgs.isEmpty() && zsc.isDelegatedRequest())
+            throw ServiceException.PERM_DENIED("you do not have sufficient permissions");
+
+        Element response = zsc.createElement(MailConstants.GET_CONV_RESPONSE);
+        ToXML.encodeConversation(response, ifmt, octxt, conv, msgs, params);
         return response;
     }
 }

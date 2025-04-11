@@ -25,7 +25,7 @@
  * 
  * @see DwtDragSource
  */
-function DwtDragEvent() {
+DwtDragEvent = function() {
 	/** Type of drag operation. One of: <ul>
 	 * <li><i>DwtDragEvent.DRAG_START</i></li>
 	 * <li><i>DwtDragEvent.SET_DATA</i></li>
@@ -71,3 +71,7 @@ DwtDragEvent.SET_DATA = 2;
 /** Drag has ended
  * @type number*/
 DwtDragEvent.DRAG_END = 3;
+
+/** Drag cancelled (i.e. dropped on invalid target)
+ * @type number */
+DwtDragEvent.DRAG_CANCEL = 4;

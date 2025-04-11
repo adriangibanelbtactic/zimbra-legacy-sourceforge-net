@@ -28,11 +28,12 @@ import java.io.IOException;
 
 import javax.servlet.http.HttpServletResponse;
 
+import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ByteUtil;
+import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavException;
 import com.zimbra.cs.dav.resource.DavResource;
-import com.zimbra.cs.dav.resource.UrlNamespace;
 import com.zimbra.cs.dav.service.DavMethod;
 
 public class Get extends DavMethod {
@@ -40,8 +41,8 @@ public class Get extends DavMethod {
 	public String getName() {
 		return GET;
 	}
-	public void handle(DavContext ctxt) throws DavException, IOException {
-		DavResource resource = UrlNamespace.getResource(ctxt);
+	public void handle(DavContext ctxt) throws DavException, IOException, ServiceException {
+		DavResource resource = ctxt.getRequestedResource();
 		HttpServletResponse resp = ctxt.getResponse();
 		resp.setContentType(resource.getContentType());
 		
@@ -53,8 +54,12 @@ public class Get extends DavMethod {
 		// setting content-length header on its own.
 		
 		//resp.setContentLength(resource.getContentLength());
-		if (!resource.hasContent())
+		if (!resource.hasContent(ctxt))
 			return;
-		ByteUtil.copy(resource.getContent(), true, ctxt.getResponse().getOutputStream(), false);
+		if (ZimbraLog.dav.isDebugEnabled()) {
+			ZimbraLog.dav.debug("GET "+ctxt.getUri());
+			ZimbraLog.dav.debug(new String(ByteUtil.getContent(resource.getContent(ctxt), 0), "UTF-8"));
+		}
+		ByteUtil.copy(resource.getContent(ctxt), true, ctxt.getResponse().getOutputStream(), false);
 	}
 }

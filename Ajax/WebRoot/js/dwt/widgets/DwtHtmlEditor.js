@@ -20,7 +20,7 @@
  *
  * @author Ross Dargahi
  */
-function DwtHtmlEditor(parent, className, posStyle, content, mode, blankIframeSrc) {
+DwtHtmlEditor = function(parent, className, posStyle, content, mode, blankIframeSrc) {
 	if (arguments.length == 0) return;
 	this.setBlankIframeSrc(blankIframeSrc);
 	className = className || "DwtHtmlEditor";
@@ -537,6 +537,27 @@ DwtHtmlEditor.prototype.applyCellProperties = function(table, cells, props) {
 		this._forceRedraw();
 };
 
+DwtHtmlEditor.prototype._insertHTML = function(html) {
+	var sel = this._getSelection();
+	var range = this._createRange(sel);
+	if (AjxEnv.isIE) {
+		if(this.insertRange){
+		this.insertRange.pasteHTML(html);
+		}else{
+		range.pasteHTML(html);
+		}
+	} else {
+		var iFrameDoc = this._getIframeDoc();
+		var fragment = iFrameDoc.createDocumentFragment();
+		var div = iFrameDoc.createElement("div");
+		div.innerHTML = html;
+		while (div.firstChild) {
+			fragment.appendChild(div.firstChild);
+		}
+		this._insertNodeAtSelection(fragment);
+	}
+};
+
 DwtHtmlEditor.prototype._insertNodeAtSelection =
 function(node) {
 	this.focus();
@@ -928,13 +949,16 @@ DwtHtmlEditor.prototype.getSelectedCells = function() {
 		try {
 			while (range = sel.getRangeAt(i++)) {
 				var td = range.startContainer.childNodes[range.startOffset];
-				if (td.parentNode != row) {
-					row = td.parentNode;
-					cells && rows.push(cells);
-					cells = [];
+				if (td) {
+					if (td.parentNode != row) {
+						row = td.parentNode;
+						cells && rows.push(cells);
+						cells = [];
+					}
+					if (td.tagName && /^td$/i.test(td.tagName)) {
+						cells.push(td);
+					}
 				}
-				if (td.tagName && /^td$/i.test(td.tagName))
-					cells.push(td);
 			}
 		} catch(ex) {}
 		rows.push(cells);
@@ -1144,6 +1168,25 @@ function() {
 	}
 };
 
+DwtHtmlEditor.prototype._createRange =
+function(selection) {
+	var iFrameDoc = this._getIframeDoc();
+	if (AjxEnv.isIE) {
+		return selection.createRange();
+	} else {
+		this.focus();
+		if (selection != null) {
+			try {
+				return selection.getRangeAt(0);
+			} catch(e) {
+				return iFrameDoc.createRange();
+			}
+		} else {
+			return iFrameDoc.createRange();
+		}
+	}
+};
+
 DwtHtmlEditor.prototype.deleteSelectedNodes =
 function() {
 	var sel = this._getSelection();
@@ -1172,17 +1215,31 @@ function(ev) {
 
 DwtHtmlEditor.prototype._registerEditorEventHandlers =
 function(iFrame, iFrameDoc) {
-	var events = ["mouseup", "keydown", "keypress", "drag", "mousedown", "contextmenu"];
+	var events = ["mouseup", "keydown", "keypress", "drag", "mousedown"];
 	// Note that since we're not creating the closure here anymore, it's
 	// safe to call this function any number of times (we do this for
 	// Gecko/Linux to work around bugs).  The browser won't add the same
 	// event if it already exists (DOM2 requirement)
 	for (var i = 0; i < events.length; ++i) {
-		if (AjxEnv.isIE) {
-			iFrameDoc.attachEvent("on" + events[i], this.__eventClosure);
-		} else {
-			iFrameDoc.addEventListener(events[i], this.__eventClosure, true);
-		}
+		this._registerEditorEventHandler(iFrameDoc, events[i]);
+	}
+};
+
+DwtHtmlEditor.prototype._registerEditorEventHandler =
+function(iFrameDoc, name) {
+	if (AjxEnv.isIE) {
+		iFrameDoc.attachEvent("on" + name, this.__eventClosure);
+	} else {
+		iFrameDoc.addEventListener(name, this.__eventClosure, true);
+	}
+};
+
+DwtHtmlEditor.prototype._unregisterEditorEventHandler =
+function(iFrameDoc, name) {
+	if (AjxEnv.isIE) {
+		iFrameDoc.detachEvent("on" + name, this.__eventClosure);
+	} else {
+		iFrameDoc.removeEventListener(name, this.__eventClosure, true);
 	}
 };
 
@@ -1254,6 +1311,12 @@ function(ev) {
 					break;
 			}
 		}
+		//on pressing enter the editor losses track of formating
+		//ignore querying command state for this event alone
+		if(AjxEnv.isGeckoBased && ev.keyCode == 13)
+		{
+				this._stateEvent._ignoreCommandState=true;
+		}	
 	}
 	if (cmd) {
 		DBG.println(AjxDebug.DBG1, "CMD: " + cmd);
@@ -1264,8 +1327,20 @@ function(ev) {
 		ke.setToDhtmlEvent(ev);
 		retVal = false;
 	} else if (ev.type == "keydown") {
+		if(ev.keyCode == 9){
+	
+			if(AjxEnv.isIE){			
+			this._handleIETabKey(!ev.shiftKey);
+			ke._stopPropagation = true;
+			ke._returnValue = false;
+			ke.setToDhtmlEvent(ev);
+			retVal = false;	
+			}
+			
+		}else{
 		// pass to keyboard mgr for kb nav
 		retVal = DwtKeyboardMgr.__keyDownHdlr(ev);
+		}
 	}
 
 	// TODO notification for any updates etc
@@ -1290,6 +1365,112 @@ function(ev) {
 	return retVal;
 }
 
+DwtHtmlEditor.prototype._handleIETabKey =function(fwd){
+	
+	var doc = this._getIframeDoc();
+	var el = this._getParentElement();
+	var parent = el.parentNode;
+	
+	var tagname = el.tagName.toLowerCase();
+	
+	if(tagname=="p" || tagname == "body"){
+		if(fwd){
+		this._insertHTML("&nbsp;&nbsp;&nbsp;");		
+		}
+	}else if(tagname == "li"){
+		this._execCommand((fwd) ? 'Indent' : 'Outdent', '');
+	}else{
+		try{
+		var nodes = this._getAllAncestors();
+		var tmp = this._locateNode(nodes,"td");
+			if(tmp!=null){
+			el =  tmp;
+			parent = el.parentNode;
+			tagname = el.tagName.toLowerCase();		
+			
+			if(tagname == "td"){
+				var tmpN = (fwd ? el.nextSibling : el.previousSibling ) ;
+				if(tmpN!=null){
+					this._setCursor(tmpN);
+				}else{
+					tmpN = (fwd)? parent.nextSibling : parent.previousSibling ;
+					if(tmpN == null){
+						if(!fwd) return;
+						DwtHtmlEditor.table_insertRow(el,fwd);
+						tmpN = parent.nextSibling;
+					}
+					if(tmpN!=null){
+						var childN = tmpN.childNodes;
+						if(childN!=null && childN.length >0){
+							var childIdx = (fwd) ? (0) : (childN.length-1);
+							this._setCursor(childN[childIdx]);
+						}
+					}
+				}	
+			}
+		}
+		}catch(ex){ 
+		DBG.println(AjxDebug.DBG1,'tab exception:'+ex); 
+		}					
+	}
+	
+}
+
+DwtHtmlEditor.prototype._setCursor=function(node)
+{
+	var doc=this._getIframeDoc();
+	var body=doc.body;
+	var sel=null;
+	var range=null;
+	
+	if(AjxEnv.isIE){
+		sel = this._getSelection();
+		range = body.createTextRange();
+		range.moveToElementText(node);
+		range.collapse(0);
+		range.select();
+	}else{
+		var win =this._getIframeWin().contentWindow;
+		sel = null;
+		sel = win.getSelection();
+		range = doc.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		sel.addRange(range);
+		if (node.nodeType == 1)  { /* Element Node  */
+			sel.collapseToEnd();
+		}
+		else {
+			sel.collapseToEnd();
+		}
+	}
+}
+
+DwtHtmlEditor.prototype._locateNode = function (nodes, tag)
+{
+  if (nodes != null && tag != null)
+  {
+    for (var i = 0; i < nodes.length; i++)
+      if (nodes[i].tagName.toLowerCase() == tag.toLowerCase())
+        return nodes[i];
+  }
+  return null;
+}
+
+DwtHtmlEditor.prototype._getAllAncestors = function() {
+	var p = this._getParentElement();
+	var ancestors = [];
+	while (p && (p.nodeType == 1) && (p.tagName.toLowerCase() != 'body')) {
+		ancestors.push(p);
+		p = p.parentNode;
+	}
+	var doc = this._getIframeDoc();
+	if(doc.body!=null){
+	ancestors.push(doc.body);
+	}
+	return ancestors;
+}
+
 DwtHtmlEditor.prototype._updateState =
 function() {
 	if (this._mode != DwtHtmlEditor.HTML)
@@ -1297,10 +1478,16 @@ function() {
 
 	this._stateUpdateActionId = null;
 	var ev = this._stateEvent;
+	if(!ev._ignoreCommandState)
+	{
 	ev.reset();
+	}
 
 	var iFrameDoc = this._getIframeDoc();
 	try {
+	
+		if(!ev._ignoreCommandState)
+		{
 		ev.isBold = iFrameDoc.queryCommandState(DwtHtmlEditor.BOLD_STYLE);
 		ev.isItalic = iFrameDoc.queryCommandState(DwtHtmlEditor.ITALIC_STYLE);
 		ev.isUnderline = iFrameDoc.queryCommandState(DwtHtmlEditor.UNDERLINE_STYLE);
@@ -1309,6 +1496,9 @@ function() {
 		ev.isSubscript = iFrameDoc.queryCommandState(DwtHtmlEditor.SUBSCRIPT_STYLE);
 		ev.isOrderedList = iFrameDoc.queryCommandState(DwtHtmlEditor.ORDERED_LIST);
 		ev.isUnorderedList = iFrameDoc.queryCommandState(DwtHtmlEditor.UNORDERED_LIST);
+		} else {
+		ev._ignoreCommandState=null;
+		}
 
 		// Don't futz with the order of the if statements below. They are important due to the
 		// nature of the RegExs

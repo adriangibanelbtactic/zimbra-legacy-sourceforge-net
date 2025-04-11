@@ -31,12 +31,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.CliUtil;
 import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.db.DbPool;
 import com.zimbra.cs.db.DbPool.Connection;
-import com.zimbra.cs.localconfig.DebugConfig;
 import com.zimbra.cs.mailbox.Metadata;
-import com.zimbra.cs.util.Zimbra;
 
 public class MetadataDump {
 
@@ -47,32 +46,28 @@ public class MetadataDump {
     private static int getMailboxGroup(Connection conn, int mboxId)
     throws SQLException, ServiceException {
         int gid = 0;
-        if (!DebugConfig.disableMailboxGroup) {
-            PreparedStatement stmt = null;
-            ResultSet rs = null;
-            try {
-                stmt = conn.prepareStatement(
-                        "SELECT group_id FROM mailbox WHERE id = ?");
-                stmt.setInt(1, mboxId);
-                rs = stmt.executeQuery();
-                if (rs.next())
-                    gid = rs.getInt(1);
-            } finally {
-                if (rs != null)
-                    rs.close();
-                if (stmt != null)
-                    stmt.close();
-            }
+        PreparedStatement stmt = null;
+        ResultSet rs = null;
+        try {
+            stmt = conn.prepareStatement(
+                    "SELECT group_id FROM mailbox WHERE id = ?");
+            stmt.setInt(1, mboxId);
+            rs = stmt.executeQuery();
+            if (rs.next())
+                gid = rs.getInt(1);
+        } finally {
+            if (rs != null)
+                rs.close();
+            if (stmt != null)
+                stmt.close();
         }
         return gid;
     }
 
     private static String getSQL(int mboxId, int groupId, int itemId) {
-        StringBuilder sql = new StringBuilder("SELECT metadata FROM "); 
+        StringBuilder sql = new StringBuilder("SELECT metadata FROM ");
         sql.append(DbMailItem.getMailItemTableName(mboxId, groupId));
-        sql.append(" WHERE ");
-        if (!DebugConfig.disableMailboxGroup)
-            sql.append("mailbox_id = ").append(mboxId).append(" AND ");
+        sql.append(" WHERE mailbox_id = ").append(mboxId).append(" AND ");
         sql.append("id = ").append(itemId);
         return sql.toString();
     }
@@ -101,7 +96,7 @@ public class MetadataDump {
     }
 
     public static void main(String[] args) throws Exception {
-        Zimbra.toolSetup();
+        CliUtil.toolSetup();
         int mboxId;
         int itemId;
         if (args.length >= 2) {

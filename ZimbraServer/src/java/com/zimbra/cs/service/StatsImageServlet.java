@@ -42,7 +42,6 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.methods.GetMethod;
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
-import com.zimbra.common.util.ZimbraLog;
 
 
 import com.zimbra.cs.account.AuthToken;
@@ -74,7 +73,6 @@ public class StatsImageServlet extends ZimbraServlet {
     public void doGet(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException
     {
-        ZimbraLog.clearContext();
         AuthToken authToken = getAdminAuthTokenFromCookie(req, resp);
         if (authToken == null) 
             return;

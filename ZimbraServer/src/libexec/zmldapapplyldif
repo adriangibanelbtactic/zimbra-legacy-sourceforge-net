@@ -68,7 +68,5 @@ done
 
 if [ -f "/opt/zimbra/.enable_replica" ]; then
   /opt/zimbra/libexec/zmldapenablereplica
-  ldap stop
-  ldap start
 fi
 

@@ -39,25 +39,17 @@ import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mailbox.calendar.Invite;
 import com.zimbra.cs.mailbox.calendar.InviteInfo;
-import com.zimbra.cs.operation.Operation;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet.Context;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.Constants;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 public class RssFormatter extends Formatter {
     
-    public static class Format {};
-    public static class Save {};
-    static int sFormatLoad = Operation.setLoad(RssFormatter.Format.class, 10);
-    static int sSaveLoad = Operation.setLoad(RssFormatter.Save.class, 10);
-    int getFormatLoad() { return  sFormatLoad; }
-    int getSaveLoad() { return sSaveLoad; }
-
     private SimpleDateFormat mDateFormat = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z");
         
-    public void formatCallback(Context context, MailItem item) throws IOException, ServiceException {
+    public void formatCallback(Context context) throws IOException, ServiceException {
         //ZimbraLog.mailbox.info("start = "+new Date(context.getStartTime()));
         //ZimbraLog.mailbox.info("end = "+new Date(context.getEndTime()));
         Iterator<? extends MailItem> iterator = null;
@@ -67,7 +59,7 @@ public class RssFormatter extends Formatter {
         int limit = context.getLimit();
         
         try {
-            iterator = getMailItems(context, item, context.getStartTime(), context.getEndTime(), limit-offset);
+            iterator = getMailItems(context, context.getStartTime(), context.getEndTime(), limit-offset);
         
             context.resp.setCharacterEncoding("UTF-8");
             context.resp.setContentType("application/rss+xml");
@@ -171,7 +163,7 @@ public class RssFormatter extends Formatter {
         return false;
     }
 
-    public void saveCallback(byte[] body, Context context, Folder folder) throws UserServletException {
+    public void saveCallback(byte[] body, Context context, String contentType, Folder folder, String filename) throws UserServletException {
         throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "format not supported for save");
     }
 }

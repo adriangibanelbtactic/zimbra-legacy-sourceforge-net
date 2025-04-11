@@ -14,21 +14,30 @@
  * limitations under the License.
  */
 
-function AjxTemplate() {}
+/**
+ * @author Andy Clark
+ */
+AjxTemplate = function() {}
 
 //
 // Data
 //
 
 AjxTemplate._templates = {};
+AjxTemplate._stack = [];
 
 //
 // Public functions
 //
 
-AjxTemplate.register = function(name, func, params) {
-    AjxPackage.define(name.replace(/#.*$/,""));
-    AjxTemplate._templates[name] = { name: name, func: func, params: params || {} };
+AjxTemplate.register = function(name, func, params, authoritative) {
+    if (!authoritative && AjxTemplate._templates[name] &&
+        AjxTemplate._templates[name].authoritative) {
+        return;
+    }
+    AjxTemplate._templates[name] = {
+        name: name, func: func, params: params || {}, authoritative: authoritative 
+    };
 };
 
 AjxTemplate.getTemplate = function(name) {
@@ -43,6 +52,9 @@ AjxTemplate.getParams = function(name) {
 
 AjxTemplate.expand = function(name, data, buffer) {
     var pkg = name.replace(/#.*$/, "");
+    if (name.match(/^#/) && AjxTemplate._stack.length > 0) {
+        pkg = AjxTemplate._stack[AjxTemplate._stack.length - 1];
+    }
     var id = name.replace(/^[^#]*#?/, "");
     if (id) {
         name = [pkg, id].join("#");
@@ -54,12 +66,17 @@ AjxTemplate.expand = function(name, data, buffer) {
     buffer = buffer || [];
     var func = AjxTemplate.getTemplate(name);
     if (func) {
-    	try {
+        try {
+            AjxTemplate._stack.push(pkg);
             var params = AjxTemplate.getParams(name);
             func(name, params, data, buffer);
-	    } catch (e) {
+	    }
+        catch (e) {
 	    	buffer.push(this.__formatError(name, e));
 	    }
+        finally {
+            AjxTemplate._stack.pop();
+        }
     } else {
     	buffer.push(this.__formatError(name, "template not found"));
     }

@@ -57,6 +57,11 @@ public class Mountpoint extends Folder {
     public int getRemoteId() {
         return mRemoteId;
     }
+    
+    /** @return TRUE if this mountpoint points to its owner's mailbox */
+    public boolean isLocal() {
+        return (getOwnerId().equals(getMailbox().getAccountId()));
+    }
 
     /** Grants the specified set of rights to the target and persists them
      *  to the database.  <i>Note: This function will always throw the 
@@ -107,7 +112,7 @@ public class Mountpoint extends Folder {
      *    <li><code>service.FAILURE</code> - if there's a database failure
      *    <li><code>service.PERM_DENIED</code> - if you don't have
      *        sufficient permissions</ul>
-     * @see #validateFolderName(String)
+     * @see #validateItemName(String)
      * @see #canContain(byte) */
     static Mountpoint create(int id, Folder parent, String name, String ownerId, int remoteId, byte view, int flags, byte color)
     throws ServiceException {
@@ -117,7 +122,7 @@ public class Mountpoint extends Folder {
             throw ServiceException.PERM_DENIED("you do not have sufficient permissions on the parent folder");
         if (parent == null || !parent.canContain(TYPE_MOUNTPOINT))
             throw MailServiceException.CANNOT_CONTAIN();
-        validateFolderName(name);
+        validateItemName(name);
         if (view != TYPE_UNKNOWN)
             validateType(view);
         if (parent.findSubfolder(name) != null)
@@ -144,7 +149,7 @@ public class Mountpoint extends Folder {
     }
 
     @Override
-    void delete(boolean childrenOnly, boolean writeTombstones) throws ServiceException {
+    void delete(DeleteScope scope, boolean writeTombstones) throws ServiceException {
         if (!getFolder().canAccess(ACL.RIGHT_DELETE))
             throw ServiceException.PERM_DENIED("you do not have sufficient permissions on the parent folder");
     	deleteSingleFolder(writeTombstones);
@@ -170,6 +175,6 @@ public class Mountpoint extends Folder {
     static Metadata encodeMetadata(Metadata meta, byte color, byte attrs, byte view, String owner, int remoteId) {
         meta.put(Metadata.FN_ACCOUNT_ID, owner);
         meta.put(Metadata.FN_REMOTE_ID, remoteId);
-        return Folder.encodeMetadata(meta, color, attrs, view, null, null, 0);
+        return Folder.encodeMetadata(meta, color, attrs, view, null, null, 0, 0, 0);
     }
 }

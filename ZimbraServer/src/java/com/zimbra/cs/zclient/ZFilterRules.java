@@ -25,8 +25,8 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.soap.Element;
-import com.zimbra.cs.service.mail.MailService;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,13 +50,13 @@ public class ZFilterRules {
 
     public ZFilterRules(Element e) throws ServiceException {
         mRules = new ArrayList<ZFilterRule>();
-        for (Element ruleEl : e.listElements(MailService.E_RULE)) {
+        for (Element ruleEl : e.listElements(MailConstants.E_RULE)) {
             mRules.add(new ZFilterRule(ruleEl));
         }
     }
 
     Element toElement(Element parent) {
-        Element r = parent.addElement(MailService.E_RULES);
+        Element r = parent.addElement(MailConstants.E_RULES);
         for (ZFilterRule rule : mRules) {
             rule.toElement(r);
         }

@@ -25,6 +25,8 @@
 
 package com.zimbra.qa.unittest;
 
+import java.util.List;
+
 import junit.framework.TestCase;
 
 import com.zimbra.common.util.ZimbraLog;
@@ -32,7 +34,6 @@ import com.zimbra.cs.account.Account;
 import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.db.DbResults;
 import com.zimbra.cs.db.DbUtil;
-import com.zimbra.cs.localconfig.DebugConfig;
 import com.zimbra.cs.mailbox.Conversation;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
@@ -90,9 +91,7 @@ public class TestFolders extends TestCase
         String sql =
             "SELECT id " +
             "FROM " + DbMailItem.getMailItemTableName(mMbox) +
-            " WHERE " +
-            (!DebugConfig.disableMailboxGroup ? "mailbox_id = " + mMbox.getId() + " AND " : "") +
-            "id = " + parentId;
+            " WHERE mailbox_id = " + mMbox.getId() + " AND id = " + parentId;
         DbResults results = DbUtil.executeQuery(sql);
         assertEquals("Parent folder query returned data.  id=" + parentId, 0, results.size());
         
@@ -107,9 +106,7 @@ public class TestFolders extends TestCase
         sql =
             "SELECT id " +
             "FROM " + DbMailItem.getMailItemTableName(mMbox) +
-            " WHERE " +
-            (!DebugConfig.disableMailboxGroup ? "mailbox_id = " + mMbox.getId() + " AND " : "") +
-            "id = " + childId;
+            " WHERE mailbox_id = " + mMbox.getId() + " AND id = " + childId;
         results = DbUtil.executeQuery(sql);
         assertEquals("Child folder query returned data.  id=" + childId, 0, results.size());
     }
@@ -133,9 +130,7 @@ public class TestFolders extends TestCase
         String sql =
             "SELECT id " +
             "FROM " + DbMailItem.getMailItemTableName(mMbox) +
-            " WHERE " +
-            (!DebugConfig.disableMailboxGroup ? "mailbox_id = " + mMbox.getId() + " AND " : "") +
-            "id = " + parentId;
+            " WHERE mailbox_id = " + mMbox.getId() + " AND id = " + parentId;
         DbResults results = DbUtil.executeQuery(sql);
         assertEquals("Parent folder query returned no data.  id=" + parentId, 1, results.size());
         
@@ -146,9 +141,7 @@ public class TestFolders extends TestCase
         sql =
             "SELECT id " +
             "FROM " + DbMailItem.getMailItemTableName(mMbox) +
-            " WHERE " +
-            (!DebugConfig.disableMailboxGroup ? "mailbox_id = " + mMbox.getId() + " AND " : "") +
-            "id = " + childId;
+            " WHERE mailbox_id = " + mMbox.getId() + " AND id = " + childId;
         results = DbUtil.executeQuery(sql);
         assertEquals("Child folder query returned no data.  id=" + childId, 1, results.size());
     }
@@ -172,9 +165,7 @@ public class TestFolders extends TestCase
         String sql =
             "SELECT id " +
             "FROM " + DbMailItem.getMailItemTableName(mMbox) +
-            " WHERE " +
-            (!DebugConfig.disableMailboxGroup ? "mailbox_id = " + mMbox.getId() + " AND " : "") +
-            "id = " + parentId;
+            " WHERE mailbox_id = " + mMbox.getId() + " AND id = " + parentId;
         DbResults results = DbUtil.executeQuery(sql);
         assertEquals("Parent folder query returned no data.  id=" + parentId, 1, results.size());
         
@@ -189,9 +180,7 @@ public class TestFolders extends TestCase
         sql =
             "SELECT id " +
             "FROM " + DbMailItem.getMailItemTableName(mMbox) +
-            " WHERE " +
-            (!DebugConfig.disableMailboxGroup ? "mailbox_id = " + mMbox.getId() + " AND " : "") +
-            "id = " + childId;
+            " WHERE mailbox_id = " + mMbox.getId() + " AND id = " + childId;
         results = DbUtil.executeQuery(sql);
         assertEquals("Child folder query returned data.  id=" + childId, 0, results.size());
     }
@@ -222,7 +211,7 @@ public class TestFolders extends TestCase
      */
     public void testMarkDeletionTargets()
     throws Exception {
-        String name = NAME_PREFIX + "MDT";
+        String name = NAME_PREFIX + " MDT";
 
         // Create three messages and move two of them into a new folder.
         Message m1 = TestUtil.insertMessage(mMbox, 1, name);
@@ -246,10 +235,44 @@ public class TestFolders extends TestCase
         conv = mMbox.getConversationById(null, convId);
         assertEquals("Conversation size after folder delete", 1, conv.getSize());
     }
+    
+    /**
+     * Confirms that deleting a subfolder correctly updates the subfolder hierarchy.
+     */
+    public void testHierarchy()
+    throws Exception {
+        Folder f1 = mMbox.createFolder(null, "/f1", (byte) 0, MailItem.TYPE_UNKNOWN);
+        Folder f2 = mMbox.createFolder(null, "/f1/f2", (byte) 0, MailItem.TYPE_UNKNOWN);
+        mMbox.createFolder(null, "/f1/f2/f3", (byte) 0, MailItem.TYPE_UNKNOWN);
+        assertEquals("Hierarchy size before delete", 3, f1.getSubfolderHierarchy().size());
+        mMbox.delete(null, f2.getId(), f2.getType());
+        List<Folder> hierarchy = f1.getSubfolderHierarchy();
+        assertEquals("Hierarchy size after delete", 1, hierarchy.size());
+        assertEquals("Folder id", f1.getId(), hierarchy.get(0).getId());
+    }
 
     private void cleanUp()
     throws Exception {
         TestUtil.deleteTestData(USER_NAME, NAME_PREFIX);
+        
+        mAccount = TestUtil.getAccount(USER_NAME);
+        mMbox = MailboxManager.getInstance().getMailboxByAccount(mAccount);
+        
+        // cleanup after testHierarchy()
+        try { // delete /f1/f2/f3
+            Folder f= mMbox.getFolderByPath(null, "/f1/f2/f3");
+            mMbox.delete(null, f.getId(), f.getType());
+        } catch (Exception e) {}
+        try { // delete /f1/f2
+            Folder f= mMbox.getFolderByPath(null, "/f1/f2");
+            mMbox.delete(null, f.getId(), f.getType());
+        } catch (Exception e) {}
+        try { // delete /f1
+            Folder f= mMbox.getFolderByPath(null, "/f1");
+            mMbox.delete(null, f.getId(), f.getType());
+        } catch (Exception e) {}
+            
+        
     }
     
     protected void tearDown() throws Exception {

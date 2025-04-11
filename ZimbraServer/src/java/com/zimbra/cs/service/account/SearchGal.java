@@ -31,13 +31,14 @@ package com.zimbra.cs.service.account;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Domain;
 import com.zimbra.cs.account.GalContact;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.SearchGalResult;
-import com.zimbra.cs.service.mail.MailService;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -46,22 +47,19 @@ import com.zimbra.soap.ZimbraSoapContext;
 public class SearchGal extends AccountDocumentHandler {
 
     public Element handle(Element request, Map<String, Object> context) throws ServiceException {
-        
-        ZimbraSoapContext lc = getZimbraSoapContext(context);
-        Element response = lc.createElement(AccountService.SEARCH_GAL_RESPONSE);
-        Account acct = getRequestedAccount(getZimbraSoapContext(context));
+        String n = request.getAttribute(AccountConstants.E_NAME);
 
-        if (!canAccessAccount(lc, acct))
-            throw ServiceException.PERM_DENIED("can not access account");
+        ZimbraSoapContext lc = getZimbraSoapContext(context);
+        Element response = lc.createElement(AccountConstants.SEARCH_GAL_RESPONSE);
+        Account acct = getRequestedAccount(getZimbraSoapContext(context));
 
         if (!acct.getBooleanAttr(Provisioning.A_zimbraFeatureGalEnabled , false))
             throw ServiceException.PERM_DENIED("cannot search GAL");
 
-        String n = request.getAttribute(AccountService.E_NAME);
         while (n.endsWith("*"))
             n = n.substring(0, n.length() - 1);
 
-        String typeStr = request.getAttribute(AccountService.A_TYPE, "all");
+        String typeStr = request.getAttribute(AccountConstants.A_TYPE, "all");
         Provisioning.GAL_SEARCH_TYPE type;
         if (typeStr.equals("all"))
             type = Provisioning.GAL_SEARCH_TYPE.ALL;
@@ -75,35 +73,29 @@ public class SearchGal extends AccountDocumentHandler {
         Provisioning prov = Provisioning.getInstance();
         Domain d = prov.getDomain(acct);
         SearchGalResult result = prov.searchGal(d, n, type, null);
-        response.addAttribute(AccountService.A_MORE, result.hadMore);        
+        response.addAttribute(AccountConstants.A_MORE, result.hadMore);
         for (GalContact contact : result.matches)
             addContact(response, contact);
         return response;
     }
 
+    @Override
     public boolean needsAuth(Map<String, Object> context) {
         return true;
     }
 
     public static void addContact(Element response, GalContact contact) {
-        Element cn = response.addElement(MailService.E_CONTACT);
-        cn.addAttribute(MailService.A_ID, contact.getId());
+        Element cn = response.addElement(MailConstants.E_CONTACT);
+        cn.addAttribute(MailConstants.A_ID, contact.getId());
         Map<String, Object> attrs = contact.getAttrs();
-        for (Map.Entry entry : attrs.entrySet()) {
+        for (Map.Entry<String, Object> entry : attrs.entrySet()) {
             Object value = entry.getValue();
-            // can't use DISP_ELEMENT because some GAL contact attributes
-            //   (e.g. "objectClass") are multi-valued
             if (value instanceof String[]) {
                 String sa[] = (String[]) value;
-                for (int i = 0; i < sa.length; i++) {
-                    cn.addElement(MailService.E_ATTRIBUTE)
-                      .addAttribute(MailService.A_ATTRIBUTE_NAME, (String) entry.getKey())
-                      .setText(sa[i]);
-                }
+                for (int i = 0; i < sa.length; i++)
+                    cn.addKeyValuePair(entry.getKey(), sa[i], MailConstants.E_ATTRIBUTE, MailConstants.A_ATTRIBUTE_NAME);
             } else {
-                cn.addElement(MailService.E_ATTRIBUTE)
-                  .addAttribute(MailService.A_ATTRIBUTE_NAME, (String) entry.getKey())
-                  .setText((String) entry.getValue());
+                cn.addKeyValuePair(entry.getKey(), (String) value, MailConstants.E_ATTRIBUTE, MailConstants.A_ATTRIBUTE_NAME);
             }
         }
     }

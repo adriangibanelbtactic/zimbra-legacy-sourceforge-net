@@ -165,15 +165,16 @@ public class ZJspSession {
         }
     }
     
-    public static String getPostLoginRedirectUrl(PageContext context, String path, ZAuthResult authResult, boolean rememberMe, boolean needRefer) {
+    public static String getPostLoginRedirectUrl(PageContext context, String path, ZAuthResult authResult, boolean rememberMe) {
         HttpServletRequest request = (HttpServletRequest) context.getRequest();
 
         String initMode = request.getParameter(Q_ZINITMODE);
         boolean hasIniitMode = initMode != null;
+        boolean isRefer = authResult.getRefer() != null;
         boolean needsAuthtokenRemoved = request.getParameter(Q_ZAUTHTOKEN) != null;
 
         // see if we don't need to redirect
-        if (!(needRefer || needsAuthtokenRemoved || hasIniitMode))
+        if (!(isRefer || needsAuthtokenRemoved || hasIniitMode))
             return null;
 
 
@@ -181,7 +182,7 @@ public class ZJspSession {
         Set<String> toRemove = new HashSet<String>();
 
         String proto = null;
-        if (hasIniitMode && !needRefer) {
+        if (hasIniitMode && !isRefer) {
             if (MODE_MIXED && initMode.equals(PROTO_HTTP) && !request.getScheme().equals(PROTO_HTTP)) {
                 proto = PROTO_HTTP;
             } else if (MODE_MIXED && initMode.equals(PROTO_HTTPS) && !request.getScheme().equals(PROTO_HTTPS)) {
@@ -197,7 +198,7 @@ public class ZJspSession {
         }
 
         String host;
-        if (needRefer) {
+        if (isRefer) {
             host = authResult.getRefer();
             toAdd.put(Q_ZAUTHTOKEN, authResult.getAuthToken());
             if (rememberMe) toAdd.put(Q_ZREMBERME, "1");
@@ -300,15 +301,9 @@ public class ZJspSession {
             ZMailbox.Options options = new ZMailbox.Options(authToken, getSoapURL(context));
             options.setAuthAuthToken(true);
             ZMailbox mbox = ZMailbox.getMailbox(options);
-
-            HttpServletRequest request = (HttpServletRequest) context.getRequest();
-            String serverName = request.getServerName();
-            String refer = mbox.getAuthResult().getRefer();
-            boolean needRefer = (refer != null && !refer.equalsIgnoreCase(serverName));
-            
-            if (needRefer) {
+            if (mbox.getAuthResult().getRefer() != null) {
                 context.setAttribute("SERVER_REDIRECT_URL",
-                        ZJspSession.getPostLoginRedirectUrl(context, null, mbox.getAuthResult(), false, needRefer),
+                        ZJspSession.getPostLoginRedirectUrl(context, null, mbox.getAuthResult(), false),
                         PageContext.REQUEST_SCOPE);
                 throw ZTagLibException.SERVER_REDIRECT("redirect to: "+mbox.getAuthResult().getRefer(), null);
             }

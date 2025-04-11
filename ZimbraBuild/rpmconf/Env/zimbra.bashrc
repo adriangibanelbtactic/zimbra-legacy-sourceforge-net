@@ -22,24 +22,15 @@ export JAVA_HOME
 JAVA_JVM_VERSION=1.5
 export JAVA_JVM_VERSION
 
-PATH=/opt/zimbra/bin:/opt/zimbra/zimbramon:/opt/zimbra/postfix-2.2.9/sbin:/opt/zimbra/openldap/bin:${JAVA_HOME}/bin:/opt/zimbra/snmp/bin:/opt/zimbra/sleepycat/bin:${PATH}
+PATH=/opt/zimbra/bin:/opt/zimbra/zimbramon:/opt/zimbra/postfix-2.2.9/sbin:/opt/zimbra/openldap/bin:${JAVA_HOME}/bin:/opt/zimbra/snmp/bin:${PATH}
 export PATH
 
 if [ "x$LD_LIBRARY_PATH" = "x" ]; then
-  LD_LIBRARY_PATH=/opt/zimbra/lib:/opt/zimbra/sleepycat/lib:/opt/zimbra/libxml2/lib:/opt/zimbra/cyrus-sasl/lib:/opt/zimbra/openldap/lib:/opt/zimbra/mysql/lib
+  LD_LIBRARY_PATH=/opt/zimbra/lib:${LD_LIBRARY_PATH}
 else
-  LD_LIBRARY_PATH=/opt/zimbra/lib:/opt/zimbra/sleepycat/lib:/opt/zimbra/libxml2/lib:/opt/zimbra/cyrus-sasl/lib:/opt/zimbra/openldap/lib:/opt/zimbra/mysql/lib:${LD_LIBRARY_PATH}
+  LD_LIBRARY_PATH=/opt/zimbra/lib
 fi
 export LD_LIBRARY_PATH
-
-if [ `uname -s` == "Darwin" ]; then
-  if [ "x$DYLD_LIBRARY_PATH" = "x" ]; then
-    DYLD_LIBRARY_PATH=/opt/zimbra/lib:/opt/zimbra/sleepycat/lib:/opt/zimbra/libxml2/lib:/opt/zimbra/cyrus-sasl/lib:/opt/zimbra/openldap/lib:/opt/zimbra/mysql/lib
-  else
-    DYLD_LIBRARY_PATH=/opt/zimbra/lib:/opt/zimbra/sleepycat/lib:/opt/zimbra/libxml2/lib:/opt/zimbra/cyrus-sasl/lib:/opt/zimbra/openldap/lib:/opt/zimbra/mysql/lib:${DYLD_LIBRARY_PATH}
-  fi
-fi
-export DYLD_LIBRARY_PATH
 
 SNMPCONFPATH=/opt/zimbra/conf
 export SNMPCONFPATH
@@ -51,4 +42,3 @@ PERL5LIB=$PERLLIB
 export PERL5LIB
 
 ulimit -n 10000 > /dev/null 2>&1
-umask 0027

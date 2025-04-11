@@ -30,12 +30,22 @@ public class IMAddr {
     private String mAddr;
     
     public IMAddr(String addr) {
+        assert(addr != null);
+        assert(addr.indexOf('/') < 0);
         mAddr = addr;
     }
+
+    public IMAddr(JID jid) {
+        mAddr = jid.toBareJID();
+    }
+    
+    public String getNode() { return makeJID().getNode(); } 
     
     public String getAddr() { return mAddr; }
     
     public String toString() { return mAddr; }
+    
+    public String getDomain() { return makeJID().getDomain();}
     
     public JID makeJID() {
         int domainSplit = mAddr.indexOf('@');
@@ -49,11 +59,20 @@ public class IMAddr {
         }            
     }
     
+    public JID makeFullJID() {
+        int domainSplit = mAddr.indexOf('@');
+        
+        if (domainSplit > 0) {
+            String namePart = mAddr.substring(0, domainSplit);
+            String domainPart = mAddr.substring(domainSplit+1);
+            return new JID(namePart, domainPart, "zcs");
+        } else {
+            return new JID(mAddr);
+        }            
+    }
+    
     public static IMAddr fromJID(JID jid) {
-        if (jid.getDomain() != null && jid.getDomain().length() > 0)
-            return new IMAddr(jid.getNode() + '@' + jid.getDomain());
-        else
-            return new IMAddr(jid.getNode());
+        return new IMAddr(jid.toBareJID());
     }
     
     public boolean equals(Object other) {

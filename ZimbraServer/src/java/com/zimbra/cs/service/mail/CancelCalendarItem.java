@@ -37,6 +37,8 @@ import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.mailbox.CalendarItem;
 import com.zimbra.cs.mailbox.MailSender;
@@ -53,13 +55,12 @@ import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.service.util.ItemId;
 import com.zimbra.cs.util.L10nUtil;
 import com.zimbra.cs.util.L10nUtil.MsgKey;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class CancelCalendarItem extends CalendarRequest {
 
     private static Log sLog = LogFactory.getLog(CancelCalendarItem.class);
-    private static final String[] TARGET_ITEM_PATH = new String[] { MailService.A_ID };
+    private static final String[] TARGET_ITEM_PATH = new String[] { MailConstants.A_ID };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_ITEM_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return false; }
 
@@ -69,23 +70,21 @@ public class CancelCalendarItem extends CalendarRequest {
         Mailbox mbox = getRequestedMailbox(zsc);
         OperationContext octxt = zsc.getOperationContext();
         
-        ItemId iid = new ItemId(request.getAttribute(MailService.A_ID), zsc);
-        int compNum = (int) request.getAttributeLong(MailService.E_INVITE_COMPONENT);
+        ItemId iid = new ItemId(request.getAttribute(MailConstants.A_ID), zsc);
+        int compNum = (int) request.getAttributeLong(MailConstants.E_INVITE_COMPONENT);
         
         sLog.info("<CancelCalendarItem id=" + iid + " comp=" + compNum + ">");
         
         synchronized (mbox) {
             CalendarItem calItem = mbox.getCalendarItemById(octxt, iid.getId()); 
+            if (calItem == null)
+                throw MailServiceException.NO_SUCH_CALITEM(iid.getId(), " for CancelCalendarItemRequest(" + iid + "," + compNum + ")");
             Invite inv = calItem.getInvite(iid.getSubpartId(), compNum);
-            
-            if (calItem == null) {
-                throw MailServiceException.NO_SUCH_CALITEM(inv.getUid(), " for CancelCalendarItemRequest(" + iid + "," + compNum + ")");
-            }
-            
-            Element recurElt = request.getOptionalElement(MailService.E_INSTANCE);
+
+            Element recurElt = request.getOptionalElement(MailConstants.E_INSTANCE);
             if (recurElt != null) {
                 TimeZoneMap tzmap = inv.getTimeZoneMap();
-                Element tzElem = request.getOptionalElement(MailService.E_CAL_TZ);
+                Element tzElem = request.getOptionalElement(MailConstants.E_CAL_TZ);
                 ICalTimeZone tz = null;
                 if (tzElem != null) {
                     tz = CalendarUtils.parseTzElement(tzElem);
@@ -140,7 +139,7 @@ public class CancelCalendarItem extends CalendarRequest {
         ZVCalendar iCal = dat.mInvite.newToICalendar();
 
         // did they specify a custom <m> message?  If so, then we don't have to build one...
-        Element msgElem = request.getOptionalElement(MailService.E_MSG);
+        Element msgElem = request.getOptionalElement(MailConstants.E_MSG);
 
         if (msgElem != null) {
             String desc = ParseMimeMessage.getTextPlainContent(msgElem);
@@ -162,7 +161,7 @@ public class CancelCalendarItem extends CalendarRequest {
                     calItem, cancelInvite, text, iCal);
         }
         
-        if (!defaultInv.isOrganizer()) {
+        if (!defaultInv.thisAcctIsOrganizer(acct)) {
             try {
                 Address[] rcpts = dat.mMm.getAllRecipients();
                 if (rcpts != null && rcpts.length > 0) {
@@ -194,7 +193,7 @@ public class CancelCalendarItem extends CalendarRequest {
         ZVCalendar iCal = csd.mInvite.newToICalendar();
 
         // did they specify a custom <m> message?  If so, then we don't have to build one...
-        Element msgElem = request.getOptionalElement(MailService.E_MSG);
+        Element msgElem = request.getOptionalElement(MailConstants.E_MSG);
         
         if (msgElem != null) {
             String desc = ParseMimeMessage.getTextPlainContent(msgElem);
@@ -213,7 +212,7 @@ public class CancelCalendarItem extends CalendarRequest {
             csd.mMm = CalendarMailSender.createCancelMessage(acct, rcpts, onBehalfOf, authAcct, calItem, inv, text, iCal);
         }
         
-        if (!inv.isOrganizer()) {
+        if (!inv.thisAcctIsOrganizer(acct)) {
             try {
                 Address[] rcpts = csd.mMm.getAllRecipients();
                 if (rcpts != null && rcpts.length > 0) {

@@ -28,68 +28,71 @@
  */
 package com.zimbra.cs.service.mail;
 
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.TimeZone;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.index.*;
 import com.zimbra.cs.index.MailboxIndex.SortBy;
 import com.zimbra.cs.index.SearchParams.ExpandResults;
+import com.zimbra.cs.index.queryparser.ParseException;
 import com.zimbra.cs.mailbox.CalendarItem;
 import com.zimbra.cs.mailbox.Conversation;
+import com.zimbra.cs.mailbox.Flag;
+import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mailbox.WikiItem;
-import com.zimbra.cs.mailbox.calendar.ICalTimeZone;
-import com.zimbra.cs.mailbox.calendar.WellKnownTimeZones;
-import com.zimbra.cs.operation.ItemActionOperation;
-import com.zimbra.cs.operation.SearchOperation;
-import com.zimbra.cs.operation.Operation.Requester;
+import com.zimbra.cs.service.mail.GetCalendarItemSummaries.EncodeCalendarItemResult;
 import com.zimbra.cs.service.mail.ToXML.EmailType;
 import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.session.PendingModifications;
-import com.zimbra.cs.session.SessionCache;
-import com.zimbra.cs.session.SoapSession;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
-
 
 public class Search extends MailDocumentHandler  {
     protected static Log mLog = LogFactory.getLog(Search.class);
 
+    public static final String DEFAULT_SEARCH_TYPES = MailboxIndex.GROUP_BY_CONVERSATION;
+
     public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
-        SoapSession session = (SoapSession) zsc.getSession(SessionCache.SESSION_SOAP);
         Mailbox mbox = getRequestedMailbox(zsc);
-        SearchParams params = parseCommonParameters(request, zsc);
+        Account acct = getRequestedAccount(zsc);
+        SearchParams params = SearchParams.parse(request, zsc, acct.getAttr(Provisioning.A_zimbraPrefMailInitialSearch));
 
-        SearchOperation op = new SearchOperation(session, zsc, zsc.getOperationContext(), mbox, Requester.SOAP,  params);
-        op.schedule();
-        ZimbraQueryResults results = op.getResults();
-        
+        String query = params.getQueryStr();
+
+        // HACK: temporary until we get UI for gateway reg/unreg 
+        if (!query.startsWith("$im")) 
+            query = "(" + query + ") -tag:\\Deleted";
+
+
+        params.setQueryStr(query);
+
+        ZimbraQueryResults results = doSearch(zsc, mbox, params);
+
         try {
             // create the XML response Element
-            Element response = zsc.createElement(MailService.SEARCH_RESPONSE);
+            Element response = zsc.createElement(MailConstants.SEARCH_RESPONSE);
 
             // must use results.getSortBy() because the results might have ignored our sortBy
             // request and used something else...
             SortBy sb = results.getSortBy();
-            response.addAttribute(MailService.A_SORTBY, sb.toString());
+            response.addAttribute(MailConstants.A_SORTBY, sb.toString());
 
             ResultsPager pager = ResultsPager.create(results, params);
-            response.addAttribute(MailService.A_QUERY_OFFSET, params.getOffset());
+            response.addAttribute(MailConstants.A_QUERY_OFFSET, params.getOffset());
 
             putHits(zsc, response, pager, DONT_INCLUDE_MAILBOX_INFO, params);
             
@@ -102,10 +105,25 @@ public class Search extends MailDocumentHandler  {
         }
     }
     
+    protected ZimbraQueryResults doSearch(ZimbraSoapContext zsc, Mailbox mbox, SearchParams params) throws ServiceException {
+        ZimbraQueryResults results;
+        try {
+            results = mbox.search(zsc.getResponseProtocol(), zsc.getOperationContext(), params);
+        } catch (IOException e) {
+            throw ServiceException.FAILURE("IO error", e);
+        } catch (ParseException e) {
+            if (e.currentToken != null)
+                throw MailServiceException.QUERY_PARSE_ERROR(params.getQueryStr(), e, e.currentToken.image, e.currentToken.beginLine, e.currentToken.beginColumn);
+            else 
+                throw MailServiceException.QUERY_PARSE_ERROR(params.getQueryStr(), e, "", -1, -1);
+        }
+        return results;
+    }
+    
     protected static void putInfo(Element response, SearchParams params, ZimbraQueryResults results) {
         List<QueryInfo> qinfo = results.getResultInfo();
         if ((qinfo.size() > 0) || params.getEstimateSize()) {  
-            Element qinfoElt = response.addElement(MailService.E_INFO);
+            Element qinfoElt = response.addElement(MailConstants.E_INFO);
             Element sizeEst = qinfoElt.addElement("sizeEstimate");
             try {
                 sizeEst.addAttribute("value", results.estimateResultSize());
@@ -115,171 +133,6 @@ public class Search extends MailDocumentHandler  {
                 inf.toXml(qinfoElt);
             }
         }
-    }
-    
-    protected static final String LOCALE_PATTERN = "([a-zA-Z]{2})[-_]([a-zA-Z]{2})([-_](.+))?";
-    protected final static Pattern sLocalePattern = Pattern.compile(LOCALE_PATTERN);
-    
-    protected Locale parseLocale(Element localeElt, ZimbraSoapContext zsc) {
-        String locStr = localeElt.getText();
-        
-        if (locStr != null && locStr.length() > 0) {
-            Matcher m = sLocalePattern.matcher(locStr);
-            if (m.lookingAt()) {
-                String lang=null, country=null, variant=null;
-                
-                if (m.start(1) != -1)
-                    lang = locStr.substring(m.start(1), m.end(1));
-                
-                if (lang == null || lang.length()<=0)
-                    return null;
-                
-                if (m.start(2) != -1)
-                    country = locStr.substring(m.start(2), m.end(2));
-                
-                if (m.start(4) != -1)
-                    variant = locStr.substring(m.start(4), m.end(4));
-                
-                if (variant != null && country != null && variant.length() > 0 && country.length() > 0)
-                    return new Locale(lang, country, variant);
-                
-                if (country != null && country.length() > 0)
-                    return new Locale(lang, country);
-                
-                return new Locale(lang);
-            }
-        }
-        
-        
-        return null;
-    }
-    
-    protected java.util.TimeZone parseTimeZonePart(Element tzElt, ZimbraSoapContext zsc) throws ServiceException {
-        String id = tzElt.getAttribute(MailService.A_ID);
-
-        // is it a well-known timezone?  if so then we're done here
-        ICalTimeZone knownTZ = WellKnownTimeZones.getTimeZoneById(id);
-        if (knownTZ != null)
-            return knownTZ;
-
-        // custom timezone!
-        
-        String test = tzElt.getAttribute(MailService.A_CAL_TZ_STDOFFSET, null);
-        if (test == null)
-            throw ServiceException.INVALID_REQUEST("Unknown TZ: \""+id+"\" and no "+MailService.A_CAL_TZ_STDOFFSET+" specified", null);
-        
-        return CalendarUtils.parseTzElement(tzElt);
-    }
-
-    protected SearchParams parseCommonParameters(Element request, ZimbraSoapContext zsc) throws ServiceException {
-        String query = request.getAttribute(MailService.E_QUERY, null);
-        if (query == null)
-            query = getRequestedAccount(zsc).getAttr(Provisioning.A_zimbraPrefMailInitialSearch);
-
-        if (query == null)
-            throw ServiceException.INVALID_REQUEST("no query submitted and no default query found", null);
-
-        SearchParams params = new SearchParams();
-        
-        
-        // field
-        String field = request.getAttribute(MailService.A_FIELD, null);
-        if (field != null) {
-            params.setDefaultField(field);
-        }
-        
-        //
-        // <loc>
-        Element locElt = request.getOptionalElement(MailService.E_LOCALE);
-        if (locElt != null) {
-            Locale loc = parseLocale(locElt, zsc);
-            params.setLocale(loc);
-        }
-
-        //
-        // <tz>
-        Element tzElt = request.getOptionalElement(MailService.E_CAL_TZ);
-        if (tzElt != null) {
-            TimeZone tz = parseTimeZonePart(tzElt, zsc);
-            params.setTimeZone(tz);
-        }
-        
-        params.setOffset(getOffset(request));
-        params.setLimit(getLimit(request));
-        params.setQueryStr(query);
-        String groupByStr = request.getAttribute(MailService.A_SEARCH_TYPES, null);
-        if (groupByStr == null)
-            groupByStr = request.getAttribute(MailService.A_GROUPBY, MailboxIndex.GROUP_BY_CONVERSATION);
-        params.setTypesStr(groupByStr);
-        params.setSortByStr(request.getAttribute(MailService.A_SORTBY, MailboxIndex.SortBy.DATE_DESCENDING.toString()));
-        params.setFetchFirst(ExpandResults.get(request.getAttribute(MailService.A_FETCH, null)));
-        if (params.getFetchFirst() != ExpandResults.NONE) {
-            params.setWantHtml(request.getAttributeBool(MailService.A_WANT_HTML, false));
-            params.setMarkRead(request.getAttributeBool(MailService.A_MARK_READ, false));
-            params.setNeuterImages(request.getAttributeBool(MailService.A_NEUTER, true));
-        }
-        params.setWantRecipients(request.getAttributeBool(MailService.A_RECIPIENTS, false));
-
-        Element cursor = request.getOptionalElement(MailService.E_CURSOR);
-        if (cursor != null) {
-//            int prevMailItemId = (int)cursor.getAttributeLong(MailService.A_ID);
-//          int prevOffset = (int)cursor.getAttributeLong(MailService.A_QUERY_OFFSET);
-            
-            String cursorStr = cursor.getAttribute(MailService.A_ID);
-            ItemId prevMailItemId = null;
-            if (cursorStr != null)
-                prevMailItemId = new ItemId(cursorStr, zsc);
-            
-            int prevOffset = 0;
-            String sortVal = cursor.getAttribute(MailService.A_SORTVAL);
-            
-            String endSortVal = cursor.getAttribute(MailService.A_ENDSORTVAL, null);
-            params.setCursor(prevMailItemId, sortVal, prevOffset, endSortVal);
-            
-            String addedPart = null;
-            
-            switch (params.getSortBy()) {
-                case DATE_ASCENDING:
-                    addedPart = "date:"+quote(">=", sortVal)+(endSortVal!=null ? " date:"+quote("<", endSortVal) : "");
-                    break;
-                case DATE_DESCENDING:
-                    addedPart = "date:"+quote("<=",sortVal)+(endSortVal!=null ? " date:"+quote(">", endSortVal) : "");
-                    break;
-                case SUBJ_ASCENDING:
-                    addedPart = "subject:"+quote(">=", sortVal)+(endSortVal!=null ? " subject:"+quote("<", endSortVal) : "");
-                    break;
-                case SUBJ_DESCENDING:
-                    addedPart = "subject:"+quote("<=", sortVal)+(endSortVal!=null ? " subject:"+quote(">", endSortVal) : "");
-                    break;
-                case NAME_ASCENDING:
-                    addedPart = "from:"+quote(">=", sortVal)+(endSortVal!=null ? " from:"+quote("<", endSortVal) : "");
-                    break;
-                case NAME_DESCENDING:
-                    addedPart = "from:"+quote("<=", sortVal)+(endSortVal!=null ? " from:"+quote(">", endSortVal) : "");
-                    break;
-            }
-            
-            if (addedPart != null)
-                params.setQueryStr("(" + params.getQueryStr() + ")" + addedPart);
-        }
-
-        return params;
-    }
-    
-    private final String quote(String s1, String s2) {
-        return "\""+s1+s2+"\"";
-    }
-
-    protected int getLimit(Element request) throws ServiceException {
-        int limit = (int) request.getAttributeLong(MailService.A_QUERY_LIMIT, -1);
-        if (limit <= 0 || limit > 1000)
-            limit = 30; // default limit of...say..30...
-        return limit;
-    }
-
-    protected int getOffset(Element request) throws ServiceException {
-        // Lookup the offset= and limit= parameters in the soap request
-        return (int) request.getAttributeLong(MailService.A_QUERY_OFFSET, 0);
     }
 
     // just to make the argument lists a bit more readable:
@@ -294,111 +147,127 @@ public class Search extends MailDocumentHandler  {
         if (mLog.isDebugEnabled())
             mLog.debug("Search results beginning with offset " + offset);
 
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
+
         int totalNumHits = 0;
         ExpandResults expand = params.getFetchFirst();
         if (expand == ExpandResults.HITS)
             expand = ExpandResults.NONE;      // "hits" is not a valid value for Search...
-        for (ZimbraHit hit : pager.getHits()) {
-//          for (ZimbraHit hit = results.skipToHit(offset); hit != null; hit = results.getNext()) {
-            if (++totalNumHits > limit) {
-                if (mLog.isDebugEnabled()) {
+        
+        while (pager.hasNext()) {
+            ZimbraHit hit = pager.getNextHit();
+            if (totalNumHits >= limit) {
+                if (mLog.isDebugEnabled())
                     mLog.debug("Search results limited to " + limit + " hits.");
-                }
                 break;
             }
-            boolean inline = (totalNumHits == 1 && expand == ExpandResults.FIRST) || expand == ExpandResults.ALL;
+            boolean inline = (totalNumHits == 0 && expand == ExpandResults.FIRST) || expand == ExpandResults.ALL;
             boolean addSortField = true;
 
             Element e = null;
             if (hit instanceof ConversationHit) {
                 ConversationHit ch = (ConversationHit) hit;
-                e = addConversationHit(zsc, response, ch, params);
+                e = addConversationHit(zsc, response, ifmt, ch, params);
             } else if (hit instanceof MessageHit) {
                 MessageHit mh = (MessageHit) hit;
-                e = addMessageHit(zsc, response, mh, inline, params);
+                e = addMessageHit(zsc, response, ifmt, mh, inline, params);
             } else if (hit instanceof MessagePartHit) {
                 MessagePartHit mph = (MessagePartHit) hit;
                 e = addMessagePartHit(response, mph);                
             } else if (hit instanceof ContactHit) {
                 ContactHit ch = (ContactHit) hit;
-                e = ToXML.encodeContact(response, zsc, ch.getContact(), null, !inline, null);
+                e = ToXML.encodeContact(response, ifmt, ch.getContact(), true, null);
             } else if (hit instanceof NoteHit) {
                 NoteHit nh = (NoteHit) hit;
-                e = ToXML.encodeNote(response,zsc, nh.getNote());
+                e = ToXML.encodeNote(response, ifmt, nh.getNote());
             } else if (hit instanceof ProxiedHit) {
                 ProxiedHit ph = (ProxiedHit) hit;
                 response.addElement(ph.getElement().detach());
                 addSortField = false;
+                totalNumHits++;
             } else if (hit instanceof CalendarItemHit) {
-                CalendarItemHit ah = (CalendarItemHit)hit;
-                e = addCalendarItemHit(zsc, response, ah, inline, params);
+                CalendarItemHit ah = (CalendarItemHit) hit;
+                e = addCalendarItemHit(zsc, ifmt, response, ah, inline, params);
             } else if (hit instanceof DocumentHit) {
-                DocumentHit dh = (DocumentHit)hit;
-                e = addDocumentHit(zsc, response, dh);
+                DocumentHit dh = (DocumentHit) hit;
+                e = addDocumentHit(ifmt, response, dh);
             } else {
                 mLog.error("Got an unknown hit type putting search hits: "+hit);
                 continue;
             }
             if (e != null && addSortField) {
-                e.addAttribute(MailService.A_SORT_FIELD, hit.getSortField(pager.getSortOrder()).toString());
+                e.addAttribute(MailConstants.A_SORT_FIELD, hit.getSortField(pager.getSortOrder()).toString());
             }
             if (e != null && includeMailbox) {
-//              String idStr = hit.getMailboxIdStr() + "/" + hit.getItemId();
                 ItemId iid = new ItemId(hit.getAcctIdStr(), hit.getItemId());
-                e.addAttribute(MailService.A_ID, iid.toString());
+                e.addAttribute(MailConstants.A_ID, iid.toString());
+            }
+            if (e != null)
+                totalNumHits++;
+            
+            if (totalNumHits >= limit) {
+                if (mLog.isDebugEnabled())
+                    mLog.debug("Search results limited to " + limit + " hits.");
+                break;
             }
         }
 
-        response.addAttribute(MailService.A_QUERY_MORE, pager.hasNext());
-        
+        response.addAttribute(MailConstants.A_QUERY_MORE, pager.hasNext());
 
         return response;
     }
 
 
-    protected Element addConversationHit(ZimbraSoapContext zsc, Element response, ConversationHit ch, SearchParams params)
+    protected Element addConversationHit(ZimbraSoapContext zsc, Element response, ItemIdFormatter ifmt, ConversationHit ch, SearchParams params)
     throws ServiceException {
         Conversation conv = ch.getConversation();
-        MessageHit mh = ch.getFirstMessageHit();
-        Element c = ToXML.encodeConversationSummary(response, zsc, conv, mh == null ? null : mh.getMessage(), params.getWantRecipients());
+        MessageHit mh1 = ch.getFirstMessageHit();
+        Element c = ToXML.encodeConversationSummary(response, ifmt, zsc.getOperationContext(), conv, mh1 == null ? null : mh1.getMessage(), params.getWantRecipients());
         if (ch.getScore() != 0)
-            c.addAttribute(MailService.A_SCORE, ch.getScore());
+            c.addAttribute(MailConstants.A_SCORE, ch.getScore());
 
-        Collection s = ch.getMessageHits();
-        if (s != null) {
-            for (Iterator mit = s.iterator(); mit.hasNext(); ) {
-                mh = (MessageHit) mit.next();
-                Message msg = mh.getMessage();
-                Element e = c.addElement(MailService.E_MSG);
-                e.addAttribute(MailService.A_ID, msg.getId());
-            }
-        }
+        for (MessageHit mh : ch.getMessageHits())
+            c.addElement(MailConstants.E_MSG).addAttribute(MailConstants.A_ID, ifmt.formatItemId(mh.getMessage()));
         return c;
     }
 
-    protected Element addCalendarItemHit(ZimbraSoapContext zsc, Element response, CalendarItemHit ah, boolean inline, SearchParams params)
+    /**
+     * @param zsc
+     * @param response
+     * @param ah
+     * @param inline
+     * @param params
+     * @return
+     *           The encoded element OR NULL if the search params contained a calItemExpand range AND the 
+     *           calendar item did not have any instances in the specified range
+     * @throws ServiceException
+     */
+    protected Element addCalendarItemHit(ZimbraSoapContext zsc, ItemIdFormatter ifmt, Element response, CalendarItemHit ah, boolean inline, SearchParams params)
     throws ServiceException {
         CalendarItem calItem = ah.getCalendarItem();
-        Element m;
-        if (inline) {
-            m = ToXML.encodeCalendarItemSummary(response, zsc, calItem, PendingModifications.Change.ALL_FIELDS);
-//          if (!msg.getFragment().equals(""))
-//          m.addAttribute(MailService.E_FRAG, msg.getFragment(), Element.DISP_CONTENT);
-        } else {
-            m = ToXML.encodeCalendarItemSummary(response, zsc, calItem, PendingModifications.Change.ALL_FIELDS);
+        Element calElement = null;
+        int fields = PendingModifications.Change.ALL_FIELDS;
+        
+        Account acct = getRequestedAccount(zsc);
+        EncodeCalendarItemResult encoded = 
+            GetCalendarItemSummaries.encodeCalendarItemInstances(zsc, calItem, acct, params.getCalItemExpandStart(), params.getCalItemExpandEnd(), true);
+        
+        calElement = encoded.element;
+        
+        if (calElement != null) {
+            response.addElement(encoded.element);
+            ToXML.setCalendarItemFields(encoded.element, ifmt, calItem, fields, false);
+
+            calElement.addAttribute(MailConstants.A_CONTENTMATCHED, true);
+            if (ah.getScore() != 0)
+                calElement.addAttribute(MailConstants.A_SCORE, ah.getScore());
         }
-
-        if (ah.getScore() != 0) {
-            m.addAttribute(MailService.A_SCORE, ah.getScore());
-        }
-
-        m.addAttribute(MailService.A_CONTENTMATCHED, true);
-
-        return m;
+        
+        return calElement;
     }
 
 
-    protected Element addMessageHit(ZimbraSoapContext zsc, Element response, MessageHit mh, boolean inline, SearchParams params)
+    protected Element addMessageHit(ZimbraSoapContext zsc, Element response, ItemIdFormatter ifmt, MessageHit mh, boolean inline, SearchParams params)
     throws ServiceException {
         Message msg = mh.getMessage();
 
@@ -406,43 +275,39 @@ public class Search extends MailDocumentHandler  {
         if (inline && msg.isUnread() && params.getMarkRead()) {
             // Mark the message as READ          
             try {
-                ArrayList<Integer> ids = new ArrayList<Integer>(1);
-                ids.add(msg.getId());
-                ItemActionOperation.READ(zsc, null, zsc.getOperationContext(), msg.getMailbox(), Requester.SOAP, ids, MailItem.TYPE_MESSAGE, true, null);
+                msg.getMailbox().alterTag(zsc.getOperationContext(), msg.getId(), msg.getType(), Flag.ID_FLAG_UNREAD, false);
             } catch (ServiceException e) {
-                mLog.warn("problem marking message as read (ignored): " + msg.getId(), e);
+                if (e.getCode().equals(ServiceException.PERM_DENIED))
+                    mLog.info("no permissions to mark message as read (ignored): " + msg.getId());
+                else
+                    mLog.warn("problem marking message as read (ignored): " + msg.getId(), e);
             }
         }
-        
-        Element m;
-        if (inline) {
-            m = ToXML.encodeMessageAsMP(response, zsc, msg, null, params.getWantHtml(), params.getNeuterImages());
-            if (!msg.getFragment().equals(""))
-                m.addAttribute(MailService.E_FRAG, msg.getFragment(), Element.DISP_CONTENT);
-        } else {
-            m = ToXML.encodeMessageSummary(response, zsc, msg, params.getWantRecipients());
-        }
-        if (mh.getScore() != 0)
-            m.addAttribute(MailService.A_SCORE, mh.getScore());
 
-        m.addAttribute(MailService.A_CONTENTMATCHED, true);
+        Element m;
+        if (inline)
+            m = ToXML.encodeMessageAsMP(response, ifmt, zsc.getOperationContext(), msg, null, params.getWantHtml(), params.getNeuterImages(), params.getInlinedHeaders(), true);
+        else
+            m = ToXML.encodeMessageSummary(response, ifmt, zsc.getOperationContext(), msg, params.getWantRecipients());
+
+        if (mh.getScore() != 0)
+            m.addAttribute(MailConstants.A_SCORE, mh.getScore());
+
+        m.addAttribute(MailConstants.A_CONTENTMATCHED, true);
 
         List<MessagePartHit> parts = mh.getMatchedMimePartNames();
         if (parts != null) {
             for (MessagePartHit mph : parts) {
                 String partNameStr = mph.getPartName();
-
-                if (partNameStr.length() > 0) {
-                    Element mp = m.addElement(MailService.E_HIT_MIMEPART);
-                    mp.addAttribute(MailService.A_PART, partNameStr);
-                }
+                if (partNameStr.length() > 0)
+                    m.addElement(MailConstants.E_HIT_MIMEPART).addAttribute(MailConstants.A_PART, partNameStr);
             }
         }
         
         return m;
     }
 
-    protected Element addMessageMiss(ZimbraSoapContext zsc, Element response, Message msg, boolean inline, SearchParams params)
+    protected Element addMessageMiss(ZimbraSoapContext zsc, ItemIdFormatter ifmt, Element response, Message msg, boolean inline, SearchParams params)
     throws ServiceException {
         // for bug 7568, mark-as-read must happen before the response is encoded.
         if (inline && msg.isUnread() && params.getMarkRead()) {
@@ -450,7 +315,7 @@ public class Search extends MailDocumentHandler  {
             try {
                 ArrayList<Integer> ids = new ArrayList<Integer>(1);
                 ids.add(msg.getId());
-                ItemActionOperation.READ(zsc, null, zsc.getOperationContext(), msg.getMailbox(), Requester.SOAP, ids, MailItem.TYPE_MESSAGE, true, null);
+                ItemActionHelper.READ(zsc.getOperationContext(), msg.getMailbox(), ids, MailItem.TYPE_MESSAGE, true, null);
             } catch (ServiceException e) {
                 mLog.warn("problem marking message as read (ignored): " + msg.getId(), e);
             }
@@ -458,11 +323,11 @@ public class Search extends MailDocumentHandler  {
 
         Element m;
         if (inline) {
-            m = ToXML.encodeMessageAsMP(response, zsc, msg, null, params.getWantHtml(), params.getNeuterImages());
+            m = ToXML.encodeMessageAsMP(response, ifmt, zsc.getOperationContext(), msg, null, params.getWantHtml(), params.getNeuterImages(), null, true);
             if (!msg.getFragment().equals(""))
-                m.addAttribute(MailService.E_FRAG, msg.getFragment(), Element.DISP_CONTENT);
+                m.addAttribute(MailConstants.E_FRAG, msg.getFragment(), Element.Disposition.CONTENT);
         } else {
-            m = ToXML.encodeMessageSummary(response, zsc, msg, params.getWantRecipients());
+            m = ToXML.encodeMessageSummary(response, ifmt, zsc.getOperationContext(), msg, params.getWantRecipients());
         }
         return m;
     }
@@ -470,41 +335,41 @@ public class Search extends MailDocumentHandler  {
     protected Element addMessagePartHit(Element response, MessagePartHit mph) throws ServiceException {
         MessageHit mh = mph.getMessageResult();
         Message msg = mh.getMessage();
-        Element mp = response.addElement(MailService.E_MIMEPART);
+        Element mp = response.addElement(MailConstants.E_MIMEPART);
 
-        mp.addAttribute(MailService.A_SIZE, msg.getSize());
-        mp.addAttribute(MailService.A_DATE, msg.getDate());
-        mp.addAttribute(MailService.A_CONV_ID, msg.getConversationId());
-        mp.addAttribute(MailService.A_MESSAGE_ID, msg.getId());
-        mp.addAttribute(MailService.A_CONTENT_TYPE, mph.getType());
-        mp.addAttribute(MailService.A_CONTENT_NAME, mph.getFilename());
-        mp.addAttribute(MailService.A_PART, mph.getPartName());        
+        mp.addAttribute(MailConstants.A_SIZE, msg.getSize());
+        mp.addAttribute(MailConstants.A_DATE, msg.getDate());
+        mp.addAttribute(MailConstants.A_CONV_ID, msg.getConversationId());
+        mp.addAttribute(MailConstants.A_MESSAGE_ID, msg.getId());
+        mp.addAttribute(MailConstants.A_CONTENT_TYPE, mph.getType());
+        mp.addAttribute(MailConstants.A_CONTENT_NAME, mph.getFilename());
+        mp.addAttribute(MailConstants.A_PART, mph.getPartName());
         if (mph.getScore() != 0)
-            mp.addAttribute(MailService.A_SCORE, mph.getScore());
+            mp.addAttribute(MailConstants.A_SCORE, mph.getScore());
 
         ToXML.encodeEmail(mp, msg.getSender(), EmailType.FROM);
         String subject = msg.getSubject();
         if (subject != null)
-            mp.addAttribute(MailService.E_SUBJECT, subject, Element.DISP_CONTENT);
+            mp.addAttribute(MailConstants.E_SUBJECT, subject, Element.Disposition.CONTENT);
 
         return mp;
     }
 
-    Element addContactHit(ZimbraSoapContext zsc, Element response, ContactHit ch) throws ServiceException {
-        return ToXML.encodeContact(response, zsc, ch.getContact(), null, true, null);
+    Element addContactHit(ItemIdFormatter ifmt, Element response, ContactHit ch) throws ServiceException {
+        return ToXML.encodeContact(response, ifmt, ch.getContact(), true, null);
     }
 
-    Element addDocumentHit(ZimbraSoapContext zsc, Element response, DocumentHit dh) throws ServiceException {
+    Element addDocumentHit(ItemIdFormatter ifmt, Element response, DocumentHit dh) throws ServiceException {
         int ver = dh.getVersion();
         if (dh.getItemType() == MailItem.TYPE_DOCUMENT)
-            return ToXML.encodeDocument(response, zsc, dh.getDocument(), ver);
+            return ToXML.encodeDocument(response, ifmt, dh.getDocument(), ver);
         else if (dh.getItemType() == MailItem.TYPE_WIKI)
-            return ToXML.encodeWiki(response, zsc, (WikiItem)dh.getDocument(), ver);
+            return ToXML.encodeWiki(response, ifmt, (WikiItem)dh.getDocument(), ver);
         throw ServiceException.UNKNOWN_DOCUMENT("invalid document type "+dh.getItemType(), null);
     }
 
-    Element addNoteHit(ZimbraSoapContext zsc, Element response, NoteHit nh) throws ServiceException {
+    Element addNoteHit(ItemIdFormatter ifmt, Element response, NoteHit nh) throws ServiceException {
         // TODO - does this need to be a summary, instead of the whole note?
-        return ToXML.encodeNote(response, zsc, nh.getNote());
+        return ToXML.encodeNote(response, ifmt, nh.getNote());
     }
 }

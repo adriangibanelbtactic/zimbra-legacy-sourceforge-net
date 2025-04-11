@@ -71,9 +71,9 @@ import com.zimbra.cs.mime.ParsedMessage;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.DateUtil;
 import com.zimbra.common.util.FileUtil;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.util.JMSession;
 import com.zimbra.cs.util.NetUtil;
-import com.zimbra.soap.Element;
 
 /**
  * @author dkarp
@@ -174,8 +174,8 @@ public class FeedManager {
                     return parseRssFeed(Element.parseXML(content), fsd);
                 case 'B':  case 'b':
                     Reader reader = new InputStreamReader(content, charset.toString());
-                    ZVCalendar ical = ZCalendarBuilder.build(reader);
-                    List<Invite> invites = Invite.createFromCalendar(acct, null, ical, false);
+                    List<ZVCalendar> icals = ZCalendarBuilder.buildMulti(reader);
+                    List<Invite> invites = Invite.createFromCalendar(acct, null, icals, false);
                     // handle missing UIDs on remote calendars by generating them as needed
                     for (Invite inv : invites)
                     	if (inv.getUid() == null)

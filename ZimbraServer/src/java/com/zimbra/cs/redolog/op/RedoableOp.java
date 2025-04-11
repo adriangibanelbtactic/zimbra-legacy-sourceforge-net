@@ -15,7 +15,7 @@
  * The Original Code is: Zimbra Collaboration Suite Server.
  * 
  * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2004, 2005, 2006 Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2004, 2005, 2006, 2007 Zimbra, Inc.
  * All Rights Reserved.
  * 
  * Contributor(s): 
@@ -42,6 +42,7 @@ import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
+import com.zimbra.cs.redolog.RedoCommitCallback;
 import com.zimbra.cs.redolog.RedoLogInput;
 import com.zimbra.cs.redolog.RedoLogManager;
 import com.zimbra.cs.redolog.RedoLogOutput;
@@ -151,7 +152,13 @@ public abstract class RedoableOp {
 
     public static final int OP_FIX_CALENDAR_ITEM_TZ     = 60;
 
-    public static final int OP_LAST				        = 61;
+    public static final int OP_RENAME_ITEM              = 61;
+    public static final int OP_RENAME_ITEM_PATH        = 62;
+
+    public static final int OP_CREATE_CHAT             = 63;
+    public static final int OP_SAVE_CHAT               = 64;
+
+    public static final int OP_LAST				        = 65;
 
 	// Element index is same as Redoable.OP_* constants.
 	// The strings must match the class names.
@@ -217,6 +224,10 @@ public abstract class RedoableOp {
         "CreateFolder",
         "RenameFolder",
         "FixCalendarItemTimeZone",      // 60
+        "RenameItem",
+        "RenameItemPath",
+        "CreateChat",
+        "SaveChat",
 	};
 
 	public static String getOpClassName(int opcode) {
@@ -236,6 +247,7 @@ public abstract class RedoableOp {
 	private int mMailboxId;
 	private RedoLogManager mRedoLogMgr;
     private boolean mUnloggedReplay;  // true if redo of this op is not redo-logged
+    RedoCommitCallback mCommitCallback;
 
 	public RedoableOp() {
 		mRedoLogMgr = RedoLogProvider.getInstance().getRedoLogManager();
@@ -251,6 +263,16 @@ public abstract class RedoableOp {
 
     public boolean getUnloggedReplay() { return mUnloggedReplay; }
     public void setUnloggedReplay(boolean b) { mUnloggedReplay = b; }
+
+    /**
+     * Set up a callback that will be called when the transaction commits and
+     * the commit record is safely on disk.  This method must be called before
+     * commit() is called.
+     * @param callback
+     */
+    public void setCommitCallback(RedoCommitCallback callback) {
+        mCommitCallback = callback;
+    }
 
     public void start(long timestamp) {
 		// Assign timestamp and txn ID to the operation.

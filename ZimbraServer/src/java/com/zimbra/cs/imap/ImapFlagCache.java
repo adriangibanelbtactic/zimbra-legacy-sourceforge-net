@@ -26,13 +26,20 @@ package com.zimbra.cs.imap;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.cs.mailbox.Flag;
+import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.MailServiceException;
+import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Tag;
+import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 
-public class ImapFlagCache {
+public class ImapFlagCache implements Iterable<ImapFlagCache.ImapFlag> {
     static final class ImapFlag {
         String  mName;
         String  mImapName;
@@ -41,6 +48,7 @@ public class ImapFlagCache {
         boolean mPositive;
         boolean mPermanent;
         boolean mListed;
+        int     mModseq;
 
         static final boolean VISIBLE = true, HIDDEN = false;
 
@@ -48,14 +56,14 @@ public class ImapFlagCache {
             mId   = ltag.getId();    mBitmask   = ltag.getBitmask();
             mName = ltag.getName();  mImapName  = normalize(name, mId);
             mPositive = positive;    mPermanent = true;
-            mListed = VISIBLE;
+            mListed = VISIBLE;       mModseq    = ltag.getSavedSequence();
         }
 
         ImapFlag(String name, short bitmask, boolean listed) {
             mId   = 0;         mBitmask   = bitmask;
             mName = name;      mImapName  = name;
             mPositive = true;  mPermanent = false;
-            mListed = listed;
+            mListed = listed;  mModseq    = -1;
         }
 
         private String normalize(String name, int id) {
@@ -77,11 +85,102 @@ public class ImapFlagCache {
     }
 
 
-    Map<String, ImapFlagCache.ImapFlag> mNames  = new LinkedHashMap<String, ImapFlagCache.ImapFlag>();
-    Map<Long, ImapFlagCache.ImapFlag> mBitmasks = new HashMap<Long, ImapFlagCache.ImapFlag>();
+    private final Mailbox mMailbox;
+    private final Map<String, ImapFlag> mNames  = new LinkedHashMap<String, ImapFlag>();
+    private final Map<Long, ImapFlag> mBitmasks = new HashMap<Long, ImapFlag>();
+
+    ImapFlagCache()  { mMailbox = null; }
+
+    ImapFlagCache(Mailbox mbox, OperationContext octxt) throws ServiceException {
+        mMailbox = mbox;
+        try {
+            for (Tag ltag : mbox.getTagList(octxt)) {
+                if (!(ltag instanceof Flag))
+                    cache(new ImapFlag(ltag.getName(), ltag, true));
+            }
+        } catch (ServiceException e) {
+            if (!e.getCode().equals(ServiceException.PERM_DENIED))
+                throw e;
+        }
+    }
+
+    static ImapFlagCache getSystemFlags(Mailbox mbox) {
+        ImapFlagCache i4cache = new ImapFlagCache();
+
+        i4cache.cache(new ImapFlag("\\Answered", mbox.mReplyFlag,    true));
+        i4cache.cache(new ImapFlag("\\Deleted",  mbox.mDeletedFlag,  true));
+        i4cache.cache(new ImapFlag("\\Draft",    mbox.mDraftFlag,    true));
+        i4cache.cache(new ImapFlag("\\Flagged",  mbox.mFlaggedFlag,  true));
+        i4cache.cache(new ImapFlag("\\Seen",     mbox.mUnreadFlag,   false));
+        i4cache.cache(new ImapFlag("$Forwarded", mbox.mForwardFlag,  true));
+        i4cache.cache(new ImapFlag("$MDNSent",   mbox.mNotifiedFlag, true));
+        i4cache.cache(new ImapFlag("Forwarded",  mbox.mForwardFlag,  true));
+
+        i4cache.cache(new ImapFlag("\\Recent",     ImapMessage.FLAG_RECENT,       ImapFlag.HIDDEN));
+        i4cache.cache(new ImapFlag("$Junk",        ImapMessage.FLAG_SPAM,         ImapFlag.VISIBLE));
+        i4cache.cache(new ImapFlag("$NotJunk",     ImapMessage.FLAG_NONSPAM,      ImapFlag.VISIBLE));
+        i4cache.cache(new ImapFlag("Junk",         ImapMessage.FLAG_SPAM,         ImapFlag.VISIBLE));
+        i4cache.cache(new ImapFlag("JunkRecorded", ImapMessage.FLAG_JUNKRECORDED, ImapFlag.VISIBLE));
+        i4cache.cache(new ImapFlag("NonJunk",      ImapMessage.FLAG_NONSPAM,      ImapFlag.VISIBLE));
+        i4cache.cache(new ImapFlag("NotJunk",      ImapMessage.FLAG_NONSPAM,      ImapFlag.VISIBLE));
+
+        return i4cache;
+    }
 
 
-    ImapFlagCache.ImapFlag cache(ImapFlagCache.ImapFlag i4flag) {
+    ImapFlag getByName(String name) {
+        ImapFlag i4flag = mNames.get(name.toUpperCase());
+        return (i4flag == null || i4flag.mListed == ImapFlag.HIDDEN ? null : i4flag);
+    }
+
+    ImapFlag getByMask(long mask) {
+        return mBitmasks.get(mask);
+    }
+
+    List<String> listNames(boolean permanentOnly) {
+        List<String> names = new ArrayList<String>();
+        for (Map.Entry<String, ImapFlag> entry : mNames.entrySet()) {
+            ImapFlag i4flag = entry.getValue();
+            if (i4flag.mListed && (!permanentOnly || i4flag.mPermanent))
+                names.add(i4flag.mImapName);
+        }
+        return names;
+    }
+
+    int getMaximumModseq() {
+        int modseq = 0;
+        for (ImapFlag i4flag : mNames.values())
+            modseq = Math.max(modseq, i4flag.mModseq);
+        return modseq;
+    }
+
+
+    ImapFlag createTag(OperationContext octxt, String name, List<Tag> newTags) throws ServiceException {
+        if (mMailbox == null)
+            return null;
+
+        ImapFlag i4flag = getByName(name);
+        if (i4flag != null)
+            return i4flag;
+
+        if (name.startsWith("\\"))
+            throw MailServiceException.INVALID_NAME(name);
+
+        try {
+            Tag ltag = mMailbox.createTag(octxt, name, MailItem.DEFAULT_COLOR);
+            newTags.add(ltag);
+            i4flag = getByName(name);
+            if (i4flag != null)
+                return cache(i4flag = new ImapFlag(name, ltag, true));
+        } catch (ServiceException e) {
+            if (!e.getCode().equals(ServiceException.PERM_DENIED) && !e.getCode().equals(MailServiceException.TOO_MANY_TAGS))
+                throw e;
+        }
+        return null;
+    }
+
+
+    ImapFlag cache(ImapFlag i4flag) {
         mNames.put(i4flag.mImapName.toUpperCase(), i4flag);
         Long bitmask = new Long(i4flag.mBitmask);
         if (!mBitmasks.containsKey(bitmask))
@@ -90,7 +189,7 @@ public class ImapFlagCache {
     }
 
     void uncache(long bitmask) {
-        ImapFlagCache.ImapFlag i4flag = mBitmasks.remove(bitmask);
+        ImapFlag i4flag = mBitmasks.remove(bitmask);
         if (i4flag != null)
             mNames.remove(i4flag.mImapName.toUpperCase());
     }
@@ -100,23 +199,7 @@ public class ImapFlagCache {
         mBitmasks.clear();
     }
 
-
-    ImapFlag getByName(String name) {
-        return mNames.get(name.toUpperCase());
-    }
-
-    ImapFlag getByMask(long mask) {
-        return mBitmasks.get(mask);
-    }
-
-
-    List<String> listNames(boolean permanentOnly) {
-        List<String> names = new ArrayList<String>();
-        for (Map.Entry<String, ImapFlagCache.ImapFlag> entry : mNames.entrySet()) {
-            ImapFlagCache.ImapFlag i4flag = entry.getValue();
-            if (i4flag.mListed && (!permanentOnly || i4flag.mPermanent))
-                names.add(i4flag.mImapName);
-        }
-        return names;
+    public Iterator<ImapFlag> iterator() {
+        return mNames.values().iterator();
     }
 }

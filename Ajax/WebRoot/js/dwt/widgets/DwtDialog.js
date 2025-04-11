@@ -56,7 +56,7 @@
 * @see DwtBaseDialog
 * @see DwtDialog_ButtonDescriptor
 */
-function DwtDialog(parent, className, title, standardButtons, extraButtons, zIndex, mode, loc) {
+DwtDialog = function(parent, className, title, standardButtons, extraButtons, zIndex, mode, loc) {
 
 	if (arguments.length == 0) return;
 	className = className || "DwtDialog";
@@ -96,17 +96,12 @@ function DwtDialog(parent, className, title, standardButtons, extraButtons, zInd
 		}
 	}
 
-	this._titleCellId = Dwt.getNextId();
-	this._contentId = Dwt.getNextId();
-
 	// get button IDs
 	this._buttonElementId = new Object();
 	for (var i = 0; i < this._buttonList.length; i++)
 		this._buttonElementId[this._buttonList[i]] = Dwt.getNextId();
 
 	DwtBaseDialog.call(this, parent, className, this._title, zIndex, mode, loc);
-	this._titleCell = document.getElementById(this._titleCellId);
-	this._contentDiv = document.getElementById(this._contentId);
 
 	// set up buttons
 	this._button = new Object();
@@ -119,24 +114,18 @@ function DwtDialog(parent, className, title, standardButtons, extraButtons, zInd
 		this._tabGroup.addMember(b);
 		document.getElementById(this._buttonElementId[buttonId]).appendChild(b.getHtmlElement());
 	}
-	this._initializeDragging(this._titleHandleId);
 }
 
 DwtDialog.prototype = new DwtBaseDialog;
 DwtDialog.prototype.constructor = DwtDialog;
 
-function DwtDialog_ButtonDescriptor(id, label, align, callback, cellTemplate) {
-	this.id = id;
-	this.label = label;
-	this.align = align;
-	this.callback = callback;
-	this.cellTemplate = cellTemplate;
-}
-
-DwtDialog.prototype.getAlignmentForButton =
-function (id) {
-	return DwtDialog.ALIGN[id];
+DwtDialog.prototype.toString = function() {
+	return "DwtDialog";
 };
+
+//
+// Constants
+//
 
 DwtDialog.ALIGN_LEFT 		= 1;
 DwtDialog.ALIGN_RIGHT 		= 2;
@@ -172,13 +161,19 @@ DwtDialog.ALIGN[DwtDialog.YES_BUTTON] 		= DwtDialog.ALIGN_RIGHT;
 DwtDialog.MODELESS = DwtBaseDialog.MODELESS;
 DwtDialog.MODAL = DwtBaseDialog.MODAL;
 
-// -------------------------------------------------------------------
-// API Methods 
-// -------------------------------------------------------------------
+//
+// Data
+//
 
-DwtDialog.prototype.toString = 
-function() {
-	return "DwtDialog";
+DwtDialog.prototype.CONTROLS_TEMPLATE = "ajax.dwt.templates.Widgets#DwtDialogControls";
+
+//
+// Public methods
+//
+
+DwtDialog.prototype.getAlignmentForButton =
+function (id) {
+	return DwtDialog.ALIGN[id];
 };
 
 DwtDialog.prototype.popdown =
@@ -230,16 +225,20 @@ function(buttonId) {
 };
 
 /**
-* Registers a callback on the given button.
+* Registers a callback on the given button. Can be passed an AjxCallback,
+* or the params needed to create one.
 *
-* @param button		one of the standard dialog buttons
-* @param func		callback method
-* @param obj		callback obj
+* @param button		[constant]				one of the standard dialog buttons
+* @param func		[function|AjxCallback]	callback method
+* @param obj		[object]				callback obj
+* @param args		[array]					callback args
 */
 DwtDialog.prototype.registerCallback =
 function(buttonId, func, obj, args) {
-	this._buttonDesc[buttonId].callback = new AjxCallback(obj, func, args);
-}
+	var callback = (func instanceof AjxCallback) ? func : new AjxCallback(obj, func, args);
+	this._buttonDesc[buttonId].callback = callback;
+};
+
 DwtDialog.prototype.unregisterCallback =
 function(buttonId) {
 	this._buttonDesc[buttonId].callback = null;
@@ -255,15 +254,6 @@ DwtDialog.prototype.setButtonListener =
 function(buttonId, listener) {
 	this._button[buttonId].removeSelectionListeners();
 	this._button[buttonId].addSelectionListener(listener);
-}
-
-/**
-* Sets the dialog title.
-*/
-DwtDialog.prototype.setTitle =
-function(title) {
-	this._title = title;
-	this._titleCell.innerHTML = title;
 }
 
 DwtDialog.prototype.associateEnterWithButton =
@@ -294,49 +284,27 @@ function(actionCode, ev) {
 	return true;
 };
 
+//
+// Protected methods
+//
 
-// Private methods
+DwtDialog.prototype._createHtmlFromTemplate = function(templateId, data) {
+    DwtBaseDialog.prototype._createHtmlFromTemplate.call(this, templateId, data);
 
-
-// -----------------------------------------------------------------------
-// layout methods -- subclasses should override to customize layout
-// -----------------------------------------------------------------------
-/***
-DwtDialog.prototype._getStartBorder =
-function() {
-	var html = new Array(5);
-	var idx = 0;
-	html[idx++] = DwtBaseDialog.prototype._getStartBorder.call(this);
-	if (AjxEnv.isNav) {
-		html[idx++] = "<input type='button' id='";
-		html[idx++] = this._focusElementId = Dwt.getNextId();
-		html[idx++] = "' style='height:0px; width:0px; display:none;'>";
-	}
-
-	return html.join("");
-};
-/***/
-
-DwtDialog.prototype._getContentHtml =
-function() {
-	var html = new Array();
-	var idx = 0;
-    /***/
-    if (AjxEnv.isNav) {
-        html[idx++] = "<input type='button' id='";
-        html[idx++] = this._focusElementId = Dwt.getNextId();
-        html[idx++] = "' style='height:0px; width:0px; display:none;'>";
+    var focusId = data.id+"_focus";
+    if (document.getElementById(focusId)) {
+        this._focusElementId = focusId;
     }
-    /***/
-    html[idx++] = DwtBaseDialog.prototype._getContentHtml.call(this);
-	idx = this._addButtonsHtml(html,idx);
-	return html.join("");
+    this._buttonsEl = document.getElementById(data.id+"_buttons");
+    if (this._buttonsEl) {
+        var html = [];
+        var idx = 0;
+        this._addButtonsHtml(html,idx);
+        this._buttonsEl.innerHTML = html.join(""); 
+    }
 };
 
-DwtDialog.prototype._getSeparatorTemplate =
-function () {
-	return "<div class=horizSep></div>";
-};
+// TODO: Get rid of these button template methods!
 
 DwtDialog.prototype._getButtonsContainerStartTemplate =
 function () {
@@ -377,7 +345,6 @@ function(html, idx) {
 				case DwtDialog.ALIGN_CENTER:	centerButtons.push(buttonId); break;
 			}
 		}
-		html[idx++] = this._getSeparatorTemplate();
 		html[idx++] = this._getButtonsContainerStartTemplate();
 		
 		if (leftButtons.length) {
@@ -453,9 +420,23 @@ function(args) {
 // Default callbacks for the standard buttons.
 DwtDialog.prototype._resetCallbacks =
 function() {
-	for (var i = 0; i < DwtDialog.ALL_BUTTONS.length; i++) {
-		var id = DwtDialog.ALL_BUTTONS[i];
-		if (this._buttonDesc[id])
-			this._buttonDesc[id].callback = new AjxCallback(this, this.popdown);
+	if (this._buttonDesc) {
+		for (var i = 0; i < DwtDialog.ALL_BUTTONS.length; i++) {
+			var id = DwtDialog.ALL_BUTTONS[i];
+			if (this._buttonDesc[id])
+				this._buttonDesc[id].callback = new AjxCallback(this, this.popdown);
+		}
 	}
 };
+
+//
+// Classes
+//
+
+DwtDialog_ButtonDescriptor = function(id, label, align, callback, cellTemplate) {
+	this.id = id;
+	this.label = label;
+	this.align = align;
+	this.callback = callback;
+	this.cellTemplate = cellTemplate;
+}

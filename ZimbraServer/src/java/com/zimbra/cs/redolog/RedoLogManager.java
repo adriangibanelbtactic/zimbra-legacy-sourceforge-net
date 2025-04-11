@@ -15,7 +15,7 @@
  * The Original Code is: Zimbra Collaboration Suite Server.
  * 
  * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2004, 2005, 2006 Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2004, 2005, 2006, 2007 Zimbra, Inc.
  * All Rights Reserved.
  * 
  * Contributor(s): 
@@ -31,19 +31,26 @@ package com.zimbra.cs.redolog;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import com.zimbra.common.util.FileUtil;
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.Pair;
+import com.zimbra.common.util.ZimbraLog;
 
 import EDU.oswego.cs.dl.util.concurrent.ReentrantWriterPreferenceReadWriteLock;
 import EDU.oswego.cs.dl.util.concurrent.Sync;
 
 import com.zimbra.cs.index.MailboxIndex;
+import com.zimbra.cs.mailbox.MailServiceException;
+import com.zimbra.cs.redolog.logger.FileLogReader;
 import com.zimbra.cs.redolog.logger.FileLogWriter;
 import com.zimbra.cs.redolog.logger.LogWriter;
 import com.zimbra.cs.redolog.op.AbortTxn;
@@ -52,6 +59,7 @@ import com.zimbra.cs.redolog.op.CommitTxn;
 import com.zimbra.cs.redolog.op.RedoableOp;
 import com.zimbra.cs.util.Zimbra;
 //import com.zimbra.cs.redolog.op.Rollover;
+import com.zimbra.znative.IO;
 
 /**
  * @author jhahm
@@ -73,7 +81,7 @@ public class RedoLogManager {
 			mCounter = 1;
 		}
 
-		synchronized TransactionId getNext() {
+		public synchronized TransactionId getNext() {
 			TransactionId tid = new TransactionId(mTime, mCounter);
 			if (mCounter < 0x7fffffffL)
 				mCounter++;
@@ -331,6 +339,7 @@ public class RedoLogManager {
 
 		try {
             forceRollover();
+            mLogWriter.flush();
 			mLogWriter.close();
 		} catch (Exception e) {
 			mLog.error("Error closing redo log " + mLogFile.getName(), e);
@@ -365,13 +374,14 @@ public class RedoLogManager {
 	 */
 	public void commit(RedoableOp op) {
 		if (mEnabled) {
+            long redoSeq = mRolloverMgr.getCurrentSequence();
 			CommitTxn commit = new CommitTxn(op);
             // Commit records are written without fsync.  It's okay to
             // allow fsync to happen by itself or wait for one during
             // logging of next redo item.
 			log(commit, false);
             commit.setSerializedByteArray(null);
-		}
+        }
 	}
 
 	public void abort(RedoableOp op) {
@@ -383,6 +393,11 @@ public class RedoLogManager {
             abort.setSerializedByteArray(null);
 		}
 	}
+
+    public void flush() throws IOException {
+        if (mEnabled)
+            mLogWriter.flush();
+    }
 
     /**
 	 * Log an operation to the logger.  Only does logging; doesn't
@@ -644,5 +659,127 @@ public class RedoLogManager {
 
     public File[] getArchivedLogs() throws IOException {
         return getArchivedLogsFromSequence(Long.MIN_VALUE);
+    }
+
+    /**
+     * Returns the set of mailboxes that had any committed changes since a
+     * particular CommitId in the past, by scanning redologs.  Also returns
+     * the last CommitId seen during the scanning process.
+     * @param cid
+     * @return can be null if server is shutting down
+     * @throws IOException
+     * @throws MailServiceException
+     */
+    public Pair<Set<Integer>, CommitId> getChangedMailboxesSince(CommitId cid)
+    throws IOException, MailServiceException {
+        Set<Integer> mailboxes = new HashSet<Integer>();
+
+        // Grab a read lock to prevent rollover.
+        Sync readLock = mRWLock.readLock();
+        try {
+            readLock.acquire();
+        } catch (InterruptedException e) {
+            if (!mShuttingDown)
+                mLog.error("InterruptedException during redo log scan for CommitId", e);
+            else
+                mLog.debug("Redo log scan for CommitId interrupted for shutdown");
+            return null;
+        }
+
+        File linkDir = null;
+        File[] logs;
+        try {
+            try {
+                long seq = cid.getRedoSeq();
+                File[] archived = getArchivedLogsFromSequence(seq);
+                if (archived != null) {
+                    logs = new File[archived.length + 1];
+                    System.arraycopy(archived, 0, logs, 0, archived.length);
+                    logs[archived.length] = mLogFile;
+                } else {
+                    logs = new File[] { mLogFile };
+                }
+                // Make sure the first log has the sequence in cid.
+                FileLogReader firstLog = new FileLogReader(logs[0]);
+                if (firstLog.getHeader().getSequence() != seq) {
+                    // Most likely, the CommitId is too old.
+                    throw MailServiceException.INVALID_COMMIT_ID(cid.toString());
+                }
+    
+                // Create a temp directory and make hard links to all redologs.
+                // This prevents the logs from disappearing while being scanned.
+                String dirName = "tmp-scan-" + System.currentTimeMillis();
+                linkDir = new File(mLogFile.getParentFile(), dirName);
+                if (linkDir.exists()) {
+                    int suffix = 1;
+                    while (linkDir.exists()) {
+                        linkDir = new File(mLogFile.getParentFile(), dirName + "-" + suffix);
+                    }
+                }
+                if (!linkDir.mkdir())
+                    throw new IOException("Unable to create temp dir " + linkDir.getAbsolutePath());
+                for (int i = 0; i < logs.length; i++) {
+                    File src = logs[i];
+                    File dest = new File(linkDir, logs[i].getName());
+                    IO.link(src.getAbsolutePath(), dest.getAbsolutePath());
+                    logs[i] = dest;
+                }
+            } finally {
+                // We can let rollover happen now.
+                readLock.release();
+            }
+
+            // Scan redologs to get list with IDs of mailboxes that have
+            // committed changes since the given commit id.
+            long lastSeq = -1;
+            CommitTxn lastCommitTxn = null;
+            boolean foundMarker = false;
+            for (File logfile : logs) {
+                FileLogReader logReader = new FileLogReader(logfile);
+                logReader.open();
+                lastSeq = logReader.getHeader().getSequence();
+                try {
+                    RedoableOp op = null;
+                    while ((op = logReader.getNextOp()) != null) {
+                        if (ZimbraLog.redolog.isDebugEnabled())
+                            ZimbraLog.redolog.debug("Read: " + op);
+                        if (!(op instanceof CommitTxn))
+                            continue;
+
+                        lastCommitTxn = (CommitTxn) op;
+                        if (foundMarker) {
+                            int mboxId = op.getMailboxId();
+                            if (mboxId > 0)
+                                mailboxes.add(mboxId);
+                        } else {
+                            if (cid.matches(lastCommitTxn))
+                                foundMarker = true;
+                        }
+                    }
+                } catch (IOException e) {
+                    ZimbraLog.redolog.warn("IOException while reading redolog file", e);
+                } finally {
+                    logReader.close();
+                }
+            }
+            if (!foundMarker) {
+                // Most likely, the CommitId is too old.
+                throw MailServiceException.INVALID_COMMIT_ID(cid.toString());
+            }
+            CommitId lastCommitId = new CommitId(lastSeq, lastCommitTxn);
+            return new Pair(mailboxes, lastCommitId);
+        } finally {
+            if (linkDir != null) {
+                // Clean up the temp dir with links.
+                try {
+                    if (linkDir.exists())
+                        FileUtil.deleteDir(linkDir);
+                } catch (IOException e) {
+                    ZimbraLog.redolog.warn(
+                            "Unable to delete temporary directory " +
+                            linkDir.getAbsolutePath(), e);
+                }
+            }
+        }
     }
 }

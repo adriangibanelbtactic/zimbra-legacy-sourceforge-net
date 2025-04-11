@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-function AjxLoader() {}
+/**
+ * Minimal wrapper around XHR, with no dependencies.
+ * 
+ * @author Andy Clark
+ */
+AjxLoader = function() {}
 
 //
 // Data
@@ -25,7 +30,7 @@ AjxLoader.__createXHR;
 if (window.XMLHttpRequest) {
     AjxLoader.__createXHR = function() { return new XMLHttpRequest(); };
 }
-else if (ActiveXObject) {
+else if (window.ActiveXObject) {
     (function(){
         var vers = ["MSXML2.XMLHTTP.4.0", "MSXML2.XMLHTTP.3.0", "MSXML2.XMLHTTP", "Microsoft.XMLHTTP"];
         for (var i = 0; i < vers.length; i++) {
@@ -45,24 +50,49 @@ else if (ActiveXObject) {
 // Static functions
 //
 
-AjxLoader.syncLoad = function(url, content, userName, password) {
-    return AjxLoader.load(null, url, content, userName, password);
-};
+/**
+ * This function uses XHR to load and return the contents at an arbitrary URL.
+ * <p>
+ * It can be called with either a URL string or a parameters object.
+ *
+ * @param url       [string]        URL to load.
+ * @param method    [string]        (Optional) The load method (e.g. "GET").
+ *                                  If this parameter is not specified, then
+ *                                  the value is determined by whether content
+ *                                  has been specified: "POST" if specified,
+ *                                  "GET" otherwise.
+ * @param headers   [object]        (Optional) Map of request headers to set.
+ * @param async     [boolean]       (Optional) Determines whether the request
+ *                                  is asynchronous or synchronous. If this
+ *                                  parameter is not specified, then the value
+ *                                  is determined by whether a callback has
+ *                                  been specified: async if a callback is
+ *                                  specified, sync if no callback.
+ * @param content   [string]        (Optional) Content to POST to URL. If
+ *                                  not specified, the request method is GET.
+ * @param userName  [string]        (Optional) The username of the request.
+ * @param password  [string]        (Optional) The password of the request.
+ * @param callback  [AjxCallback]   (Optional) Callback to run at end of load.
+ */
+AjxLoader.load = function(urlOrParams) {
+    var params = urlOrParams;
+    if (typeof urlOrParams == "string") {
+        params = { url: urlOrParams };
+    }
 
-AjxLoader.asyncLoad = function(callback, url, content, userName, password) {
-    return AjxLoader.load(callback, url, content, userName, password);
-};
-
-AjxLoader.load = function(callback, url, content, userName, password) {
     var req = AjxLoader.__createXHR();
-    var func = Boolean(callback) ? function() { AjxLoader._response(req, callback); } : null;
-    var method = content ? "POST" : "GET";
+    var func = Boolean(params.callback) ? function() { AjxLoader._response(req, params.callback); } : null;
+    var method = params.method || (params.content != null ? "POST" : "GET");
 	
 	if (func) {
 	    req.onreadystatechange = func;
 	}
-    req.open(method, url, Boolean(func), userName, password);
-    req.send(content);
+    var async = params.async != null ? params.async : Boolean(func);
+    req.open(method, params.url, async, params.userName, params.password);
+    for (var name in params.headers) {
+        req.setRequestHeader(name, params.headers[name]);
+    }
+    req.send(params.content || "");
 
     return req;
 };

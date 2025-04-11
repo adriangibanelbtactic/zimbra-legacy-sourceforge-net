@@ -33,11 +33,12 @@ import org.dom4j.Document;
 import org.dom4j.Element;
 import org.dom4j.QName;
 
+import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavElements;
 import com.zimbra.cs.dav.DavException;
+import com.zimbra.cs.dav.property.ResourceProperty;
 import com.zimbra.cs.dav.resource.DavResource;
-import com.zimbra.cs.dav.resource.UrlNamespace;
 import com.zimbra.cs.dav.service.DavMethod;
 import com.zimbra.cs.dav.service.DavResponse;
 
@@ -46,34 +47,44 @@ public class PropPatch extends DavMethod {
 	public String getName() {
 		return PROPPATCH;
 	}
-	public void handle(DavContext ctxt) throws DavException, IOException {
+	public void handle(DavContext ctxt) throws DavException, IOException, ServiceException {
 		HashSet<Element> set = new HashSet<Element>();
 		HashSet<QName> remove = new HashSet<QName>();
 		
-		if (ctxt.hasRequestMessage()) {
-			Document req = ctxt.getRequestMessage();
-			Element top = req.getRootElement();
-			if (!top.getName().equals(DavElements.P_PROPERTYUPDATE))
-				throw new DavException("msg "+top.getName()+" not allowed in PROPPATCH", HttpServletResponse.SC_BAD_REQUEST, null);
-			for (Object obj : top.elements()) {
-				if (!(obj instanceof Element))
-					continue;
-				Element e = (Element)obj;
-				if (e.getName().equals(DavElements.P_SET)) {
-					e = e.element(DavElements.E_PROP);
-					for (Object s : e.elements())
-						if (s instanceof Element)
-							set.add((Element)s);
-				} else if (e.getName().equals(DavElements.P_REMOVE)) {
-					e = e.element(DavElements.E_PROP);
-					for (Object r : e.elements())
-						if (r instanceof Element)
-							remove.add(((Element)r).getQName());
+		if (!ctxt.hasRequestMessage()) {
+			throw new DavException("empty request", HttpServletResponse.SC_BAD_REQUEST);
+		}
+		
+		DavResource resource = ctxt.getRequestedResource();
+		RequestProp rp = new RequestProp();
+		Document req = ctxt.getRequestMessage();
+		Element top = req.getRootElement();
+		if (!top.getName().equals(DavElements.P_PROPERTYUPDATE))
+			throw new DavException("msg "+top.getName()+" not allowed in PROPPATCH", HttpServletResponse.SC_BAD_REQUEST, null);
+		for (Object obj : top.elements()) {
+			if (!(obj instanceof Element))
+				continue;
+			Element e = (Element)obj;
+			boolean isSet = e.getName().equals(DavElements.P_SET);
+			e = e.element(DavElements.E_PROP);
+			for (Object propObj : e.elements()) {
+				if (propObj instanceof Element) {
+					Element propElem = (Element)propObj;
+					QName propName = propElem.getQName();
+					ResourceProperty prop = resource.getProperty(propName);
+					if (prop == null || !prop.isProtected()) {
+						if (isSet)
+							set.add(propElem);
+						else
+							remove.add(propName);
+						rp.addProp(propName);
+					} else {
+						rp.addPropError(propName, new DavException.CannotModifyProtectedProperty(propName));
+					}
 				}
 			}
 		}
 		
-		DavResource resource = UrlNamespace.getResource(ctxt);
 		resource.patchProperties(ctxt, set, remove);
 		DavResponse resp = ctxt.getDavResponse();
 		

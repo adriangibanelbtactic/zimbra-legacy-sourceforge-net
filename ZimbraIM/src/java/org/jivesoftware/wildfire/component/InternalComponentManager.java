@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3126 $
+ * $Date: 2005-11-30 15:20:53 -0300 (Wed, 30 Nov 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.component;
 
 import org.dom4j.Element;
@@ -75,6 +62,7 @@ public class InternalComponentManager implements ComponentManager, RoutableChann
      * XMPP address of this internal service. The address is of the form: component.[domain]
      */
     private JID serviceAddress;
+    
     /**
      * Holds the domain of the server. We are using an iv since we use this value many times
      * in many methods.
@@ -90,7 +78,7 @@ public class InternalComponentManager implements ComponentManager, RoutableChann
         ComponentManagerFactory.setComponentManager(instance);
 
         XMPPServer server = XMPPServer.getInstance();
-        serverDomain = server.getServerInfo().getName();
+        serverDomain = server.getServerInfo().getDefaultName();
         // Set the address of this internal service. component.[domain]
         serviceAddress = new JID(null, "component." + serverDomain, null);
         if (!server.isSetupMode()) {

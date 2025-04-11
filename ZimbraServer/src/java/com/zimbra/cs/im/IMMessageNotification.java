@@ -27,10 +27,10 @@ package com.zimbra.cs.im;
 import java.util.Formatter;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.im.IMService;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.IMConstants;
+import com.zimbra.common.soap.Element;
 
-public class IMMessageNotification implements IMNotification {
+public class IMMessageNotification extends IMNotification {
     
     IMAddr mFromAddr;
     String mThreadId;
@@ -44,12 +44,15 @@ public class IMMessageNotification implements IMNotification {
     }
     
     public Element toXml(Element parent) throws ServiceException {
-        Element e = parent.addElement(IMService.E_MESSAGE);
-        e.addAttribute(IMService.A_FROM, mFromAddr.toString());
-        e.addAttribute(IMService.A_THREAD_ID, mThreadId);
-        e.addAttribute(IMService.A_TIMESTAMP, mMessage.getTimestamp());
+        Element e = create(parent, IMConstants.E_MESSAGE);
+        e.addAttribute(IMConstants.A_FROM, mFromAddr.toString());
+	try {
+		e.addAttribute(IMConstants.A_TO, mMessage.getTo().toString());
+	} catch(Exception ex) {};
+        e.addAttribute(IMConstants.A_THREAD_ID, mThreadId);
+        e.addAttribute(IMConstants.A_TIMESTAMP, mMessage.getTimestamp());
         
-        e.addAttribute(IMService.A_SEQ, mSeqNo);
+        e.addAttribute(IMConstants.A_SEQ, mSeqNo);
         
         mMessage.toXml(e);
         return e;

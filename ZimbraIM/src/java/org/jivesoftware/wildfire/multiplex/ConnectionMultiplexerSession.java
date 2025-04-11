@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: $
+ * $Revision: $
+ * $Date: $
+ *
+ * Copyright (C) 2006 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.multiplex;
 
 import org.dom4j.Element;
@@ -91,11 +78,10 @@ public class ConnectionMultiplexerSession extends Session {
         idleTimeout = JiveGlobals.getIntProperty("xmpp.multiplex.idle", 5 * 60 * 1000);
     }
 
-    public static Session createSession(String serverName, XMPPPacketReader reader,
-            SocketConnection connection) throws XmlPullParserException, IOException,
+    public static Session createSession(String serverName, 
+                SocketConnection connection, Element streamElt) throws XmlPullParserException, IOException,
             UnauthorizedException {
-        XmlPullParser xpp = reader.getXPPParser();
-        String domain = xpp.getAttributeValue("", "to");
+        String domain = streamElt.attributeValue("to");
 
         Log.debug("[ConMng] Starting registration of new connection manager for domain: " + domain);
 
@@ -113,7 +99,7 @@ public class ConnectionMultiplexerSession extends Session {
 
         // Check that a domain was provided in the stream header
         if (domain == null) {
-            Log.debug("[ConMng] Domain not specified in stanza: " + xpp.getText());
+            Log.debug("[ConMng] Domain not specified in stanza: " + streamElt.asXML());
             // Include the bad-format in the response
             StreamError error = new StreamError(StreamError.Condition.bad_format);
             sb.append(error.toXML());

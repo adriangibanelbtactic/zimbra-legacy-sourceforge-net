@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 4263 $
+ * $Date: 2006-07-05 21:44:36 +0000 (Wed, 05 Jul 2006) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.database;
 
 import org.jivesoftware.util.ClassUtils;
@@ -87,14 +74,13 @@ public class DbConnectionManager {
                             setConnectionProvider((ConnectionProvider)conClass.newInstance());
                         }
                         catch (Exception e) {
-                            Log.error("Warning: failed to create the " +
+                            Log.error("Error: failed to create the " +
                                     "connection provider specified by connection" +
                                     "Provider.className. Using the default pool.", e);
-                            setConnectionProvider(new DefaultConnectionProvider());
                         }
                     }
                     else {
-                        setConnectionProvider(new DefaultConnectionProvider());
+                        Log.error("Error: could not find the connectionProvider.className entry, please fix wildfire.xml");
                     }
                 }
             }
@@ -475,8 +461,6 @@ public class DbConnectionManager {
                 }
             }
         }
-        // Remember what connection provider we want to use for restarts.
-        JiveGlobals.setXMLProperty("connectionProvider.className", provider.getClass().getName());
     }
 
     /**

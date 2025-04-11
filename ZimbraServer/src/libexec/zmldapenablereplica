@@ -70,11 +70,7 @@ verifyLdap() {
 
 enableSyncProv() {
 	echo -n "Enabling sync provider..."
-	sed -i.pre-replica -e '/syncprov/ s/#//g' -e '/accesslog/ s/###//g' ${zimbra_home}/conf/slapd.conf.in
-	mkdir -p ${zimbra_home}/openldap-data/accesslog/db
-	mkdir -p ${zimbra_home}/openldap-data/accesslog/logs
-	cp -p ${zimbra_home}/openldap/etc/openldap/master-accesslog.conf ${zimbra_home}/conf/
-	cp -p ${zimbra_home}/openldap/etc/openldap/master-accesslog-overlay.conf ${zimbra_home}/conf/
+	sed -i .pre-replica -e '/syncprov/ s/#//g' ${zimbra_home}/conf/slapd.conf.in
 	echo "succeeded"
 }
 
@@ -118,14 +114,11 @@ syncrepl rid=${ldap_replica_rid}
 	retry="60 +"
 	type=refreshAndPersist
 	schemachecking=off
+	updatedn="uid=zimbrareplication,cn=admins,cn=zimbra"
 	searchbase=""
 	bindmethod=simple
 	binddn="uid=zimbra,cn=admins,cn=zimbra"
 	credentials=${ldap_root_password}
-	logbase="cn=accesslog"
-	logfilter="(&(objectClass=auditWriteObject)(reqResult=0))"
-	syncdata="accesslog"
-
 updateref  ${ldap_master_url}
 EOF
 
@@ -136,6 +129,8 @@ EOF
 
 createReplicaUser() {
 	echo -n "Setting up replication ldap user..."
+
+	touch /opt/zimbra/openldap-data/DB_CONFIG
 
 	root_sha=`${zimbra_home}/openldap/sbin/slappasswd -s ${ldap_root_password}`
 	
@@ -210,7 +205,7 @@ replicateLdap() {
 
 	echo -n "Writing data..."
 
-	${zimbra_home}/openldap/sbin/slapadd -q -w -b '' -f ${zimbra_home}/conf/slapd.conf -l /tmp/repl.ldif
+	${zimbra_home}/openldap/sbin/slapadd -w -f ${zimbra_home}/conf/slapd.conf -l /tmp/repl.ldif
 	if [ $? -ne 0 ]; then
 		echo "FAILED"
 		echo "Ldap replication failed - exiting"
@@ -250,16 +245,12 @@ startLdap() {
 	${zimbra_home}/bin/ldap start > /dev/null 2>&1
 	echo "done"
 }
-stopLdap() {
-	echo -n "Stopping LDAP on ${zimbra_server_hostname}..."
-	${zimbra_home}/bin/ldap stop > /dev/null 2>&1
-	echo "done"
-}
 
 if [ $ldap_master_host = $zimbra_server_hostname ]; then
 	enableSyncProv
-  stopLdap
-  startLdap
+	${zimbra_home}/bin/ldap stop
+	sleep 5;
+	${zimbra_home}/bin/ldap start
 	exit 0
 fi
 

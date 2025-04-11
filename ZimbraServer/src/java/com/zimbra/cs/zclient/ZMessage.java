@@ -26,10 +26,10 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.mail.MailService;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.zclient.event.ZModifyEvent;
 import com.zimbra.cs.zclient.event.ZModifyMessageEvent;
-import com.zimbra.soap.Element;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -94,43 +94,57 @@ public class ZMessage implements ZItem {
     private String mReplyType;
     private String mInReplyTo;
     private String mOrigId;
+    private ZInvite mInvite;
+    private ZShare mShare;
         
     public ZMessage(Element e) throws ServiceException {
-        mId = e.getAttribute(MailService.A_ID);
-        mFlags = e.getAttribute(MailService.A_FLAGS, null);
-        mTags = e.getAttribute(MailService.A_TAGS, null);
-        mReplyType = e.getAttribute(MailService.A_REPLY_TYPE, null);
-        mOrigId = e.getAttribute(MailService.A_ORIG_ID, null);        
-        Element sub = e.getOptionalElement(MailService.E_SUBJECT);
+        mId = e.getAttribute(MailConstants.A_ID);
+        mFlags = e.getAttribute(MailConstants.A_FLAGS, null);
+        mTags = e.getAttribute(MailConstants.A_TAGS, null);
+        mReplyType = e.getAttribute(MailConstants.A_REPLY_TYPE, null);
+        mOrigId = e.getAttribute(MailConstants.A_ORIG_ID, null);
+        Element sub = e.getOptionalElement(MailConstants.E_SUBJECT);
         if (sub != null) mSubject = sub.getText();
-        Element fr = e.getOptionalElement(MailService.E_FRAG);
+        Element fr = e.getOptionalElement(MailConstants.E_FRAG);
         if (fr != null) mFragment = fr.getText();
-        Element mid = e.getOptionalElement(MailService.E_MSG_ID_HDR);
+        Element mid = e.getOptionalElement(MailConstants.E_MSG_ID_HDR);
         if (mid != null) mMessageIdHeader = mid.getText();
         
-        Element irt = e.getOptionalElement(MailService.E_IN_REPLY_TO);
+        Element irt = e.getOptionalElement(MailConstants.E_IN_REPLY_TO);
         if (irt != null) mInReplyTo = irt.getText();
         
-        mReceivedDate = e.getAttributeLong(MailService.A_DATE, 0);
-        mSentDate = e.getAttributeLong(MailService.A_SENT_DATE, 0);
-        mFolderId = e.getAttribute(MailService.A_FOLDER, null);
-        mConversationId = e.getAttribute(MailService.A_CONV_ID, null);
-        mPartName = e.getAttribute(MailService.A_PART, null);
-        mSize = e.getAttributeLong(MailService.A_SIZE);
+        mReceivedDate = e.getAttributeLong(MailConstants.A_DATE, 0);
+        mSentDate = e.getAttributeLong(MailConstants.A_SENT_DATE, 0);
+        mFolderId = e.getAttribute(MailConstants.A_FOLDER, null);
+        mConversationId = e.getAttribute(MailConstants.A_CONV_ID, null);
+        mPartName = e.getAttribute(MailConstants.A_PART, null);
+        mSize = e.getAttributeLong(MailConstants.A_SIZE);
         
-        Element content = e.getOptionalElement(MailService.E_CONTENT);
+        Element content = e.getOptionalElement(MailConstants.E_CONTENT);
         if (content != null) {
             mContent = content.getText();
-            mContentURL = content.getAttribute(MailService.A_URL, null);
+            mContentURL = content.getAttribute(MailConstants.A_URL, null);
         }
         
         mAddresses = new ArrayList<ZEmailAddress>();
-        for (Element emailEl: e.listElements(MailService.E_EMAIL)) {
+        for (Element emailEl: e.listElements(MailConstants.E_EMAIL)) {
             mAddresses.add(new ZEmailAddress(emailEl));
         }
-        Element mp = e.getOptionalElement(MailService.E_MIMEPART);
+        Element mp = e.getOptionalElement(MailConstants.E_MIMEPART);
         if (mp != null)
             mMimeStructure = new ZMimePart(null, mp);
+
+        Element inviteEl = e.getOptionalElement(MailConstants.E_INVITE);
+        if (inviteEl != null)
+            mInvite = new ZInvite(inviteEl);
+
+        Element shrEl = e.getOptionalElement("shr");
+        if (shrEl != null) {
+            Element contEl = shrEl.getElement(MailConstants.E_CONTENT);
+            if (contEl != null) {
+                mShare = ZShare.parseXml(contEl.getText());
+            }
+        }
     }
 
     public void modifyNotification(ZModifyEvent event) throws ServiceException {
@@ -143,6 +157,19 @@ public class ZMessage implements ZItem {
                 mConversationId = mevent.getConversationId(mConversationId);
             }
         }
+    }
+
+    public  ZShare getShare() {
+        return mShare;
+    }
+
+
+    /**
+     *
+     * @return invite object if this message contains an invite, null otherwise.
+     */
+    public ZInvite getInvite() {
+        return mInvite;
     }
 
     /**
@@ -203,7 +230,11 @@ public class ZMessage implements ZItem {
         sb.add("contentURL", mContentURL);
         sb.add("addresses", mAddresses, false, true);
         sb.addStruct("mimeStructure", mMimeStructure.toString());
-        sb.endStruct();        
+        if (mInvite != null)
+                sb.addStruct("invite", mInvite.toString());
+        if (mShare != null)
+            sb.addStruct("share", mShare.toString());
+        sb.endStruct();
         return sb;
     }
 
@@ -273,7 +304,7 @@ public class ZMessage implements ZItem {
         return mContentURL;
     }
     
-    public class ZMimePart {
+    public static class ZMimePart {
         private String mPartName;
         private String mName;
         private String mContentType;
@@ -290,23 +321,23 @@ public class ZMessage implements ZItem {
         
         public ZMimePart(ZMimePart parent, Element e) throws ServiceException {
             mParent = parent;
-            mPartName = e.getAttribute(MailService.A_PART);
-            mName = e.getAttribute(MailService.A_NAME, null);
-            mContentType = e.getAttribute(MailService.A_CONTENT_TYPE, null);            
-            mContentDisposition = e.getAttribute(MailService.A_CONTENT_DISPOSTION, null);
-            mFileName = e.getAttribute(MailService.A_CONTENT_FILENAME, null);
-            mContentId = e.getAttribute(MailService.A_CONTENT_ID, null);
-            mContentDescription = e.getAttribute(MailService.A_CONTENT_DESCRIPTION, null);
-            mContentLocation = e.getAttribute(MailService.A_CONTENT_LOCATION, null);
-            mIsBody = e.getAttributeBool(MailService.A_BODY, false);
-            mSize = e.getAttributeLong(MailService.A_SIZE, 0);
-            Element content = e.getOptionalElement(MailService.E_CONTENT);
+            mPartName = e.getAttribute(MailConstants.A_PART);
+            mName = e.getAttribute(MailConstants.A_NAME, null);
+            mContentType = e.getAttribute(MailConstants.A_CONTENT_TYPE, null);
+            mContentDisposition = e.getAttribute(MailConstants.A_CONTENT_DISPOSTION, null);
+            mFileName = e.getAttribute(MailConstants.A_CONTENT_FILENAME, null);
+            mContentId = e.getAttribute(MailConstants.A_CONTENT_ID, null);
+            mContentDescription = e.getAttribute(MailConstants.A_CONTENT_DESCRIPTION, null);
+            mContentLocation = e.getAttribute(MailConstants.A_CONTENT_LOCATION, null);
+            mIsBody = e.getAttributeBool(MailConstants.A_BODY, false);
+            mSize = e.getAttributeLong(MailConstants.A_SIZE, 0);
+            Element content = e.getOptionalElement(MailConstants.E_CONTENT);
             if (content != null) {
                 mContent = content.getText();
             }
             
             mChildren = new ArrayList<ZMimePart>();
-            for (Element mpEl: e.listElements(MailService.E_MIMEPART)) {
+            for (Element mpEl: e.listElements(MailConstants.E_MIMEPART)) {
                 mChildren.add(new ZMimePart(this, mpEl));
             }
         }

@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 1751 $
+ * $Date: 2005-08-07 20:08:47 -0300 (Sun, 07 Aug 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.roster;
 
 import org.jivesoftware.database.DbConnectionManager;
@@ -112,6 +99,11 @@ public class RosterItemProvider {
             pstmt = con.prepareStatement(CREATE_ROSTER_ITEM);
             pstmt.setString(1, username);
             pstmt.setLong(2, rosterID);
+            assert(!item.getJid().toBareJID().contains("@yahoo"));
+            assert(!item.getJid().toBareJID().contains("@msn"));
+            assert(!item.getJid().toBareJID().contains("@aol"));
+            assert(!item.getJid().toBareJID().contains("@aim"));
+            
             pstmt.setString(3, item.getJid().toBareJID());
             pstmt.setInt(4, item.getSubStatus().getValue());
             pstmt.setInt(5, item.getAskStatus().getValue());

@@ -27,7 +27,10 @@ package com.zimbra.cs.dav.resource;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.servlet.http.HttpServletResponse;
@@ -40,14 +43,17 @@ import org.dom4j.io.SAXReader;
 import org.dom4j.io.XMLWriter;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.dav.DavContext;
+import com.zimbra.cs.dav.DavElements;
 import com.zimbra.cs.dav.DavException;
 import com.zimbra.cs.dav.DavProtocol;
 import com.zimbra.cs.dav.property.ResourceProperty;
-import com.zimbra.cs.mailbox.Document;
+import com.zimbra.cs.dav.property.Acl.Ace;
+import com.zimbra.cs.mailbox.ACL;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
@@ -65,7 +71,13 @@ public abstract class MailItemResource extends DavResource {
 	protected int  mId;
 	protected byte mType;
 	protected String mEtag;
+	protected String mSubject;
+	protected String mPath;
+	protected long mModifiedDate;
+	protected String mOwnerId;
 	protected Map<QName,Element> mDeadProps;
+	protected String mRemoteOwnerId;
+	protected int mRemoteId;
 	
 	private static final String CONFIG_KEY = "caldav";
 	private static final int PROP_LENGTH_LIMIT = 1024;
@@ -79,12 +91,17 @@ public abstract class MailItemResource extends DavResource {
 		mFolderId = item.getFolderId();
 		mId = item.getId();
 		mType = item.getType();
-		mEtag = "\""+Long.toString(item.getChangeDate())+"\"";
+		mEtag = MailItemResource.getEtag(item);
+		mSubject = item.getSubject();
+		mPath = item.getPath();
+		mModifiedDate = item.getDate();
+		mOwnerId = item.getAccount().getId();
 		try {
 			mDeadProps = getDeadProps(ctxt, item);
 		} catch (Exception e) {
-			// somehow couldn't get the dead props.
+			ZimbraLog.dav.warn("can't get dead properties for MailItem id="+mId, e);
 		}
+		setProperty(DavElements.P_GETETAG, mEtag);
 	}
 	
 	public MailItemResource(String path, String acct) {
@@ -93,7 +110,7 @@ public abstract class MailItemResource extends DavResource {
 	
 	private static String getItemPath(MailItem item) throws ServiceException {
 		String path = item.getPath();
-		if (item.getType() == MailItem.TYPE_FOLDER && !path.endsWith("/"))
+		if ((item.getType() == MailItem.TYPE_FOLDER || item.getType() == MailItem.TYPE_MOUNTPOINT) && !path.endsWith("/"))
 			return path + "/";
 		return path;
 	}
@@ -147,8 +164,6 @@ public abstract class MailItemResource extends DavResource {
 			Mailbox mbox = getMailbox(ctxt);
 			MailItem item = mbox.copy(ctxt.getOperationContext(), mId, mType, dest.getId());
 			return UrlNamespace.getResourceFromMailItem(ctxt, item);
-		} catch (IOException e) {
-			throw new DavException("cannot copy item", HttpServletResponse.SC_FORBIDDEN, e);
 		} catch (ServiceException se) {
 			throw new DavException("cannot copy item", HttpServletResponse.SC_FORBIDDEN, se);
 		}
@@ -159,20 +174,16 @@ public abstract class MailItemResource extends DavResource {
 		try {
 			Mailbox mbox = getMailbox(ctxt);
 			if (isCollection()) {
-				mbox.renameFolder(ctxt.getOperationContext(), mId, newName);
+				mbox.rename(ctxt.getOperationContext(), mId, MailItem.TYPE_FOLDER, newName);
 			} else {
-				MailItem item = mbox.getItemById(ctxt.getOperationContext(), mId, mType);
-				if (item instanceof Document) {
-					Document doc = (Document) item;
-					doc.rename(newName);
-				}
+                mbox.rename(ctxt.getOperationContext(), mId, mType, newName);
 			}
 		} catch (ServiceException se) {
 			throw new DavException("cannot rename item", HttpServletResponse.SC_FORBIDDEN, se);
 		}
 	}
 	
-	int getId() {
+	protected int getId() {
 		return mId;
 	}
 	
@@ -203,7 +214,7 @@ public abstract class MailItemResource extends DavResource {
 	 * Properties in the parameter 'set' are added to the existing properties.
 	 * Properties in 'remove' are removed.
 	 */
-	public void patchProperties(DavContext ctxt, java.util.Collection<Element> set, java.util.Collection<QName> remove) throws DavException {
+	public void patchProperties(DavContext ctxt, java.util.Collection<Element> set, java.util.Collection<QName> remove) throws DavException, IOException {
 		for (QName n : remove)
 				mDeadProps.remove(n);
 		for (Element e : set)
@@ -225,28 +236,106 @@ public abstract class MailItemResource extends DavResource {
 			if (configVal.length() > PROP_LENGTH_LIMIT)
 				throw new DavException("unable to patch properties", DavProtocol.STATUS_INSUFFICIENT_STORAGE, null);
 
-			synchronized (MailItemResource.class) {
-				Mailbox mbox = getMailbox(ctxt);
+			Mailbox mbox = getMailbox(ctxt);
+			synchronized (mbox) {
 				Metadata data = mbox.getConfig(ctxt.getOperationContext(), CONFIG_KEY);
 				if (data == null)
 					data = new Metadata();
 				data.put(Integer.toString(mId), configVal);
 				mbox.setConfig(ctxt.getOperationContext(), CONFIG_KEY, data);
 			}
-		} catch (IOException ioe) {
-			throw new DavException("unable to patch properties", HttpServletResponse.SC_FORBIDDEN, ioe);
 		} catch (ServiceException se) {
 			throw new DavException("unable to patch properties", HttpServletResponse.SC_FORBIDDEN, se);
 		}
 	}
 	
 	public ResourceProperty getProperty(QName prop) {
-		ResourceProperty rp = super.getProperty(prop);
-		if (rp != null || mDeadProps == null)
-			return rp;
+		ResourceProperty rp = null;
+		if (mDeadProps != null) {
 		Element e = mDeadProps.get(prop);
 		if (e != null)
 			rp = new ResourceProperty(e);
+		}
+		if (rp == null)
+			rp = super.getProperty(prop);
 		return rp;
+	}
+
+	protected boolean isWebRequest(DavContext ctxt) {
+		String userAgent = ctxt.getRequest().getHeader(DavProtocol.HEADER_USER_AGENT);
+		if (userAgent != null && 
+				(userAgent.indexOf("MSIE") >= 0 ||
+				 userAgent.indexOf("Mozilla") >= 0)) {
+			return true;
+		}
+		return false;
+	}
+	
+	public boolean hasContent(DavContext ctxt) {
+		if (isWebRequest(ctxt))
+			return true;
+		return super.hasContent(ctxt);
+	}
+	
+	@Override
+	public InputStream getContent(DavContext ctxt) throws IOException, DavException {
+		if (isWebRequest(ctxt))
+			return getTextContent(ctxt);
+		return null;
+	}
+	
+	protected InputStream getTextContent(DavContext ctxt) throws IOException {
+		StringBuilder buf = new StringBuilder();
+		buf.append("Request\n\n");
+		buf.append("\tAuthenticated user:\t").append(ctxt.getAuthAccount().getName()).append("\n");
+		buf.append("\tCurrent date:\t\t").append(new Date(System.currentTimeMillis())).append("\n");
+		buf.append("\nResource\n\n");
+		buf.append("\tName:\t\t\t").append(mSubject).append("\n");
+		buf.append("\tPath:\t\t\t").append(mPath).append("\n");
+		buf.append("\tDate:\t\t\t").append(new Date(mModifiedDate)).append("\n");
+		buf.append("\tOwner account Id:\t").append(mOwnerId).append("\n");
+		try {
+			Provisioning prov = Provisioning.getInstance();
+			Account account = prov.get(Provisioning.AccountBy.id, mOwnerId);
+			buf.append("\tOwner account name:\t").append(account.getName()).append("\n");
+		} catch (ServiceException se) {
+		}
+		buf.append("\nProperties\n\n");
+		Element e = org.dom4j.DocumentHelper.createElement(DavElements.E_PROP);
+		for (ResourceProperty rp : mProps.values())
+			rp.toElement(ctxt, e, false);
+		OutputFormat format = OutputFormat.createPrettyPrint();
+		format.setTrimText(false);
+		format.setOmitEncoding(false);
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		XMLWriter writer = new XMLWriter(baos, format);
+		writer.write(e);
+		buf.append(new String(baos.toByteArray()));
+		return new ByteArrayInputStream(buf.toString().getBytes("UTF-8"));
+	}
+	
+	public static String getEtag(MailItem item) {
+		return "\""+Long.toString(item.getModifiedSequence())+"-"+Long.toString(item.getChangeDate())+"\"";
+	}
+	
+	public boolean isLocal() {
+		return mRemoteOwnerId == null && mRemoteId == 0;
+	}
+	
+	public String getRemoteOwnerId() {
+		return mRemoteOwnerId;
+	}
+	
+	public int getRemoteId() {
+		return mRemoteId;
+	}
+	
+	public void setAce(DavContext ctxt, List<Ace> aceList) throws ServiceException, DavException {
+		ACL acl = new ACL();
+		for (Ace ace : aceList)
+			acl.grantAccess(ace.getZimbraId(), ace.getGranteeType(), ace.getRights(), null);
+
+		Mailbox mbox = getMailbox(ctxt);
+		mbox.setPermissions(ctxt.getOperationContext(), getId(), acl);
 	}
 }

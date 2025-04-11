@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: $
+ * $Date: $
+ *
+ * Copyright (C) 2006 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.net;
 
 import com.jcraft.jzlib.JZlib;
@@ -29,7 +16,6 @@ import com.jcraft.jzlib.ZInputStream;
 import org.dom4j.Element;
 import org.jivesoftware.util.LocaleUtils;
 import org.jivesoftware.util.Log;
-import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.EOFException;
@@ -47,9 +33,12 @@ import java.nio.channels.AsynchronousCloseException;
  * @author Gaston Dombiak
  */
 class BlockingReadingMode extends SocketReadingMode {
+    
+    Socket mRealSocket;
 
     public BlockingReadingMode(Socket socket, SocketReader socketReader) {
-        super(socket, socketReader);
+        super(socketReader);
+        mRealSocket = socket;
     }
 
     /**
@@ -58,12 +47,12 @@ class BlockingReadingMode extends SocketReadingMode {
      */
     public void run() {
         try {
-            socketReader.reader.getXPPParser().setInput(new InputStreamReader(
-                    ServerTrafficCounter.wrapInputStream(socket.getInputStream()), CHARSET));
+            socketReader.setInput(new InputStreamReader(
+                        ServerTrafficCounter.wrapInputStream(mRealSocket.getInputStream()), CHARSET));
 
             // Read in the opening tag and prepare for packet stream
             try {
-                socketReader.createSession();
+                socketReader.createSessionForBlockingMode();
             }
             catch (IOException e) {
                 Log.debug("Error creating session", e);
@@ -82,15 +71,18 @@ class BlockingReadingMode extends SocketReadingMode {
         catch (SocketException se) {
             // The socket was closed. The server may close the connection for several
             // reasons (e.g. user requested to remove his account). Do nothing here.
+            se.printStackTrace();
         }
         catch (AsynchronousCloseException ace) {
             // The socket was closed.
+            ace.printStackTrace();
         }
         catch (XmlPullParserException ie) {
             // It is normal for clients to abruptly cut a connection
             // rather than closing the stream document. Since this is
             // normal behavior, we won't log it as an error.
             // Log.error(LocaleUtils.getLocalizedString("admin.disconnect"),ie);
+            ie.printStackTrace();
         }
         catch (Exception e) {
             if (socketReader.session != null) {
@@ -108,14 +100,14 @@ class BlockingReadingMode extends SocketReadingMode {
                 }
                 catch (Exception e) {
                     Log.warn(LocaleUtils.getLocalizedString("admin.error.connection")
-                            + "\n" + socket.toString());
+                            + "\n" + socketReader.toString());
                 }
             }
             else {
                 // Close and release the created connection
                 socketReader.connection.close();
                 Log.debug(LocaleUtils.getLocalizedString("admin.error.connection")
-                        + "\n" + socket.toString());
+                        + "\n" + socketReader.toString());
             }
             socketReader.shutdown();
         }
@@ -127,7 +119,8 @@ class BlockingReadingMode extends SocketReadingMode {
     private void readStream() throws Exception {
         socketReader.open = true;
         while (socketReader.open) {
-            Element doc = socketReader.reader.parseDocument().getRootElement();
+//            Element doc = socketReader.reader.parseDocument().getRootElement();
+            Element doc = socketReader.getNextElement();
             if (doc == null) {
                 // Stop reading the stream since the client has sent an end of
                 // stream element and probably closed the connection.
@@ -172,56 +165,52 @@ class BlockingReadingMode extends SocketReadingMode {
     }
 
     protected void tlsNegotiated() throws XmlPullParserException, IOException {
-        XmlPullParser xpp = socketReader.reader.getXPPParser();
+        StdSocketConnection stdConnect = (StdSocketConnection)(socketReader.connection);
+        
         // Reset the parser to use the new reader
-        xpp.setInput(new InputStreamReader(
-                socketReader.connection.getTLSStreamHandler().getInputStream(), CHARSET));
+        socketReader.setInput(new InputStreamReader(
+                    stdConnect.getTLSStreamHandler().getInputStream(), CHARSET));
+        
         // Skip new stream element
-        for (int eventType = xpp.getEventType(); eventType != XmlPullParser.START_TAG;) {
-            eventType = xpp.next();
-        }
+        socketReader.skipNextStartTag();
         super.tlsNegotiated();
     }
 
     protected void saslSuccessful() throws XmlPullParserException, IOException {
-        MXParser xpp = socketReader.reader.getXPPParser();
         // Reset the parser since a new stream header has been sent from the client
-        xpp.resetInput();
-
+        socketReader.resetInput();
+        
         // Skip the opening stream sent by the client
-        for (int eventType = xpp.getEventType(); eventType != XmlPullParser.START_TAG;) {
-            eventType = xpp.next();
-        }
+        socketReader.skipNextStartTag();
+        
         super.saslSuccessful();
     }
 
     protected boolean compressClient(Element doc) throws XmlPullParserException, IOException {
         boolean answer = super.compressClient(doc);
+        StdSocketConnection stdConnect = (StdSocketConnection)(socketReader.connection);
+        
         if (answer) {
-            XmlPullParser xpp = socketReader.reader.getXPPParser();
             // Reset the parser since a new stream header has been sent from the client
-            if (socketReader.connection.getTLSStreamHandler() == null) {
+            if (stdConnect.getTLSStreamHandler() == null) {
                 ZInputStream in = new ZInputStream(
-                        ServerTrafficCounter.wrapInputStream(socket.getInputStream()));
+                        ServerTrafficCounter.wrapInputStream(mRealSocket.getInputStream()));
                 in.setFlushMode(JZlib.Z_PARTIAL_FLUSH);
-                xpp.setInput(new InputStreamReader(in, CHARSET));
+                socketReader.setInput(new InputStreamReader(in, CHARSET));
             }
             else {
                 ZInputStream in = new ZInputStream(
-                        socketReader.connection.getTLSStreamHandler().getInputStream());
+                            stdConnect.getTLSStreamHandler().getInputStream());
                 in.setFlushMode(JZlib.Z_PARTIAL_FLUSH);
-                xpp.setInput(new InputStreamReader(in, CHARSET));
+                socketReader.setInput(new InputStreamReader(in, CHARSET));
             }
         }
         return answer;
     }
 
     protected void compressionSuccessful() throws XmlPullParserException, IOException {
-        XmlPullParser xpp = socketReader.reader.getXPPParser();
         // Skip the opening stream sent by the client
-        for (int eventType = xpp.getEventType(); eventType != XmlPullParser.START_TAG;) {
-            eventType = xpp.next();
-        }
+        socketReader.skipNextStartTag();
         super.compressionSuccessful();
     }
 }

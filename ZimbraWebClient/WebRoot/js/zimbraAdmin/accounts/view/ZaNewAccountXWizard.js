@@ -23,7 +23,7 @@
  * ***** END LICENSE BLOCK *****
  */
 
-function ZaNewAccountXWizard (parent, app) {
+ZaNewAccountXWizard = function(parent, app) {
 	ZaXWizardDialog.call(this, parent, app, null, ZaMsg.NCD_NewAccTitle, "700px", "300px","ZaNewAccountXWizard");
 	this.accountStatusChoices = [
 		{value:ZaAccount.ACCOUNT_STATUS_ACTIVE, label:ZaAccount._ACCOUNT_STATUS[ZaAccount.ACCOUNT_STATUS_ACTIVE]}, 
@@ -157,7 +157,8 @@ function() {
 				this._app.getCurrentController().popupErrorDialog(ZaMsg.ERROR_ACCOUNT_EXISTS);
 			break;
 			case ZmCsfeException.ACCT_INVALID_PASSWORD:
-				this._app.getCurrentController().popupErrorDialog(ZaMsg.ERROR_PASSWORD_INVALID);
+				this._app.getCurrentController().popupErrorDialog(ZaMsg.ERROR_PASSWORD_INVALID, ex);
+				this._app.getAppCtxt().getErrorDialog().showDetail(true);
 			break;
 			default:
 				this._app.getCurrentController()._handleException(ex, "ZaNewAccountXWizard.prototype.finishWizard", null, false);
@@ -234,16 +235,9 @@ function(entry) {
 
 	this._containedObject.id = null;
 	if(ZaSettings.COSES_ENABLED) {
-		var cosList = this._app.getCosList().getArray();
-		for(var ix in cosList) {
-			if(cosList[ix].name == "default") {
-				this._containedObject.attrs[ZaAccount.A_COSId] = cosList[ix].id;
-				this._containedObject.cos = cosList[ix];
-				break;
-			}
-		}
-	
+		this._containedObject.cos = this._app.getCosList().getItemById(this._containedObject.attrs[ZaAccount.A_COSId]);
 		if(!this._containedObject.cos) {
+			var cosList = this._app.getCosList().getArray();
 			this._containedObject.cos = cosList[0];
 			this._containedObject.attrs[ZaAccount.A_COSId] = cosList[0].id;
 		}
@@ -334,14 +328,7 @@ function(value, event, form) {
 	if(!ZaSettings.COSES_ENABLED)
 		return;
 		
-	var cosList = form.getController().getCosList().getArray();
-	var cnt = cosList.length;
-	for(var i = 0; i < cnt; i++) {
-		if(cosList[i].id == value) {
-			form.getInstance().cos = cosList[i];
-			break;
-		}
-	}
+	form.getInstance().cos = form.getController().getCosList().getItemById(value);
 	this.setInstanceValue(value);
 	form.parent._isCosChanged = true ;
 	return value;
@@ -443,7 +430,7 @@ ZaNewAccountXWizard.myXFormModifier = function(xFormObject) {
 						trueValue:"TRUE", falseValue:"FALSE" ,
 						elementChanged: function(elementValue,instanceValue, event) {
 							if(elementValue=="TRUE") {
-								ZaAccount.setDefaultCos(this.getInstance(), this.getForm().parent._app.getCosList().getArray());	
+								ZaAccount.setDefaultCos(this.getInstance(), this.getForm().parent._app.getCosList());	
 							}
 							this.getForm().itemChanged(this, elementValue, event);
 						}
@@ -564,6 +551,12 @@ ZaNewAccountXWizard.myXFormModifier = function(xFormObject) {
 							checkBoxLabel:ZaMsg.NAD_zimbraFeatureMailForwardingEnabled,  
 							trueValue:"TRUE", falseValue:"FALSE"
 						},
+						{ref:ZaAccount.A_zimbraPrefMailLocalDeliveryDisabled, 
+							type:_CHECKBOX_, 
+							msgName:ZaMsg.NAD_zimbraPrefMailLocalDeliveryDisabled,
+							label:ZaMsg.NAD_zimbraPrefMailLocalDeliveryDisabled, 
+							trueValue:"TRUE", falseValue:"FALSE"
+						},
 						{ref:ZaAccount.A_zimbraPrefMailForwardingAddress,width:250,
 							labelCssClass:"xform_label",
 							type:_TEXTFIELD_, msgName:ZaMsg.NAD_zimbraPrefMailForwardingAddress,
@@ -573,9 +566,8 @@ ZaNewAccountXWizard.myXFormModifier = function(xFormObject) {
 							nowrap:false,labelWrap:true, 
 							relevant:"this.getModel().getInstanceValue(this.getInstance(),ZaAccount.A_zimbraFeatureMailForwardingEnabled) == \"TRUE\""
 						},		
-						{type:_SPACER_},
 						{type:_SEPARATOR_,colSpan:2},											
-						{ref:ZaAccount.A_zimbraMailForwardingAddress, type:_REPEAT_, colSpan:2, 
+						{ref:ZaAccount.A_zimbraMailForwardingAddress, type:_REPEAT_, 
 							label:ZaMsg.NAD_EditFwdGroup, labelLocation:_LEFT_,labelCssClass:"xform_label",
 							repeatInstance:emptyAlias, 
 							showAddButton:true, showRemoveButton:true, 
@@ -609,6 +601,12 @@ ZaNewAccountXWizard.myXFormModifier = function(xFormObject) {
 								resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
 								msgName:ZaMsg.NAD_FeatureCalendarEnabled,
 								checkBoxLabel:ZaMsg.NAD_FeatureCalendarEnabled,  
+								trueValue:"TRUE", falseValue:"FALSE"},														
+							{ref:ZaAccount.A_zimbraFeatureTasksEnabled,
+								type:_SUPER_WIZ_CHECKBOX_, 
+								resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+								msgName:ZaMsg.NAD_FeatureTaskEnabled,
+								checkBoxLabel:ZaMsg.NAD_FeatureTaskEnabled,  
 								trueValue:"TRUE", falseValue:"FALSE"},														
 							{ref:ZaAccount.A_zimbraFeatureNotebookEnabled, type:_SUPER_WIZ_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraFeatureNotebookEnabled,checkBoxLabel:ZaMsg.NAD_zimbraFeatureNotebookEnabled,  trueValue:"TRUE", falseValue:"FALSE"}
 						]
@@ -725,12 +723,6 @@ ZaNewAccountXWizard.myXFormModifier = function(xFormObject) {
 						{type:_ZAWIZ_TOP_GROUPER_, id:"account_prefs_mail_receiving",
 							label:ZaMsg.NAD_MailOptionsReceiving,
 							items :[
-								{ref:ZaAccount.A_zimbraPrefMailLocalDeliveryDisabled, 
-									type:_ZA_CHECKBOX_, 
-									msgName:ZaMsg.NAD_zimbraPrefMailLocalDeliveryDisabled,
-									label:ZaMsg.NAD_zimbraPrefMailLocalDeliveryDisabled, 
-									trueValue:"TRUE", falseValue:"FALSE"
-								},
 								{ref:ZaAccount.A_zimbraPrefMailPollingInterval, type:_SUPER_LIFETIME_, 
 									colSizes:["200px","130px","120px","150px"],
 									msgName:ZaMsg.NAD_zimbraPrefMailPollingInterval,
@@ -877,10 +869,10 @@ ZaNewAccountXWizard.myXFormModifier = function(xFormObject) {
 						},					
 						{type:_ZA_PLAIN_GROUPER_, id:"account_prefs_calendar_general",colSizes:["auto"],numCols:1,
 							items :[
+								{ref:ZaAccount.A_zimbraPrefTimeZoneId, type:_SUPERWIZ_SELECT1_, msgName:ZaMsg.NAD_zimbraPrefTimeZoneId,label:ZaMsg.NAD_zimbraPrefTimeZoneId+":", labelLocation:_LEFT_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS},							
 								{ref:ZaAccount.A_zimbraPrefCalendarApptReminderWarningTime, type:_SUPERWIZ_SELECT1_, msgName:ZaMsg.NAD_zimbraPrefCalendarApptReminderWarningTime,label:ZaMsg.NAD_zimbraPrefCalendarApptReminderWarningTime+":", labelLocation:_LEFT_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS},
 								{ref:ZaAccount.A_zimbraPrefCalendarAlwaysShowMiniCal, type:_SUPER_WIZ_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_alwaysShowMiniCal,checkBoxLabel:ZaMsg.NAD_alwaysShowMiniCal, trueValue:"TRUE", falseValue:"FALSE"},
 								{ref:ZaAccount.A_zimbraPrefCalendarUseQuickAdd, type:_SUPER_WIZ_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_useQuickAdd,checkBoxLabel:ZaMsg.NAD_useQuickAdd, trueValue:"TRUE", falseValue:"FALSE"},
-								{ref:ZaAccount.A_zimbraPrefTimeZoneId, type:_SUPERWIZ_SELECT1_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraPrefTimeZoneId,label:ZaMsg.NAD_zimbraPrefTimeZoneId,labelLocation:_LEFT_},
 								{ref:ZaAccount.A_zimbraPrefUseTimeZoneListInCalendar, type:_SUPER_WIZ_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraPrefUseTimeZoneListInCalendar,checkBoxLabel:ZaMsg.NAD_zimbraPrefUseTimeZoneListInCalendar,trueValue:"TRUE", falseValue:"FALSE"}
 							]
 						}							

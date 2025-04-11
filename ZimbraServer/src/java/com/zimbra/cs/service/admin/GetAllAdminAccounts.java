@@ -33,10 +33,11 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.service.account.ToXML;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -51,9 +52,9 @@ public class GetAllAdminAccounts extends AdminDocumentHandler {
 
         List accounts = prov.getAllAdminAccounts();
 
-        Element response = lc.createElement(AdminService.GET_ALL_ADMIN_ACCOUNTS_RESPONSE);
+        Element response = lc.createElement(AdminConstants.GET_ALL_ADMIN_ACCOUNTS_RESPONSE);
         for (Iterator it=accounts.iterator(); it.hasNext(); ) {
-            ToXML.encodeAccount(response, (Account) it.next());
+            ToXML.encodeAccountOld(response, (Account) it.next());
         }
 	    return response;
 	}

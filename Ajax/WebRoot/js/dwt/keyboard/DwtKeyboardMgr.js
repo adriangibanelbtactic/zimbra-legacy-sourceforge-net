@@ -47,7 +47,8 @@
  * @see DwtKeyMap
  * @see DwtKeyMapMgr
  */
-function DwtKeyboardMgr() {
+DwtKeyboardMgr = function(shell) {
+	DwtKeyboardMgr.__shell = shell;
 	this.__tabGrpStack = [];
 	this.__defaultHandlerStack = [];
 	this.__tabGroupChangeListenerObj = new AjxListener(this, this.__tabGrpChangeListener);
@@ -63,6 +64,8 @@ DwtKeyboardMgr.__KEYSEQ_NOT_HANDLED	= 1;
 DwtKeyboardMgr.__KEYSEQ_HANDLED		= 2;
 /**@private*/
 DwtKeyboardMgr.__KEYSEQ_PENDING		= 3;
+
+DwtKeyboardMgr.FOCUS_FIELD_ID = "kbff";
 
 /**
  * @return returns the class name
@@ -305,6 +308,7 @@ function(enabled) {
 	DBG.println(AjxDebug.DBG2, "keyboard nav enabled: " + enabled);
 	this.__enabled = enabled;
 	if (enabled){
+		this.__checkStatus();	// make sure we're initialized
 		Dwt.setHandler(document, DwtEvent.ONKEYDOWN, DwtKeyboardMgr.__keyDownHdlr);
 		Dwt.setHandler(document, DwtEvent.ONKEYUP, DwtKeyboardMgr.__keyUpHdlr);
 		Dwt.setHandler(document, DwtEvent.ONKEYPRESS, DwtKeyboardMgr.__keyPressHdlr);
@@ -330,6 +334,7 @@ function() {
 	/* Create our keyboard focus field. This is a dummy input field that will take text
 	 * input for keyboard shortcuts. */
 	var kbff = this._kbFocusField = document.createElement("input");
+	kbff.id = DwtKeyboardMgr.FOCUS_FIELD_ID;
 	kbff.type = "text";
 	kbff.tabIndex = 0;
 	kbff.style.position = Dwt.ABSOLUTE_STYLE;
@@ -419,7 +424,7 @@ function(focusObj) {
 DwtKeyboardMgr.__onFocusHdlr =
 function(ev) {
 //	DBG.println("kbnav", "DwtKeyboardMgr: ONFOCUS");
-	var kbMgr = DwtShell.getShell(window).getKeyboardMgr();
+	var kbMgr = DwtKeyboardMgr.__shell.getKeyboardMgr();
 	kbMgr.__dwtCtrlHasFocus = true;
 	var focusObj = kbMgr.__focusObj;
 	if (focusObj && focusObj.__doFocus && (typeof focusObj.__doFocus == "function")) {
@@ -434,7 +439,7 @@ function(ev) {
 DwtKeyboardMgr.__onBlurHdlr =
 function(ev) {
 //	DBG.println("kbnav", "DwtKeyboardMgr: ONBLUR");
-	var kbMgr = DwtShell.getShell(window).getKeyboardMgr();
+	var kbMgr = DwtKeyboardMgr.__shell.getKeyboardMgr();
 
 	// Got to play the trick with HTML elements which get focus before blur is
 	// called on the old focus object. (see _grabFocus)
@@ -461,8 +466,9 @@ function(ev) {
  */
 DwtKeyboardMgr.__keyUpHdlr =
 function(ev) {
+	if (DwtKeyboardMgr.__shell._blockInput) { return false; }
 	ev = DwtUiEvent.getEvent(ev, this);
-	var kbMgr = DwtShell.getShell(window).getKeyboardMgr();
+	var kbMgr = DwtKeyboardMgr.__shell.getKeyboardMgr();
 	var kev = DwtShell.keyEvent;
 	kev.setFromDhtmlEvent(ev);
 	
@@ -477,6 +483,7 @@ function(ev) {
  */
 DwtKeyboardMgr.__keyPressHdlr =
 function(ev) {
+	if (DwtKeyboardMgr.__shell._blockInput) { return false; }
 	ev = DwtUiEvent.getEvent(ev, this);
 	return DwtKeyboardMgr.__keyUpHdlr(ev);
 };
@@ -532,7 +539,7 @@ function(kbMgr, obj) {
 	 * control that thinks it has focus. That can happen due to the way focus
 	 * can be set in input fields. */ 
 	if ((obj != kbMgr._kbFocusField) && kbMgr.__dwtCtrlHasFocus) {
-		DBG.println(AjxDebug.DBG1, "FOCUS MISMATCH! focus obj: " + kbMgr.__focusObj);
+		DBG.println(AjxDebug.DBG3, "FOCUS MISMATCH! focus obj: " + kbMgr.__focusObj);
 		DwtKeyboardMgr.__onBlurHdlr();
 	}
 	
@@ -540,7 +547,7 @@ function(kbMgr, obj) {
 	if (!kbMgr.__dwtCtrlHasFocus) {
 		// DwtInputField DwtHtmlEditor
 		if ((obj != kbMgr.__focusObj) && !kbMgr.__dwtInputCtrl) {
-			DBG.println(AjxDebug.DBG1, "Focus out of sync, resetting");
+//			DBG.println(AjxDebug.DBG1, "Focus out of sync, resetting");
 			if (kbMgr.__currTabGroup && kbMgr.__currTabGroup.setFocusMember(obj)) {
 				kbMgr.__focusObj = obj;
 				kbMgr.__oldFocusObj = null;
@@ -557,16 +564,16 @@ function(kbMgr, obj) {
  */
 DwtKeyboardMgr.__keyDownHdlr =
 function(ev) {
+	if (DwtKeyboardMgr.__shell._blockInput) { return false; }
 	ev = DwtUiEvent.getEvent(ev, this);
-	var shell = DwtShell.getShell(window);
-	var kbMgr = shell.getKeyboardMgr();
+	var kbMgr = DwtKeyboardMgr.__shell.getKeyboardMgr();
 	var kev = DwtShell.keyEvent;
 	kev.setFromDhtmlEvent(ev);
 	var keyCode = kev.keyCode;
 //	DBG.println("kbnav", "kbNav: key down: " + keyCode);
 
 	// Popdown any tooltip
-	shell.getToolTip().popdown();
+	DwtKeyboardMgr.__shell.getToolTip().popdown();
 	
 	// Sync up focus if needed
 	var focusInTGMember = DwtKeyboardMgr.__syncFocus(kbMgr, kev.target);

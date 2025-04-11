@@ -37,6 +37,8 @@ import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.mailbox.ACL;
@@ -58,7 +60,7 @@ import com.zimbra.cs.mailbox.calendar.ZAttendee;
 import com.zimbra.cs.mailbox.calendar.CalendarMailSender.Verb;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -68,7 +70,7 @@ public class SendInviteReply extends CalendarRequest {
 
     private static Log sLog = LogFactory.getLog(SendInviteReply.class);
     
-    private static final String[] TARGET_PATH = new String[] { MailService.A_ID };
+    private static final String[] TARGET_PATH = new String[] { MailConstants.A_ID };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return false; }
 
@@ -82,16 +84,16 @@ public class SendInviteReply extends CalendarRequest {
 
         boolean onBehalfOf = zsc.isDelegatedRequest();
 
-        ItemId iid = new ItemId(request.getAttribute(MailService.A_ID), zsc);
-        int compNum = (int) request.getAttributeLong(MailService.A_CAL_COMPONENT_NUM);
+        ItemId iid = new ItemId(request.getAttribute(MailConstants.A_ID), zsc);
+        int compNum = (int) request.getAttributeLong(MailConstants.A_CAL_COMPONENT_NUM);
         
-        String verbStr = request.getAttribute(MailService.A_VERB);
+        String verbStr = request.getAttribute(MailConstants.A_VERB);
         Verb verb = CalendarMailSender.parseVerb(verbStr);
         
-        boolean updateOrg = request.getAttributeBool(MailService.A_CAL_UPDATE_ORGANIZER, true);
+        boolean updateOrg = request.getAttributeBool(MailConstants.A_CAL_UPDATE_ORGANIZER, true);
         
         if (sLog.isInfoEnabled()) {
-            sLog.info("<SendInviteReply id=" + zsc.formatItemId(iid) + " verb=" + verb + " updateOrg=" + updateOrg + "> " + zsc.toString());
+            sLog.info("<SendInviteReply id=" + new ItemIdFormatter(zsc).formatItemId(iid) + " verb=" + verb + " updateOrg=" + updateOrg + "> " + zsc.toString());
         }
         
         Element response = getResponseElement(zsc);
@@ -134,11 +136,11 @@ public class SendInviteReply extends CalendarRequest {
             
             
             // see if there is a specific Exception being referenced by this reply...
-            Element exc = request.getOptionalElement(MailService.E_CAL_EXCEPTION_ID);
+            Element exc = request.getOptionalElement(MailConstants.E_CAL_EXCEPTION_ID);
             ParsedDateTime exceptDt = null;
             if (exc != null) {
                 TimeZoneMap tzmap = oldInv.getTimeZoneMap();
-                Element tzElem = request.getOptionalElement(MailService.E_CAL_TZ);
+                Element tzElem = request.getOptionalElement(MailConstants.E_CAL_TZ);
                 ICalTimeZone tz = null;
                 if (tzElem != null) {
                     tz = CalendarUtils.parseTzElement(tzElem);
@@ -169,7 +171,7 @@ public class SendInviteReply extends CalendarRequest {
                 ParseMimeMessage.MimeMessageData parsedMessageData = new ParseMimeMessage.MimeMessageData();
                 
                 // did they specify a custom <m> message?  If so, then we don't have to build one...
-                Element msgElem = request.getOptionalElement(MailService.E_MSG);
+                Element msgElem = request.getOptionalElement(MailConstants.E_MSG);
                 if (msgElem != null) {
                     String text = ParseMimeMessage.getTextPlainContent(msgElem);
                     iCal.addDescription(text);

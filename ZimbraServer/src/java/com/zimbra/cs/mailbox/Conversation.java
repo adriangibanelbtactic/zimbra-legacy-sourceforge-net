@@ -31,12 +31,14 @@ package com.zimbra.cs.mailbox;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
+import com.zimbra.cs.account.Account;
 import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.db.DbMailItem.LocationCount;
 import com.zimbra.cs.mime.ParsedMessage;
@@ -154,7 +156,6 @@ public class Conversation extends MailItem {
         mData.inheritedTags = null;
     }
 
-
     /** Returns the normalized subject of the conversation.  This is done by
      *  taking the <tt>Subject:</tt> header of the first message and removing
      *  prefixes (e.g. <tt>"Re:"</tt>) and suffixes (e.g. <tt>"(fwd)"</tt>)
@@ -171,6 +172,11 @@ public class Conversation extends MailItem {
     @Override
     public String getSubject() {
         return (mRawSubject == null ? "" : mRawSubject);
+    }
+
+    @Override
+    public String getSender() {
+        return "";
     }
 
     /** Returns the number of messages in the conversation, as calculated from
@@ -232,10 +238,12 @@ public class Conversation extends MailItem {
         return true;
     }
 
+    private static final int RECALCULATE_CHANGE_MASK = Change.MODIFIED_TAGS | Change.MODIFIED_FLAGS | Change.MODIFIED_UNREAD |
+                                                       Change.MODIFIED_SIZE | Change.MODIFIED_SENDERS;
+
     SenderList recalculateMetadata(List<Message> msgs) throws ServiceException {
         Collections.sort(msgs, new Message.SortDateAscending());
         String oldSubject = mRawSubject;
-        long oldSize = mData.size;
 
         mEncodedSenders = null;
         mSenderList = new SenderList(msgs);
@@ -244,7 +252,7 @@ public class Conversation extends MailItem {
         mData.size = msgs.size();
         mData.unreadCount = 0;
 
-        markItemModified(mData.size != oldSize ? Change.MODIFIED_SIZE : Change.INTERNAL_ONLY);
+        markItemModified(RECALCULATE_CHANGE_MASK);
         if (!mRawSubject.equals(oldSubject))
         	markItemModified(Change.MODIFIED_SUBJECT);
 
@@ -286,22 +294,22 @@ public class Conversation extends MailItem {
      *              <code>SORT_XXX</code> constants from {@link DbMailItem}. */
     List<Message> getMessages(byte sort) throws ServiceException {
         List<Message> msgs = new ArrayList<Message>(getMessageCount());
-        if (mData.children != null && (sort & DbMailItem.SORT_FIELD_MASK) == DbMailItem.SORT_BY_ID) {
+        Comparator<MailItem> cmp = getComparator(sort); 
+        if (mData.children != null && (cmp != null || (sort & DbMailItem.SORT_FIELD_MASK) == DbMailItem.SORT_NONE)) {
             // try to get all our info from the cache to avoid a database trip
-            Collections.sort(mData.children);
-            if ((sort & DbMailItem.SORT_DIRECTION_MASK) == DbMailItem.SORT_DESCENDING)
-                Collections.reverse(mData.children);
-            int found = 0;
             for (int childId : mData.children) {
                 Message msg = mMailbox.getCachedMessage(childId);
                 if (msg == null)
                     break;
                 msgs.add(msg);
-                found++;
             }
 
-            if (found == mData.children.size())
+            if (msgs.size() == mData.children.size()) {
+                if (cmp != null)
+                    Collections.sort(msgs, cmp);
                 return msgs;
+            }
+            // cache miss, so start over and fall through...
             msgs.clear();
         }
 
@@ -309,6 +317,16 @@ public class Conversation extends MailItem {
         for (UnderlyingData data : listData)
             msgs.add(mMailbox.getMessage(data));
         return msgs;
+    }
+
+    @Override
+    boolean canAccess(short rightsNeeded) {
+        return true;
+    }
+
+    @Override
+    boolean canAccess(short rightsNeeded, Account authuser, boolean asAdmin) {
+        return true;
     }
 
 
@@ -402,24 +420,35 @@ public class Conversation extends MailItem {
     void alterUnread(boolean unread) throws ServiceException {
         markItemModified(Change.MODIFIED_UNREAD);
 
+        boolean excludeAccess = false;
+
         // Decrement the in-memory unread count of each message.  Each message will
         // then implicitly decrement the unread count for its conversation, folder
         // and tags.
         TargetConstraint tcon = mMailbox.getOperationTargetConstraint();
         List<Integer> targets = new ArrayList<Integer>();
         for (Message msg : getMessages(DbMailItem.DEFAULT_SORT_ORDER)) {
-            if (msg.isUnread() != unread && msg.checkChangeID() &&
-                    TargetConstraint.checkItem(tcon, msg) &&
-                    msg.canAccess(ACL.RIGHT_WRITE)) {
-                msg.updateUnread(unread ? 1 : -1);
-                msg.mData.metadataChanged(mMailbox);
-                targets.add(msg.getId());
+            // skip messages that don't need to be changed, or that the client can't modify, doesn't know about, or has explicitly excluded
+            if (msg.isUnread() == unread ) {
+                continue;
+            } else if (!msg.canAccess(ACL.RIGHT_WRITE)) {
+                excludeAccess = true;  continue;
+            } else if (!msg.checkChangeID() || !TargetConstraint.checkItem(tcon, msg)) {
+                continue;
             }
+
+            msg.updateUnread(unread ? 1 : -1);
+            msg.mData.metadataChanged(mMailbox);
+            targets.add(msg.getId());
         }
 
         // mark the selected messages in this conversation as read in the database
-        if (!targets.isEmpty())
+        if (targets.isEmpty()) {
+            if (excludeAccess)
+                throw ServiceException.PERM_DENIED("you do not have sufficient permissions");
+        } else {
             DbMailItem.alterUnread(mMailbox, targets, unread);
+        }
     }
 
     /** Tags or untags all messages in the conversation.  Persists the change
@@ -451,27 +480,38 @@ public class Conversation extends MailItem {
         
         markItemModified(tag instanceof Flag ? Change.MODIFIED_FLAGS : Change.MODIFIED_TAGS);
 
+        boolean excludeAccess = false;
+
         TargetConstraint tcon = mMailbox.getOperationTargetConstraint();
         List<Integer> targets = new ArrayList<Integer>();
         for (Message msg : getMessages(SORT_ID_ASCENDING)) {
-            if (msg.isTagged(tag) != add && msg.checkChangeID() &&
-                    TargetConstraint.checkItem(tcon, msg) &&
-                    msg.canAccess(ACL.RIGHT_WRITE)) {
-                // don't let the user tag things as "has attachments" or "draft"
-                if (tag instanceof Flag && (tag.getBitmask() & Flag.FLAG_SYSTEM) != 0)
-                    throw MailServiceException.CANNOT_TAG(tag, msg);
-                // since we're adding/removing a tag, the tag's unread count may change
-            	if (tag.trackUnread() && msg.isUnread())
-                    tag.updateUnread(add ? 1 : -1);
-
-                targets.add(msg.getId());
-                msg.tagChanged(tag, add);
-                mInheritedTagSet.update(tag, add);
+            // skip messages that don't need to be changed, or that the client can't modify, doesn't know about, or has explicitly excluded
+            if (msg.isTagged(tag) == add) {
+                continue;
+            } else if (!msg.canAccess(ACL.RIGHT_WRITE)) {
+                excludeAccess = true;  continue;
+            } else if (!msg.checkChangeID() || !TargetConstraint.checkItem(tcon, msg)) {
+                continue;
             }
+
+            // don't let the user tag things as "has attachments" or "draft"
+            if (tag instanceof Flag && (tag.getBitmask() & Flag.FLAG_SYSTEM) != 0)
+                throw MailServiceException.CANNOT_TAG(tag, msg);
+            // since we're adding/removing a tag, the tag's unread count may change
+        	if (tag.trackUnread() && msg.isUnread())
+                tag.updateUnread(add ? 1 : -1);
+
+            targets.add(msg.getId());
+            msg.tagChanged(tag, add);
+            mInheritedTagSet.update(tag, add);
         }
 
-        if (!targets.isEmpty())
+        if (targets.isEmpty()) {
+            if (excludeAccess)
+                throw ServiceException.PERM_DENIED("you do not have sufficient permissions");
+        } else {
             DbMailItem.alterTag(tag, targets, add);
+        }
     }
 
     @Override
@@ -520,15 +560,23 @@ public class Conversation extends MailItem {
         // if mData.unread is wrong, what to do?  right now, always use the calculated value
         mData.unreadCount = oldUnread;
 
-        List<Integer> markedRead = new ArrayList<Integer>(), moved = new ArrayList<Integer>();
+        boolean excludeAccess = false;
+
+        List<Integer> markedRead = new ArrayList<Integer>();
+        List<Message> moved = new ArrayList<Message>();
         for (Message msg : msgs) {
             Folder source = msg.getFolder();
 
-            // skip messages that the client doesn't know about, can't modify, or has explicitly excluded
-            if (!msg.checkChangeID() || !TargetConstraint.checkItem(tcon, msg))
+            // skip messages that don't need to be moved, or that the client can't modify, doesn't know about, or has explicitly excluded
+            if (source.getId() == target.getId()) {
                 continue;
-            if (!source.canAccess(ACL.RIGHT_DELETE) || !target.canAccess(ACL.RIGHT_INSERT))
+            } else if (!source.canAccess(ACL.RIGHT_DELETE)) {
+                excludeAccess = true;  continue;
+            } else if (target.getId() != Mailbox.ID_FOLDER_TRASH && target.getId() != Mailbox.ID_FOLDER_SPAM && !target.canAccess(ACL.RIGHT_INSERT)) {
+                excludeAccess = true;  continue;
+            } else if (!msg.checkChangeID() || !TargetConstraint.checkItem(tcon, msg)) {
                 continue;
+            }
 
             if (msg.isUnread()) {
                 if (!toTrash || msg.inTrash()) {
@@ -544,23 +592,26 @@ public class Conversation extends MailItem {
             }
 
             // handle folder message counts
-            source.updateSize(-1);
-            target.updateSize(1);
+            source.updateSize(-1, -msg.getSize());
+            target.updateSize(1, msg.getSize());
 
-            moved.add(msg.getId());
+            moved.add(msg);
             msg.folderChanged(target, 0);
         }
+
         // mark unread messages moved from Mailbox to Trash/Spam as read in the DB
         if (!markedRead.isEmpty())
             DbMailItem.alterUnread(target.getMailbox(), markedRead, false);
 
-        // moving a conversation to spam closes it
-        //   XXX: what if only certain messages got moved?
-        if (target.inSpam())
-            detach();
-
-        if (!moved.isEmpty())
+        if (moved.isEmpty()) {
+            if (excludeAccess)
+                throw ServiceException.PERM_DENIED("you do not have sufficient permissions");
+        } else {
+            // moving a conversation to spam closes it
+            if (target.inSpam())
+                detach();
             DbMailItem.setFolder(moved, target);
+        }
     }
 
     /** please call this *after* adding the child row to the DB */
@@ -754,7 +805,7 @@ public class Conversation extends MailItem {
                 throw MailServiceException.MODIFY_CONFLICT();
         }
         if (totalDeleted != msgs.size() + 1)
-            info.incomplete = MailItem.DELETE_CONTENTS;
+            info.incomplete = true;
         return info;
     }
 

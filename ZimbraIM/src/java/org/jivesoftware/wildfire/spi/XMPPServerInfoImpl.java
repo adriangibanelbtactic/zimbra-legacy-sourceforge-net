@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 1583 $
+ * $Date: 2005-07-03 17:55:39 -0300 (Sun, 03 Jul 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.spi;
 
 import org.jivesoftware.util.Version;
@@ -29,6 +16,8 @@ import org.jivesoftware.wildfire.XMPPServerInfo;
 import org.jivesoftware.wildfire.ConnectionManager;
 import org.jivesoftware.util.JiveGlobals;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.Collections;
@@ -43,7 +32,7 @@ public class XMPPServerInfoImpl implements XMPPServerInfo {
 
     private Date startDate;
     private Date stopDate;
-    private String name;
+    private Collection<String> names;
     private Version ver;
     private ConnectionManager connectionManager;
 
@@ -58,10 +47,10 @@ public class XMPPServerInfoImpl implements XMPPServerInfo {
      *      is running or hasn't been started).
      * @param connectionManager the object that keeps track of the active ports.
      */
-    public XMPPServerInfoImpl(String serverName, Version version, Date startDate, Date stopDate,
+    public XMPPServerInfoImpl(Collection<String> serverNames, Version version, Date startDate, Date stopDate,
             ConnectionManager connectionManager)
     {
-        this.name = serverName;
+        this.names = serverNames;
         this.ver = version;
         this.startDate = startDate;
         this.stopDate = stopDate;
@@ -72,17 +61,67 @@ public class XMPPServerInfoImpl implements XMPPServerInfo {
         return ver;
     }
 
-    public String getName() {
-        return name;
+    public Collection<String> getNames() {
+        return Collections.unmodifiableCollection(names);
+    }
+    
+    public String getDefaultName() {
+        if (names.size() > 0)
+            return names.iterator().next();
+        else
+            return null;
+    }
+    
+    private String packNamesStr() {
+        StringBuilder sb = new StringBuilder();
+        boolean atStart = true;
+        for (String s : names) {
+            if (atStart) 
+                sb.append(',');
+            else
+                atStart = false;
+            sb.append(s);
+        }
+        return sb.toString();
+    }
+    
+    static Collection<String> unpackNamesStr(String s) {
+        Collection<String> toRet = new ArrayList<String>();
+        s = s.trim();
+        while (s.length() > 0) {
+            int off = s.indexOf(',');
+            if (off > 0) {
+                toRet.add(s.substring(0, off));
+                s = s.substring(off+1);
+            } else {
+                toRet.add(s);
+                s = "";
+            }
+        }
+        return toRet;
     }
 
-    public void setName(String serverName) {
-        name = serverName;
-        if (serverName == null) {
-            JiveGlobals.deleteProperty("xmpp.domain");
+    public void addName(String serverName) {
+        if (!names.contains(serverName)) {
+            names.add(serverName);
+            if (serverName == null) {
+                JiveGlobals.deleteProperty("xmpp.domain");
+            }
+            else {
+                JiveGlobals.setProperty("xmpp.domain", packNamesStr());
+            }
         }
-        else {
-            JiveGlobals.setProperty("xmpp.domain", serverName);
+    }
+    
+    public void removeName(String serverName) {
+        if (names.contains(serverName)) {
+            names.remove(serverName);
+            if (serverName == null) {
+                JiveGlobals.deleteProperty("xmpp.domain");
+            }
+            else {
+                JiveGlobals.setProperty("xmpp.domain", packNamesStr());
+            }
         }
     }
 

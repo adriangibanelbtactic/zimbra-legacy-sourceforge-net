@@ -33,9 +33,8 @@ import java.util.Collections;
 import java.util.List;
 
 import com.zimbra.cs.db.DbMailItem;
-import com.zimbra.cs.session.PendingModifications.Change;
+import com.zimbra.cs.filter.RuleManager;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.ZimbraLog;
 
 /**
@@ -47,6 +46,11 @@ public class Tag extends MailItem {
         super(mbox, ud);
         if (mData.type != TYPE_TAG && mData.type != TYPE_FLAG)
             throw new IllegalArgumentException();
+    }
+
+    @Override
+    public String getSender() {
+        return "";
     }
 
     public byte getIndex() {
@@ -98,17 +102,18 @@ public class Tag extends MailItem {
         return bitmask;
     }
 
-    static String bitmaskToTags(long bitmask) {
+    public static String bitmaskToTags(long bitmask) {
         if (bitmask == 0)
             return "";
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; bitmask != 0 && i < MAX_TAG_COUNT - 1; i++)
+        for (int i = 0; bitmask != 0 && i < MAX_TAG_COUNT - 1; i++) {
             if ((bitmask & (1L << i)) != 0) {
                 if (sb.length() > 0)
                     sb.append(',');
                 sb.append(i + TAG_ID_OFFSET);
                 bitmask &= ~(1L << i);
             }
+        }
         return sb.toString();
     }
 
@@ -116,11 +121,12 @@ public class Tag extends MailItem {
         if (bitmask == 0)
             return Collections.emptyList();
         ArrayList<Tag> tags = new ArrayList<Tag>();
-        for (int i = 0; bitmask != 0 && i < MAX_TAG_COUNT - 1; i++)
+        for (int i = 0; bitmask != 0 && i < MAX_TAG_COUNT - 1; i++) {
             if ((bitmask & (1L << i)) != 0) {
                 tags.add(mbox.getTagById(i + TAG_ID_OFFSET));
                 bitmask &= ~(1L << i);
             }
+        }
         return tags;
     }
 
@@ -140,7 +146,7 @@ public class Tag extends MailItem {
         Folder tagFolder = mbox.getFolderById(Mailbox.ID_FOLDER_TAGS);
         if (!tagFolder.canAccess(ACL.RIGHT_INSERT))
             throw ServiceException.PERM_DENIED("you do not have the necessary permissions");
-        name = validateTagName(name);
+        name = validateItemName(name);
         try {
             // if we can successfully get a tag with that name, we've got a naming conflict
             mbox.getTagByName(name);
@@ -161,40 +167,6 @@ public class Tag extends MailItem {
         Tag tag = new Tag(mbox, data);
         tag.finishCreation(null);
         return tag;
-    }
-    
-    void rename(String name) throws ServiceException {
-        if (!isMutable())
-            throw MailServiceException.IMMUTABLE_OBJECT(mId);
-        if (!canAccess(ACL.RIGHT_WRITE))
-            throw ServiceException.PERM_DENIED("you do not have the necessary permissions on the tag");
-        name = validateTagName(name);
-        if (name.equals(mData.name))
-            return;
-        try {
-            // if there's already a different tag with that name, we've got a naming conflict
-            if (mMailbox.getTagByName(name) != this)
-                throw MailServiceException.ALREADY_EXISTS(name);
-        } catch (MailServiceException.NoSuchItemException nsie) {}
-
-        markItemModified(Change.MODIFIED_NAME);
-        mData.name = name;
-        mData.date = mMailbox.getOperationTimestamp();
-        saveName();
-    }
-
-    private static final String INVALID_PREFIX     = "\\";
-    private static final String INVALID_CHARACTERS = ".*[:/\"\t\r\n].*";
-    private static final int    MAX_TAG_LENGTH     = 128;
-
-    private static String validateTagName(String name) throws ServiceException {
-        if (name == null || name != StringUtil.stripControlCharacters(name))
-            throw MailServiceException.INVALID_NAME(name);
-        name = name.trim();
-        if (name.equals("") || name.length() > MAX_TAG_LENGTH || name.startsWith(INVALID_PREFIX) ||
-                name.matches(INVALID_CHARACTERS))
-            throw MailServiceException.INVALID_NAME(name);
-        return name;
     }
 
     /** Updates the unread state of all items with the tag.  Persists the
@@ -235,6 +207,31 @@ public class Tag extends MailItem {
             DbMailItem.alterUnread(mMailbox, targets, unread);
     }
 
+    private static final String INVALID_PREFIX = "\\";
+
+    static String validateItemName(String name) throws ServiceException {
+        name = MailItem.validateItemName(name == null ? null : name.trim());
+        if (name.startsWith(INVALID_PREFIX))
+            throw MailServiceException.INVALID_NAME(name);
+        return name;
+    }
+
+    /** Overrides {@link MailItem#rename(String, Folder) to update filter rules
+     *  if necessary. */
+    @Override
+    void rename(String name, Folder target) throws ServiceException {
+        String originalName = getName();
+        super.rename(name, target);
+
+        if (!originalName.equals(name)) {
+            for (Folder folder : mMailbox.listAllFolders()) {
+                if (folder.getSize() > 0)
+                    folder.updateHighestMODSEQ();
+            }
+            RuleManager.getInstance().tagRenamed(getAccount(), originalName, name);
+        }
+    }
+
     @Override
     void purgeCache(PendingDelete info, boolean purgeItem) throws ServiceException {
         // remove the tag from all items in the database
@@ -268,7 +265,6 @@ public class Tag extends MailItem {
     static Metadata encodeMetadata(Metadata meta, byte color) {
         return MailItem.encodeMetadata(meta, color);
     }
-
 
     @Override
     public String toString() {

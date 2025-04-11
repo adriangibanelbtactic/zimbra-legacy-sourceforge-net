@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: OfflineMessageStrategy.java,v $
+ * $Revision: 3114 $
+ * $Date: 2005-11-23 18:12:54 -0300 (Wed, 23 Nov 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
 import org.jivesoftware.util.JiveGlobals;
@@ -45,7 +32,6 @@ public class OfflineMessageStrategy extends BasicModule {
     private static Type type = Type.store_and_bounce;
 
     private OfflineMessageStore messageStore;
-    private JID serverAddress;
     private PacketRouter router;
 
     public OfflineMessageStrategy() {
@@ -77,9 +63,10 @@ public class OfflineMessageStrategy extends BasicModule {
         if (message != null) {
             // Do nothing if the message was sent to the server itself or to an anonymous user
             JID recipientJID = message.getTo();
-            if (recipientJID == null || serverAddress.equals(recipientJID) ||
-                    recipientJID.getNode() == null ||
-                    !UserManager.getInstance().isRegisteredUser(recipientJID.getNode())) {
+            if (recipientJID == null
+                        || XMPPServer.getInstance().getServerNames().contains(recipientJID) 
+                        || recipientJID.toBareJID() == null 
+                        || !UserManager.getInstance().isRegisteredUser(recipientJID.toBareJID())) {
                 return;
             }
             // Do not store messages of type groupchat, error or headline as specified in JEP-160
@@ -90,7 +77,7 @@ public class OfflineMessageStrategy extends BasicModule {
             }
             // Do not store messages if communication is blocked
             PrivacyList list =
-                    PrivacyListManager.getInstance().getDefaultPrivacyList(recipientJID.getNode());
+                    PrivacyListManager.getInstance().getDefaultPrivacyList(recipientJID.toBareJID());
             if (list != null && list.shouldBlockPacket(message)) {
                 return;
             }
@@ -118,7 +105,7 @@ public class OfflineMessageStrategy extends BasicModule {
     }
 
     private boolean underQuota(Message message) {
-        return quota > messageStore.getSize(message.getTo().getNode()) + message.toXML().length();
+        return quota > messageStore.getSize(message.getTo().toBareJID()) + message.toXML().length();
     }
 
     private void store(Message message) {
@@ -149,7 +136,6 @@ public class OfflineMessageStrategy extends BasicModule {
         super.initialize(server);
         messageStore = server.getOfflineMessageStore();
         router = server.getPacketRouter();
-        serverAddress = new JID(server.getServerInfo().getName());
 
         String quota = JiveGlobals.getProperty("xmpp.offline.quota");
         if (quota != null && quota.length() > 0) {

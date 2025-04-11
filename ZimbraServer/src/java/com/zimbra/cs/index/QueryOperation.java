@@ -29,9 +29,6 @@
 package com.zimbra.cs.index;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.index.MailboxIndex.SortBy;
@@ -57,51 +54,30 @@ import com.zimbra.cs.mailbox.Mailbox;
 
 abstract class QueryOperation implements Cloneable, ZimbraQueryResults
 {
-    // order does matter somewhat -- order is used to sort execution order when
-    // there are multiple operations to choose from (e.g. an OR of two operations, etc)
-    public static final int OP_TYPE_REMOTE      = 1;
-    public static final int OP_TYPE_NULL        = 2; // no results at all
-    public static final int OP_TYPE_LUCENE      = 3;
-    public static final int OP_TYPE_DB          = 4;
-    public static final int OP_TYPE_SUBTRACT    = 5;
-    public static final int OP_TYPE_INTERSECT   = 6; // AND
-    public static final int OP_TYPE_UNION       = 7; // OR
-    public static final int OP_TYPE_NO_TERM     = 8; // pseudo-op, always optimized away
-
-    private static final int MIN_CHUNK_SIZE = 26;
-    private static final int MAX_CHUNK_SIZE = 5000;
+    static final int MIN_CHUNK_SIZE = 26;
+    static final int MAX_CHUNK_SIZE = 5000;
     
-    private static final boolean USE_PRELOADING_GROUPER = true;
-
-    abstract int getOpType(); 
-
-    /**
-     * @author tim
-     *
-     */
-//    protected static class QueryOpSortComparator implements Comparator {
-//        public int compare(Object o1, Object o2) {
-//            QueryOperation lhs = (QueryOperation)o1;
-//            QueryOperation rhs = (QueryOperation)o2;
-//
-//            return lhs.getOpType() - rhs.getOpType();
-//        }
-//        public boolean equals(Object obj) {
-//            if (obj instanceof QueryOpSortComparator) return true;
-//            return false;
-//        }
-//    }
+    static final boolean USE_PRELOADING_GROUPER = true;
 
     /**
      * @return A representation of this operation as a parsable query string
      */
     abstract String toQueryString(); 
 
-//    final static QueryOpSortComparator sQueryOpSortComparator = new QueryOpSortComparator();
-//  private SortBy mSortOrder = null;
-
     protected SearchParams mParams;
     public SortBy getSortBy() { return mParams.getSortBy(); }
+    
+    // based on data from our internal mail server:
+    //
+    // HOWTO Calculate avg msgs/conv from SQL:
+    //
+    // TOT_MSGS = select count(*) from mail_item mi where mi.type=5 and mi.mailbox_id=?;
+    // TOT_CONVS = select count(*) from mail_item mi where mi.type=4 and mi.mailbox_id=?;
+    // TOT_VIRTUAL_CONVS = select count(*) from mail_item mi where mi.type=5 and mi.parent_id is NULL and mi.mailbox_id=?;
+    //
+    // MSGS_PER_CONV = TOT_MSGS / (TOT_CONVS + TOT_VIRT_CONVS);
+    //
+    private static final float MESSAGES_PER_CONV_ESTIMATE = 2.25f;
 
     ////////////////////
     // Top-Level Execution  
@@ -142,11 +118,11 @@ abstract class QueryOperation implements Cloneable, ZimbraQueryResults
                 if (mParams.getPrefetch() && USE_PRELOADING_GROUPER) {
                     chunkSize+= 2; // one for the ConvQueryResults, one for the Grouper  
                     setupResults(mbox, new ConvQueryResults(new ItemPreloadingGrouper(this, chunkSize, mbox), types, mParams.getSortBy(), mParams.getMode()));
-                    chunkSize*=2; // guess 2 msgs per conv
+                    chunkSize*=MESSAGES_PER_CONV_ESTIMATE; // guess 2 msgs per conv
                 } else {
                     chunkSize++; // one for the ConvQueryResults
                     setupResults(mbox, new ConvQueryResults(this, types, mParams.getSortBy(), mParams.getMode()));
-                    chunkSize*=2;
+                    chunkSize*=MESSAGES_PER_CONV_ESTIMATE;
                 }
                 preloadOuterResults = true;
                 break;
@@ -178,7 +154,7 @@ abstract class QueryOperation implements Cloneable, ZimbraQueryResults
         }
     }
 
-
+    
     /******************
      * 
      * Hits iteration
@@ -229,7 +205,6 @@ abstract class QueryOperation implements Cloneable, ZimbraQueryResults
      * Internals
      *
      *******************/
-
 
     abstract QueryTargetSet getQueryTargets();
 

@@ -32,7 +32,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
-import java.util.concurrent.locks.ReentrantLock;
 
 import javax.mail.internet.MimeMessage;
 
@@ -46,9 +45,12 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermEnum;
+import org.apache.lucene.index.IndexReader.FieldOption;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.Spans;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.SingleInstanceLockFactory;
 
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.db.DbMailItem;
@@ -56,7 +58,10 @@ import com.zimbra.cs.db.DbPool;
 import com.zimbra.cs.db.DbSearchConstraints;
 import com.zimbra.cs.db.DbPool.Connection;
 import com.zimbra.common.localconfig.LC;
+import com.zimbra.cs.im.interop.Interop.ServiceName;
+import com.zimbra.cs.index.queryparser.ParseException;
 import com.zimbra.cs.localconfig.DebugConfig;
+import com.zimbra.cs.mailbox.CalendarItem;
 import com.zimbra.cs.mailbox.Contact;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.MailServiceException;
@@ -64,31 +69,69 @@ import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
 import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mailbox.Note;
+import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mime.Mime;
 import com.zimbra.cs.mime.ParsedDocument;
 import com.zimbra.cs.mime.ParsedMessage;
 import com.zimbra.cs.redolog.op.IndexItem;
-import com.zimbra.cs.stats.ZimbraPerf;
+import com.zimbra.cs.service.im.IMGatewayRegister;
 import com.zimbra.cs.store.Volume;
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.SoapProtocol;
 import com.zimbra.cs.util.JMSession;
-import com.zimbra.cs.util.Zimbra;
 
 /**
- * @author tim
- *
  * Encapsulates the Index for one particular mailbox
  */
 public final class MailboxIndex 
 {
+    public static ZimbraQueryResults search(SoapProtocol proto, OperationContext octxt, Mailbox mbox, SearchParams params,
+        boolean includeTrashByDefault, boolean includeSpamByDefault) throws IOException, ParseException, ServiceException {
+        
+        String qs = params.getQueryStr();
+        if (qs.startsWith("$im")) {
+            String[] words = qs.split(" ");
+            if ("$im_reg".equals(words[0])) {
+                if (words.length < 4)
+                    throw ServiceException.FAILURE("USAGE: \"$im_reg service service_login_name service_login_password\"", null);
+                ServiceName service = ServiceName.valueOf(words[1]);
+                IMGatewayRegister.register(mbox, octxt,  service, words[2], words[3]);
+            } else if ("$im_unreg".equals(words[0])) {
+                if (words.length < 2)
+                    throw ServiceException.FAILURE("USAGE: \"$im_unreg service service_login_name service_login_password\"", null);
+                ServiceName service = ServiceName.valueOf(words[1]);
+                IMGatewayRegister.unregister(mbox, octxt,  service);
+            } else {
+                throw ServiceException.FAILURE("Usage: \"$im_reg service name password\" or \"$im_unreg service\"", null); 
+            }
+                
+            return new EmptyQueryResults(params.getTypes(), params.getSortBy(), params.getMode());
+        }
+        
+        ZimbraQuery zq = new ZimbraQuery(mbox, params, includeTrashByDefault, includeSpamByDefault);
+        try {
+            zq.executeRemoteOps(proto, octxt);
+            ZimbraQueryResults results = zq.execute(); 
+            return results;
+        } catch (IOException e) {
+            zq.doneWithQuery();
+            throw e;
+        } catch (ServiceException e) {
+            zq.doneWithQuery();
+            throw e;
+        } catch (Throwable t) {
+            zq.doneWithQuery();
+            throw ServiceException.FAILURE("Caught "+t.getMessage(), t);
+        }
+    }
+    
     private static class TermEnumCallback implements TermEnumInterface {
         private Collection mCollection;
 
         TermEnumCallback(Collection collection) {
             mCollection = collection;
         }
-        public void onTerm(Term term, int docFreq) 
-        {
+        public void onTerm(Term term, int docFreq) {
             String text = term.text();
             if (text.length() > 1) {
                 mCollection.add(text);
@@ -196,7 +239,7 @@ public final class MailboxIndex
         token = token.toLowerCase();
 
         try {
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 IndexReader iReader = reader.getReader();
 
@@ -207,11 +250,9 @@ public final class MailboxIndex
                 if (freq == 0 && numDocs > 0) {
                     toRet = new LinkedList<SpellSuggestQueryInfo.Suggestion>();
 
-                    float frequency = ((float)freq)/((float)numDocs);
-
-//                    System.out.println("Term: "+token+" appears in "+frequency*100+"% of documents");
-
-                    int suggestionDistance = Integer.MAX_VALUE;
+//                    float frequency = ((float)freq)/((float)numDocs);
+//
+//                    int suggestionDistance = Integer.MAX_VALUE;
 
                     FuzzyTermEnum fuzzyEnum = new FuzzyTermEnum(iReader, term, 0.5f, 1);
                     if (fuzzyEnum != null) {
@@ -220,7 +261,6 @@ public final class MailboxIndex
                             if (cur != null) {
                                 String curText = cur.text();
                                 int curDiff = editDistance(curText, token, curText.length(), token.length());
-//                                System.out.println("\tSUGGEST: "+curText+" ["+fuzzyEnum.docFreq()+" docs] dist="+curDiff);
                                 
                                 SpellSuggestQueryInfo.Suggestion sug = new SpellSuggestQueryInfo.Suggestion();
                                 sug.mStr = curText;
@@ -250,7 +290,7 @@ public final class MailboxIndex
         token = token.toLowerCase();
 
         try {
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 Term firstTerm = new Term(field, token);
 
@@ -294,10 +334,12 @@ public final class MailboxIndex
      * This API should be called when the system detects that it has free time.
      */
     public void flush() {
-    	synchronized(getLock()) {
-    		if (isIndexWriterOpen()) 
-    			closeIndexWriter();
-    	}
+        synchronized(getLock()) {
+            if (mIndexWriter != null)
+                closeIndexWriter();
+            else
+                sIndexReadersCache.removeIndexReader(this);
+        }
     }
 
     /**
@@ -310,20 +352,22 @@ public final class MailboxIndex
      */
     public int[] deleteDocuments(int itemIds[]) throws IOException {
         synchronized(getLock()) {
-
-            CountedIndexReader reader = getCountedIndexReader(); 
+            
+//            RefCountedIndexReader reader = getCountedIndexReader();
+            openIndexWriter();
+            
             try {
                 for (int i = 0; i < itemIds.length; i++) {
                     try {
                         String itemIdStr = Integer.toString(itemIds[i]);
                         Term toDelete = new Term(LuceneFields.L_MAILBOX_BLOB_ID, itemIdStr);
-                        int numDeleted = reader.getReader().delete(toDelete);
+                        mIndexWriter.deleteDocuments(toDelete);
                         // NOTE!  The numDeleted may be < you expect here, the document may
                         // already be deleted and just not be optimized out yet -- some lucene
                         // APIs (e.g. docFreq) will still return the old count until the indexes 
                         // are optimized...
                         if (sLog.isDebugEnabled()) {
-                            sLog.debug("Deleted "+numDeleted+" index documents for itemId "+itemIdStr);
+                            sLog.debug("Deleted index documents for itemId "+itemIdStr);
                         }
                     } catch (IOException ioe) {
                         sLog.debug("deleteDocuments exception on index "+i+" out of "+itemIds.length+" (id="+itemIds[i]+")");
@@ -333,80 +377,90 @@ public final class MailboxIndex
                     }
                 }
             } finally {
-                reader.release();
+//                reader.release();
             }
             return itemIds; // success
         }
     }
 
-    private void addDocument(IndexItem redoOp, Document doc, int indexId, long receivedDate, boolean deleteFirst) throws IOException {
-        addDocument(redoOp, new Document[] { doc }, indexId, receivedDate, deleteFirst);
+    private void addDocument(IndexItem redoOp, Document doc, int indexId, long receivedDate, 
+        MailItem mi, boolean deleteFirst) throws IOException {
+        addDocument(redoOp, new Document[] { doc }, indexId, receivedDate, mi, deleteFirst);
     }
-
-    private void addDocument(IndexItem redoOp, Document[] docs, int indexId, long receivedDate, boolean deleteFirst) throws IOException {
-    	long start = 0;
+    
+    private void addDocument(IndexItem redoOp, Document[] docs, int indexId, long receivedDate, 
+        MailItem mi, boolean deleteFirst) throws IOException {
         synchronized(getLock()) {        
+            long start = 0;
             if (sLog.isDebugEnabled())
                 start = System.currentTimeMillis();
             
-            if (deleteFirst) {
-                try {
-                    deleteDocuments(new int[] { indexId });
-                } catch(IOException e) {
-                    sLog.debug("MailboxIndex.addDocument ignored IOException deleting documents (index does not exist yet?)", e);
-                }
-            }
-            
             openIndexWriter();
-            try {
-                assert(mIndexWriterMutex.isHeldByCurrentThread());
-                assert(mIndexWriter != null);
+            assert(mIndexWriter != null);
+            assert(sIndexWritersCache.contains(this));
 
-                for (Document doc : docs) {
-                	// doc can be shared by multiple threads if multiple mailboxes
-                	// are referenced in a single email
-                	synchronized (doc) {
-                		doc.removeFields(LuceneFields.L_MAILBOX_BLOB_ID);
-                		doc.add(new Field(LuceneFields.L_MAILBOX_BLOB_ID, Integer.toString(indexId),      true/*store*/,  true/*index*/, false/*token*/));
-                		
-                		// If this doc is shared by mult threads, then the date might just be wrong,
-                		// so remove and re-add the date here to make sure the right one gets written!
-                		doc.removeFields(LuceneFields.L_DATE);
-                		String dateString = DateField.timeToString(receivedDate);
-                		doc.add(Field.Text(LuceneFields.L_DATE, dateString));
-                		
-                		if (null == doc.get(LuceneFields.L_ALL)) {
-                			doc.add(Field.UnStored(LuceneFields.L_ALL, LuceneFields.L_ALL_VALUE));
-                		}
-                		mIndexWriter.addDocument(doc);
-                		
-                		if (redoOp != null)
-                			mUncommittedRedoOps.add(redoOp);
-                	}
+            for (Document doc : docs) {
+                // doc can be shared by multiple threads if multiple mailboxes
+                // are referenced in a single email
+                synchronized (doc) {
+                    doc.removeFields(LuceneFields.L_SORT_SUBJECT);
+                    doc.removeFields(LuceneFields.L_SORT_NAME);
+                    //                                                                                                  store, index, tokenize
+                    doc.add(new Field(LuceneFields.L_SORT_SUBJECT, mi.getSortSubject(), Field.Store.NO, Field.Index.UN_TOKENIZED));
+                    doc.add(new Field(LuceneFields.L_SORT_NAME,    mi.getSortSender(), Field.Store.NO, Field.Index.UN_TOKENIZED));
+                    
+                    doc.removeFields(LuceneFields.L_MAILBOX_BLOB_ID);
+                    doc.add(new Field(LuceneFields.L_MAILBOX_BLOB_ID, Integer.toString(indexId), Field.Store.YES, Field.Index.UN_TOKENIZED));
+
+                    // If this doc is shared by mult threads, then the date might just be wrong,
+                    // so remove and re-add the date here to make sure the right one gets written!
+                    doc.removeFields(LuceneFields.L_SORT_DATE);
+                    String dateString = DateField.timeToString(receivedDate);
+                    doc.add(new Field(LuceneFields.L_SORT_DATE, dateString, Field.Store.YES, Field.Index.UN_TOKENIZED));
+
+                    if (null == doc.get(LuceneFields.L_ALL)) {
+                        doc.add(new Field(LuceneFields.L_ALL, LuceneFields.L_ALL_VALUE, Field.Store.NO, Field.Index.NO_NORMS, Field.TermVector.NO));
+                    }
+                    
+                    if (deleteFirst) {
+                        String itemIdStr = Integer.toString(indexId);
+                        Term toDelete = new Term(LuceneFields.L_MAILBOX_BLOB_ID, itemIdStr);
+                        mIndexWriter.updateDocument(toDelete, doc);
+                    } else {
+                        mIndexWriter.addDocument(doc);
+                    }
+                    
+                    if (redoOp != null)
+                        mUncommittedRedoOps.add(redoOp);
                 }
-            } finally {
-            	mIndexWriterMutex.unlock();
+            }
+
+            //
+            // tim: this might seem bad, since an index in steady-state-of-writes will never get flushed, 
+            // however we also track the number of uncomitted-operations on the index, and will force a 
+            // flush if the index has had a lot written to it without a flush.
+            //
+            updateLastWriteTime();
+
+            if (mUncommittedRedoOps.size() > sMaxUncommittedOps) {
+                if (sLog.isDebugEnabled()) {
+                    sLog.debug("Flushing " + toString() + " because of too many uncommitted redo ops");
+                }
+                flush();
             }
             
-            if (mUncommittedRedoOps.size() > sMaxUncommittedOps) {
-            	if (sLog.isDebugEnabled()) {
-            		sLog.debug("Flushing " + toString() + " because of too many uncommitted redo ops");
-            	}
-            	flush();
+            if (sLog.isDebugEnabled()) {
+                long end = System.currentTimeMillis();
+                long elapsed = end - start;
+                sLog.debug("MailboxIndex.addDocument took " + elapsed + " msec");
             }
-        }
-        
-        if (sLog.isDebugEnabled()) {
-            long end = System.currentTimeMillis();
-            long elapsed = end - start;
-            sLog.debug("MailboxIndex.addDocument took " + elapsed + " msec");
         }
     }
 
     int numDocs() throws IOException 
     {
         synchronized(getLock()) {        
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 IndexReader iReader = reader.getReader();
                 return iReader.numDocs();
@@ -419,7 +473,7 @@ public final class MailboxIndex
     void enumerateTermsForField(Term firstTerm, TermEnumInterface callback) throws IOException
     {
         synchronized(getLock()) {        
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 IndexReader iReader = reader.getReader();
 
@@ -449,7 +503,7 @@ public final class MailboxIndex
 
     void enumerateDocuments(DocEnumInterface c) throws IOException {
         synchronized(getLock()) {        
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 IndexReader iReader = reader.getReader();
                 int maxDoc = iReader.maxDoc();
@@ -467,32 +521,26 @@ public final class MailboxIndex
 
     Collection getFieldNames() throws IOException {
         synchronized(getLock()) {        
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 IndexReader iReader = reader.getReader();
-                return iReader.getFieldNames();
+                return iReader.getFieldNames(FieldOption.ALL);
             } finally {
-                reader.release();
+                reader.release(); 
             }
         }
     }
 
     Sort getSort(SortBy searchOrder) {
-//      mLuceneSortDateDesc = new Sort(new SortField(LuceneFields.L_DATE, SortField.STRING, true));
-//      mLuceneSortDateAsc = new Sort(new SortField(LuceneFields.L_DATE, SortField.STRING, false));
-//      mLuceneSortSubjectDesc = new Sort(new SortField(LuceneFields.L_SORT_SUBJECT, SortField.STRING, true));
-//      mLuceneSortSubjectAsc = new Sort(new SortField(LuceneFields.L_SORT_SUBJECT, SortField.STRING, false));
-//      mLuceneSortNameDesc = new Sort(new SortField(LuceneFields.L_SORT_NAME, SortField.STRING, true));
-//      mLuceneSortNameAsc = new Sort(new SortField(LuceneFields.L_SORT_NAME, SortField.STRING, false));
         synchronized(getLock()) {
             if (searchOrder != mLatestSortBy) { 
                 switch (searchOrder) {
                     case DATE_DESCENDING:
-                        mLatestSort = new Sort(new SortField(LuceneFields.L_DATE, SortField.STRING, true));
+                        mLatestSort = new Sort(new SortField(LuceneFields.L_SORT_DATE, SortField.STRING, true));
                         mLatestSortBy = searchOrder;
                         break;
                     case DATE_ASCENDING:
-                        mLatestSort = new Sort(new SortField(LuceneFields.L_DATE, SortField.STRING, false));
+                        mLatestSort = new Sort(new SortField(LuceneFields.L_SORT_DATE, SortField.STRING, false));
                         mLatestSortBy = searchOrder;
                         break;
                     case SUBJ_DESCENDING:
@@ -514,7 +562,7 @@ public final class MailboxIndex
                     case SCORE_DESCENDING:
                         return null;
                     default:
-                        mLatestSort = new Sort(new SortField(LuceneFields.L_DATE, SortField.STRING, true));
+                        mLatestSort = new Sort(new SortField(LuceneFields.L_SORT_DATE, SortField.STRING, true));
                        mLatestSortBy = SortBy.DATE_ASCENDING;
                 }
             }
@@ -527,15 +575,15 @@ public final class MailboxIndex
         StringBuffer ret = new StringBuffer("MailboxIndex(");
         ret.append(mMailboxId);
         ret.append(")");
+//        ret.append(super.toString());
         return ret.toString();
     }
-
+    
     public MailboxIndex(Mailbox mbox, String root) throws ServiceException {
         int mailboxId = mbox.getId();
-        if (sLog.isDebugEnabled())
-            sLog.debug("Opening Index for mailbox " + mailboxId);
-
+        
         mIndexWriter = null;
+        assert(!sIndexWritersCache.contains(this));
         mMailboxId = mailboxId;
         mMailbox = mbox;
 
@@ -543,12 +591,12 @@ public final class MailboxIndex
         String idxParentDir = indexVol.getMailboxDir(mailboxId, Volume.TYPE_INDEX);
 
         // this must be different from the idxParentDir (see the IMPORTANT comment below)
-        mIdxPath = idxParentDir + File.separatorChar + '0';
+        String idxPath = idxParentDir + File.separatorChar + '0';
 
         {
             File parentDirFile = new File(idxParentDir);
 
-            // IMPORTANT!  Don't make the actual index directory (mIdxPath) yet!  
+            // IMPORTANT!  Don't make the actual index directory (mIdxDirectory) yet!  
             //
             // The runtime open-index code checks the existance of the actual index directory:  
             // if it does exist but we cannot open the index, we do *NOT* create it under the 
@@ -559,10 +607,10 @@ public final class MailboxIndex
                 parentDirFile.mkdirs();
 
             if (!parentDirFile.canRead()) {
-                throw ServiceException.FAILURE("Cannot READ index directory (mailbox="+mbox.getId()+ " idxPath="+mIdxPath+")", null);
+                throw ServiceException.FAILURE("Cannot READ index directory (mailbox="+mbox.getId()+ " idxPath="+idxPath+")", null);
             }
             if (!parentDirFile.canWrite()) {
-                throw ServiceException.FAILURE("Cannot WRITE index directory (mailbox="+mbox.getId()+ " idxPath="+mIdxPath+")", null);
+                throw ServiceException.FAILURE("Cannot WRITE index directory (mailbox="+mbox.getId()+ " idxPath="+idxPath+")", null);
             }
 
             // the Lucene code does not atomically swap the "segments" and "segments.new"
@@ -570,142 +618,110 @@ public final class MailboxIndex
             // a way that we have a "segments.new" file but not a "segments" file.  We we will check here 
             // for the special situation that we have a segments.new
             // file but not a segments file...
-            File segments = new File(mIdxPath, "segments");
+            File segments = new File(idxPath, "segments");
             if (!segments.exists()) {
-                File segments_new = new File(mIdxPath, "segments.new");
+                File segments_new = new File(idxPath, "segments.new");
                 if (segments_new.exists()) 
                     segments_new.renameTo(segments);
             }
-//          } catch(IOException e) {
-//          throw ServiceException.FAILURE("Error validating index path (mailbox="+mailbox.getId()+ " root="+root+")", e);
+            
+            try {
+                // must call getDirectory then setLockFactory via 2 calls -- there's the possibility
+                // that the directory we're returned is actually a cached FSDirectory (e.g. if the index
+                // was deleted and re-created) in which case we should be using the existing LockFactory
+                // and not creating a new one
+                mIdxDirectory = FSDirectory.getDirectory(idxPath);
+                if (mIdxDirectory.getLockFactory() == null || !(mIdxDirectory.getLockFactory() instanceof SingleInstanceLockFactory))
+                    mIdxDirectory.setLockFactory(new SingleInstanceLockFactory());
+            } catch (IOException e) {
+                throw ServiceException.FAILURE("Cannot create FSDirectory at path: "+idxPath, e);
+            }
         }
         
-        mLatestSort = new Sort(new SortField(LuceneFields.L_DATE, SortField.STRING, true));
-        mLatestSortBy = SortBy.DATE_DESCENDING;
-        
         String analyzerName = mbox.getAccount().getAttr(Provisioning.A_zimbraTextAnalyzer, null);
-
+        
         if (analyzerName != null)
             mAnalyzer = ZimbraAnalyzer.getAnalyzer(analyzerName);
         else
             mAnalyzer = ZimbraAnalyzer.getDefaultAnalyzer();
+        
+        sLog.info("Initialized Index for mailbox " + mailboxId+" directory: "+mIdxDirectory.toString()+" Analyzer="+mAnalyzer.toString());
     }
-
-    boolean checkMailItemExists(int mailItemId) {
-        synchronized(getLock()) {        
-            return false;
+    
+    protected void finalize() throws Throwable {
+        try {
+            if (mIdxDirectory != null) 
+                mIdxDirectory.close();
+            mIdxDirectory = null;
+        } finally {
+            super.finalize();
         }
     }
 
-
-    private String mIdxPath;
+    private FSDirectory mIdxDirectory = null;
     private Sort mLatestSort = null;
     private SortBy mLatestSortBy = null;
-
     private int mMailboxId;
     private Mailbox mMailbox;
     private static Log sLog = LogFactory.getLog(MailboxIndex.class);
-    private ArrayList /*IndexItem*/ mUncommittedRedoOps = new ArrayList();
+    private ArrayList<IndexItem>mUncommittedRedoOps = new ArrayList<IndexItem>();
 
-    private static boolean sNewLockModel;
+    private static final boolean sNewLockModel;
     static {
-        sNewLockModel = true;
         String value = LC.get(LC.debug_mailboxindex_use_new_locking.key());
         if (value != null && !value.equalsIgnoreCase("true"))
             sNewLockModel = false;
+        else
+            sNewLockModel = true;
     }
-
-
-
-    /******************************************************************************
-     *
-     *  Index Writer Management
-     *  
-     ********************************************************************************/
+    
     private IndexWriter mIndexWriter;
-    private ReentrantLock mIndexWriterMutex = new ReentrantLock();
 
-    // access-order LinkedHashMap
-    // Key is MailboxIndex and value is always null.  LinkedHashMap class is
-    // used for its access-order feature.
-    private static LinkedHashMap<MailboxIndex, MailboxIndex> sOpenIndexWriters =
-        new LinkedHashMap<MailboxIndex, MailboxIndex>(200, 0.75f, true);
-    private static int sReservedWriterSlots = 0;
-    private static IndexWritersSweeper sSweeper = null;
-    
-    
     public static void startup() {
         if (DebugConfig.disableIndexing)
             return;
 
         // In case startup is called twice in a row without shutdown in between
-        if (sSweeper != null && sSweeper.isAlive()) {
+        if (sIndexWritersCache != null && sIndexWritersCache.isAlive()) {
             shutdown();
         }
-
-        // Lucene creates lock files for index update.  When server crashes,
-        // these lock files are not deleted and their presence causes all
-        // index writes to fail for the affected mailboxes.  So delete them.
-        // ("*-write.lock" and "*-commit.lock" files)
-
-        // same lock directory search order as in org.apache.lucene.store.FSDirectory.java
-        String luceneTmpDir =
-            System.getProperty("org.apache.lucene.lockdir", System.getProperty("java.io.tmpdir"));
-
-        String lockFileSuffix = ".lock";
-        File lockFilePath = new File(luceneTmpDir);
-        File lockFiles[] = lockFilePath.listFiles();
-        if (lockFiles != null && lockFiles.length > 0) {
-            for (int i = 0; i < lockFiles.length; i++) {
-                File lock = lockFiles[i];
-                if (lock != null && lock.isFile() && lock.getName().endsWith(lockFileSuffix)) {
-                    sLog.info("Found index lock file " + lock.getName() + " from previous crash.  Deleting...");
-                    boolean deleted = lock.delete();
-                    if (!deleted) {
-                        String message = "Unable to delete index lock file " + lock.getAbsolutePath() + "; Aborting.";
-                        Zimbra.halt(message);
-                    }
-                }
-            }
-        }
-
+        
         sMaxUncommittedOps = LC.zimbra_index_max_uncommitted_operations.intValue();
         sLRUSize = LC.zimbra_index_lru_size.intValue();
         if (sLRUSize < 10) sLRUSize = 10;
         sIdleWriterFlushTimeMS = 1000 * LC.zimbra_index_idle_flush_time.intValue();
+        sIndexWritersCache =
+            new IndexWritersCache(sSweepIntervalMS, sIdleWriterFlushTimeMS, sLRUSize);
+        sIndexWritersCache.start();
         
-        sSweeper = new IndexWritersSweeper();
-        sSweeper.start();
+        sIndexReadersCache = new IndexReadersCache(LC.zimbra_index_reader_lru_size.intValue(), 
+            LC.zimbra_index_reader_idle_flush_time.longValue() * 1000, 
+            LC.zimbra_index_reader_idle_sweep_frequency.longValue() * 1000);
+        sIndexReadersCache.start();
     }
 
     public static void shutdown() {
         if (DebugConfig.disableIndexing)
             return;
 
-        sSweeper.signalShutdown();
+        sIndexWritersCache.signalShutdown();
         try {
-            sSweeper.join();
+            sIndexWritersCache.join();
+        } catch (InterruptedException e) {}
+        
+        sIndexReadersCache.signalShutdown();
+        try {
+            sIndexReadersCache.join();
         } catch (InterruptedException e) {}
 
         flushAllWriters();
     }
-    
 
     public static void flushAllWriters() {
         if (DebugConfig.disableIndexing)
             return;
         
-        sLog.info("Flushing all open index writers");
-        
-        List<MailboxIndex> toFlush;
-        synchronized(sOpenIndexWriters) {
-        	toFlush = new ArrayList<MailboxIndex>(sOpenIndexWriters.size());
-        	toFlush.addAll(sOpenIndexWriters.keySet());
-        }
-        
-        for (MailboxIndex idx : toFlush) {
-        	idx.closeIndexWriter();	
-        }
+        sIndexWritersCache.flushAllIndexWriters();
     }
 
     /**
@@ -722,7 +738,7 @@ public final class MailboxIndex
      * "real" system, instead the indexes will be flushed via timeout or # ops -- but this value is here so
      * that the # open file descriptors is controlled.
      */
-    private static int sLRUSize;
+    static int sLRUSize;
 
     /**
      * After we add a document to it, how long do we hold an index open for writing before closing it 
@@ -733,16 +749,25 @@ public final class MailboxIndex
      * sLRUSize) 
      */
     private static long sIdleWriterFlushTimeMS;
+    private static long sSweepIntervalMS = 60 * 1000;
+    private static IndexWritersCache sIndexWritersCache;
+    private static IndexReadersCache sIndexReadersCache;
 
-    // TODO: Make this configurable.
-    private static long sSweepIntervalMS = 30 * 1000;
-
-    private long mLastWriteTime = 0;
-    private long getLastWriteTime() { return mLastWriteTime; }
+    
+    private volatile long mLastWriteTime = 0;
+    private Analyzer mAnalyzer = null;
+    
+    long getLastWriteTime() { return mLastWriteTime; }
     private void updateLastWriteTime() { mLastWriteTime = System.currentTimeMillis(); };
 
-    private Analyzer mAnalyzer = null;
 
+    /**
+     * Load the Analyzer for this index, using the default Zimbra analyzer or a custom user-provided
+     * analyzer specified by the key Provisioning.A_zimbraTextAnalyzer
+     * 
+     * @param mbox
+     * @throws ServiceException
+     */
     public void initAnalyzer(Mailbox mbox) throws ServiceException {
         // per bug 11052, must always lock the Mailbox before the MailboxIndex, and since
         // mbox.getAccount() is synchronized, we must lock here.
@@ -763,15 +788,6 @@ public final class MailboxIndex
             return mAnalyzer;
         }
     }
-    
-    private boolean isIndexWriterOpen() {
-        mIndexWriterMutex.lock();
-        try {
-            return mIndexWriter != null;
-        } finally {
-            mIndexWriterMutex.unlock();
-        }
-    }
 
     /**
      * Close the index writer and write commit/abort entries for all
@@ -779,77 +795,55 @@ public final class MailboxIndex
      */
     private void closeIndexWriter() 
     {
-    	assert(!mIndexWriterMutex.isHeldByCurrentThread());
-    	int sizeAfter = -1;
-    	synchronized(sOpenIndexWriters) {
-    		sReservedWriterSlots++;
-    		mIndexWriterMutex.lock();
-    		if (sOpenIndexWriters.remove(this) != null) {
-    			sizeAfter = sOpenIndexWriters.size();
-    			ZimbraPerf.COUNTER_IDX_WRT.increment(sizeAfter);          			
-    		}
-    	}
+        synchronized(getLock()) {        
+            if (mIndexWriter == null) {
+                assert(!sIndexWritersCache.contains(this));
+                return;
+            }
 
-        // only need to do a log output if we actually removed one
-    	if (sLog.isDebugEnabled() && sizeAfter > -1)
-    		sLog.debug("closeIndexWriter: map size after close = " + sizeAfter);
-    	
-    	try {
-    		closeIndexWriterAfterRemove();
-    	} finally {
-			assert(mIndexWriterMutex.isHeldByCurrentThread());
-    		mIndexWriterMutex.unlock();
-    		synchronized(sOpenIndexWriters) {
-    			sReservedWriterSlots--;
-    			assert(mIndexWriter == null);
-    		}
-    	}    	
-    }
-    
-    private void closeIndexWriterAfterRemove () {
-    	assert(mIndexWriterMutex.isHeldByCurrentThread());
-    	
-    	if (mIndexWriter == null) {
-    		return;
-    	}
-
-    	if (sLog.isDebugEnabled())
-    		sLog.debug("Closing IndexWriter " + mIndexWriter + " for " + this);
-    	
-    	IndexWriter writer = mIndexWriter;
-    	mIndexWriter = null;
-    
-    	boolean success = true;
-    	try {
-    		// Flush all changes to file system before committing redos.
-    		// TODO: Are the changes fsynced to disk when close() returns?
-    		writer.close();
-    	} catch (IOException e) {
-    		success = false;
-    		sLog.error("Caught Exception " + e + " in MailboxIndex.closeIndexWriter", e);
+            if (sLog.isDebugEnabled())
+                sLog.debug("Closing IndexWriter " + mIndexWriter + " for " + this);
+            
+            assert(sIndexWritersCache.contains(this));
+            sIndexWritersCache.removeIndexWriter(this);
+            IndexWriter writer = mIndexWriter;
+            mIndexWriter = null;
+            assert(!sIndexWritersCache.contains(this));
+            
+            boolean success = true;
+            try {
+                // Flush all changes to file system before committing redos.
+                // TODO: Are the changes fsynced to disk when close() returns?
+//                sLog.info("MI"+this.toString()+ " Start Close IndexWriter "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+                writer.close();
+//                sLog.info("MI"+this.toString()+ " Closed IndexWriter "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+            } catch (IOException e) {
+                success = false;
+                sLog.error("Caught Exception " + e + " in MailboxIndex.closeIndexWriter", e);
                 // TODO: Is it okay to eat up the exception?
-    	} finally {
-    		// Write commit entries to redo log for all IndexItem entries
-    		// whose changes were written to disk by mIndexWriter.close()
-    		// above.
-    		for (Iterator iter = mUncommittedRedoOps.iterator(); iter.hasNext();) {
-    			IndexItem op = (IndexItem)iter.next();
-    			if (success) {
-    				if (op.commitAllowed())
-    					op.commit();
-    				else {
-    					if (sLog.isDebugEnabled()) {
-    						sLog.debug("IndexItem (" + op +
-    						") not allowed to commit yet; attaching to parent operation");
-    					}
-    					op.attachToParent();
-    				}
-    			} else
-    				op.abort();
-    			iter.remove();
-    		}
-    		assert(mUncommittedRedoOps.size() == 0);
-    	}
+            } finally {
+                // Write commit entries to redo log for all IndexItem entries
+                // whose changes were written to disk by mIndexWriter.close()
+                // above.
+                for (Iterator iter = mUncommittedRedoOps.iterator(); iter.hasNext();) {
+                    IndexItem op = (IndexItem)iter.next();
+                    if (success) {
+                        if (op.commitAllowed())
+                            op.commit();
+                        else {
+                            if (sLog.isDebugEnabled()) {
+                                sLog.debug("IndexItem (" + op +
+                                ") not allowed to commit yet; attaching to parent operation");
+                            }
+                            op.attachToParent();
+                        }
+                    } else
+                        op.abort();
+                    iter.remove();
+                }
+                assert(mUncommittedRedoOps.size() == 0);
+            }
+        }        
     }
     
     /**
@@ -884,186 +878,124 @@ public final class MailboxIndex
 
     private void openIndexWriter() throws IOException
     {
-    	ZimbraPerf.COUNTER_IDX_WRT_OPENED.increment();
-    	
-    	assert(Thread.holdsLock(getLock()));
-    	assert(!mIndexWriterMutex.isHeldByCurrentThread());
-    	
-        // First, get a 'slot' in the cache, closing some other Writer
-        // if necessary to do it...
-        boolean haveReservedSlot = false;
-        boolean mustSleep = false;
-        do {
-        	// Entry cases:
-            //       - We might get a slot (or already be in cache) and be done
-            //
-            //       - We might reserve a slot and go down to close a Writer
-        	//
-            //       - We couldn't find anything to close, so we just did a sleep
-            //         and hope to retry again
-        	//
-            //       - We just closed a writer, and we reserved a spot
-            //         so we know there will be room this time.
-            MailboxIndex toClose;
-            synchronized(sOpenIndexWriters) {
-                toClose = null;
-                mustSleep = false;
-                
-                if (haveReservedSlot) {
-                    sReservedWriterSlots--;
-                    haveReservedSlot = false;
-                    assert(sOpenIndexWriters.size() + sReservedWriterSlots < sLRUSize);
-                }
-
-                if (sOpenIndexWriters.containsKey(this)) {
-                    mIndexWriterMutex.lock(); // maintain order in the LinkedHashMap
-                    sOpenIndexWriters.remove(this);
-                    sOpenIndexWriters.put(this, this);
-                } else if (sOpenIndexWriters.size() + sReservedWriterSlots < sLRUSize) {
-                    mIndexWriterMutex.lock();
-                    sOpenIndexWriters.put(this, this);
-                } else {
-                    if (!sOpenIndexWriters.isEmpty()) {
-                        // find the oldest (first when iterating) entry to remove
-                        toClose = sOpenIndexWriters.keySet().iterator().next();
-                        sReservedWriterSlots++;
-                        haveReservedSlot = true;
-                        sOpenIndexWriters.remove(toClose);
-                        toClose.mIndexWriterMutex.lock();
-                    } else {
-                        sLog.info("MI"+this.toString()+"LRU empty and all slots reserved...retrying");
-                        mustSleep = true;
-                    }
-                }
-                ZimbraPerf.COUNTER_IDX_WRT.increment(sOpenIndexWriters.size());
-            } // synchronized(mOpenIndexWriters)
+        synchronized(getLock()) {        
+            if (mIndexWriter != null) {
+                assert(sIndexWritersCache.contains(this));
+                assert(!sIndexReadersCache.containsKey(this));
+                return;
+            }
             
-            if (toClose != null) {
-                assert(toClose.mIndexWriterMutex.isHeldByCurrentThread());
-                assert(!mIndexWriterMutex.isHeldByCurrentThread());
-                try {
-                    toClose.closeIndexWriterAfterRemove();
-                } finally {
-                    toClose.mIndexWriterMutex.unlock();
+            IndexWriter writer = null;
+
+            // uncache the IndexReader if it is cached
+            sIndexReadersCache.removeIndexReader(this);
+            
+            try {
+//                sLog.info("MI"+this.toString()+" Opening IndexWriter(1) "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+                writer = new IndexWriter(mIdxDirectory, getAnalyzer(), false);
+//                sLog.info("MI"+this.toString()+" Opened IndexWriter(1) "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+                
+            } catch (IOException e1) {
+                //mLog.info("****Creating new index in " + mIdxPath + " for mailbox " + mMailboxId);
+                File indexDir  = mIdxDirectory.getFile();
+                if (indexDirIsEmpty(indexDir)) {
+//                    sLog.info("MI"+this.toString()+" Opening IndexWriter(2) "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+                    writer = new IndexWriter(mIdxDirectory, getAnalyzer(), true);
+//                    sLog.info("MI"+this.toString()+" Opened IndexWriter(2) "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+                    if (writer == null) 
+                        throw new IOException("Failed to open IndexWriter in directory "+indexDir.getAbsolutePath());
+                } else {
+                    IOException ioe = new IOException("Could not create index " + mIdxDirectory.toString() + " (directory already exists)");
+                    ioe.initCause(e1);
+                    throw ioe;
                 }
-            } else if (mustSleep) {
-                assert(!mIndexWriterMutex.isHeldByCurrentThread());
-                try { Thread.sleep(100); } catch (Exception e) {};
             }
-        } while (haveReservedSlot || mustSleep);
-        
-        assert(mIndexWriterMutex.isHeldByCurrentThread());
-        
-        //
-        // at this point, we've put ourselves into the writer cache
-        // and we have the Write Mutex....so open the file if
-        // necessary and return
-        //
-        try {
-        	if (mIndexWriter == null) {
-        		try {
-        			mIndexWriter = new IndexWriter(mIdxPath, getAnalyzer(), false);
-        			//mLog.info("Opening IndexWriter "+ writer+" for "+this);
-
-        		} catch (IOException e1) {
-        			//mLog.info("****Creating new index in " + mIdxPath + " for mailbox " + mMailboxId);
-        			File idxFile  = new File(mIdxPath);
-        			if (indexDirIsEmpty(idxFile)) {
-        				mIndexWriter = new IndexWriter(idxFile, getAnalyzer(), true);
-        				if (mIndexWriter == null) 
-        					throw new IOException("Failed to open IndexWriter in directory "+idxFile.getAbsolutePath());
-        			}  else {
-        				IOException ioe = new IOException("Could not create index " + idxFile.toString() + " (directory already exists)");
-        				ioe.initCause(e1);
-        				throw ioe;
-        			}
-        		}
-        		
-        		///////////////////////////////////////////////////
-        		//
-        		// mergeFactor and minMergeDocs are VERY poorly explained.  Here's the deal:
-        		//
-        		// The data is in a tree.  It starts out empty.
-        		//
-        		// 1) Whenever docs are added, they are merged into the the smallest node (or a new node) until its 
-        		//    size reaches "mergeFactor"
-        		//
-        		// 2) When we have enough "mergeFactor" sized small nodes so that the total size is "minMergeDocs", then
-        		//    we combine them into one "minMergeDocs" sized big node.
-        		//
-        		// 3) Rule (2) repeats recursively: every time we get "mergeFactor" small nodes, we combine them.
-        		//
-        		// 4) This means that every segment (beyond the first "level") is therefore always of size:
-        		//       minMergeDocs * mergeFactor^N, where N is the # times it has been merged
-        		//
-        		// 5) Be careful, (2) implies that we will have (minMergeDocs / mergeFactor) small files!
-        		//
-        		// NOTE - usually with lucene, the 1st row of the tree is stored in memory, because you keep 
-        		// the IndexWriter open for a long time: this dramatically changes the way it performs 
-        		// because you can make mergeFactor a lot bigger without worrying about the overhead of 
-        		// re-writing the smallest node over and over again. 
-        		//
-        		// In our case, mergeFactor is intentionally chosen to be very small: since we add one document
-        		// then close the index, if mergeFactor were large it would mean we copied every document
-        		// (mergeFactor/2) times (start w/ 1 doc, adding the second copies the first b/c it re-writes the
-        		// file...adding the 3rd copies 1+2....etc)
-        		//
-        		// ...in an ideal world, we'd have a separate parameter to control the size of the 1st file and the
-        		// mergeFactor: then we could have the 1st file be 1 entry and still have a high merge factor.  Doing
-        		// this we could potentially lower the indexing IO by as much as 70% for our expected usage pattern...  
-        		// 
-        		/////////////////////////////////////////////////////
+            
+            
+            ///////////////////////////////////////////////////
+            //
+            // mergeFactor and minMergeDocs are VERY poorly explained.  Here's the deal:
+            //
+            // The data is in a tree.  It starts out empty.
+            //
+            // 1) Whenever docs are added, they are merged into the the smallest node (or a new node) until its 
+            //    size reaches "mergeFactor"
+            //
+            // 2) When we have enough "mergeFactor" sized small nodes so that the total size is "minMergeDocs", then
+            //    we combine them into one "minMergeDocs" sized big node.
+            //
+            // 3) Rule (2) repeats recursively: every time we get "mergeFactor" small nodes, we combine them.
+            //
+            // 4) This means that every segment (beyond the first "level") is therefore always of size:
+            //       minMergeDocs * mergeFactor^N, where N is the # times it has been merged
+            //
+            // 5) Be careful, (2) implies that we will have (minMergeDocs / mergeFactor) small files!
+            //
+            // NOTE - usually with lucene, the 1st row of the tree is stored in memory, because you keep 
+            // the IndexWriter open for a long time: this dramatically changes the way it performs 
+            // because you can make mergeFactor a lot bigger without worrying about the overhead of 
+            // re-writing the smallest node over and over again. 
+            //
+            // In our case, mergeFactor is intentionally chosen to be very small: since we add one document
+            // then close the index, if mergeFactor were large it would mean we copied every document
+            // (mergeFactor/2) times (start w/ 1 doc, adding the second copies the first b/c it re-writes the
+            // file...adding the 3rd copies 1+2....etc)
+            //
+            // ...in an ideal world, we'd have a separate parameter to control the size of the 1st file and the
+            // mergeFactor: then we could have the 1st file be 1 entry and still have a high merge factor.  Doing
+            // this we could potentially lower the indexing IO by as much as 70% for our expected usage pattern...  
+            // 
+            /////////////////////////////////////////////////////
 
 
-        		// tim: these are set based on an expectation of ~25k msgs/mbox and assuming that
-        		// 11 fragment files are OK.  25k msgs with these settings (mf=3, mmd=33) means that
-        		// each message gets written 9 times to disk...as opposed to 12.5 times with the default
-        		// lucene settings of 10 and 100....
-        		mIndexWriter.mergeFactor = 3;    // should be > 1, otherwise segment sizes are effectively limited to 
-        		// minMergeDocs documents: and this is probably bad (too many files!)
-        		
-        		mIndexWriter.minMergeDocs = 33; // we expect 11 index fragment files
-        	} else {
-        		ZimbraPerf.COUNTER_IDX_WRT_OPENED_CACHE_HIT.increment();
-        	}
-    		// tim: this might seem bad, since an index in steady-state-of-writes will never get flushed, 
-    		// however we also track the number of uncomitted-operations on the index, and will force a 
-    		// flush if the index has had a lot written to it without a flush.
-    		updateLastWriteTime();
-        } finally {
-            if (mIndexWriter == null) {
-                mIndexWriterMutex.unlock();
-                assert(!mIndexWriterMutex.isHeldByCurrentThread());
-                throw new IOException("Uknown error opening IndexWriter");
-            }
+            // tim: these are set based on an expectation of ~25k msgs/mbox and assuming that
+            // 11 fragment files are OK.  25k msgs with these settings (mf=3, mmd=33) means that
+            // each message gets written 9 times to disk...as opposed to 12.5 times with the default
+            // lucene settings of 10 and 100....
+            writer.setMergeFactor(3);// should be > 1, otherwise segment sizes are effectively limited to
+            // minMergeDocs documents: and this is probably bad (too many files!)
+
+            writer.setMaxBufferedDocs(33); // we expect 11 index fragment files
+
+            sIndexWritersCache.putIndexWriter(this);
+            mIndexWriter = writer;
+            assert(mIndexWriter != null);
+            assert(sIndexWritersCache.contains(this));
+            
+            updateLastWriteTime();
         }
     }
 
-    /******************************************************************************
-     *
-     *  Index Reader Management
-     *  
-     ********************************************************************************/
-    private CountedIndexReader getCountedIndexReader() throws IOException
+    /**
+     * @return A refcounted IndexReader for this index.  Caller is responsible for 
+     *            calling IndexReader.release() on the index before allowing it to go
+     *            out of scope (otherwise a RuntimeException will occur)
+     * 
+     * @throws IOException
+     */
+    private RefCountedIndexReader getCountedIndexReader() throws IOException
     {
         BooleanQuery.setMaxClauseCount(10000); 
 
-        synchronized(getLock()) {        
+        synchronized(getLock()) {
+            RefCountedIndexReader toRet = sIndexReadersCache.getIndexReader(this);
+            if (toRet != null)
+                return toRet;
+            
             IndexReader reader = null;
             try {
-                flush();
-                reader = IndexReader.open(mIdxPath);
+                closeIndexWriter();
+                reader = IndexReader.open(mIdxDirectory);
             } catch(IOException e) {
                 // Handle the special case of trying to open a not-yet-created
                 // index, by opening for write and immediately closing.  Index
                 // directory should get initialized as a result.
-                File indexDir = new File(mIdxPath);
+                File indexDir = mIdxDirectory.getFile();
                 if (indexDirIsEmpty(indexDir)) {
                     openIndexWriter();
-                    mIndexWriterMutex.unlock();
                     closeIndexWriter();
                     try {
-                        reader = IndexReader.open(indexDir);
+                        reader = IndexReader.open(mIdxDirectory);
                     } catch (IOException e1) {
                         if (reader != null)
                             reader.close();
@@ -1076,89 +1008,26 @@ public final class MailboxIndex
                 }
             }
             
-            return new CountedIndexReader(reader);
+            toRet = new RefCountedIndexReader(reader); // refcount starts at 1 
+            sIndexReadersCache.putIndexReader(this, toRet); // addrefs if put in cache
+            return toRet; 
         }
     }
-
-    CountedIndexSearcher getCountedIndexSearcher() throws IOException
+    
+    /**
+     * @return A refcounted RefCountedIndexSearcher for this index.  Caller is responsible for 
+     *            calling RefCountedIndexReader.release() on the index before allowing it to go
+     *            out of scope (otherwise a RuntimeException will occur)
+     * 
+     * @throws IOException
+     */
+    RefCountedIndexSearcher getCountedIndexSearcher() throws IOException
     {
         synchronized(getLock()) {        
-            CountedIndexSearcher searcher = null;
-            CountedIndexReader cReader = getCountedIndexReader();
-            searcher = new CountedIndexSearcher(cReader);
+            RefCountedIndexSearcher searcher = null;
+            RefCountedIndexReader cReader = getCountedIndexReader();
+            searcher = new RefCountedIndexSearcher(cReader);
             return searcher;
-        }
-    }
-
-
-
-    static class CountedIndexReader {
-        private IndexReader mReader;
-        private int mCount = 1;
-
-        public CountedIndexReader(IndexReader reader) {
-            mReader= reader;
-        }
-        public IndexReader getReader() { return mReader; }
-
-        public synchronized void addRef() {
-            mCount++;
-        }
-
-        public synchronized void forceClose() {
-            closeIt();
-        }
-
-        public synchronized void release() {
-            mCount--;
-            assert(mCount >= 0);
-            if (0 == mCount) {
-                closeIt();
-            }
-        }
-
-        private void closeIt() {
-            try {
-                mReader.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            } finally {
-                mReader= null;
-            }
-        }
-
-        protected void finalize() {
-            if (mReader != null) {
-                throw new java.lang.RuntimeException("Reader isn't closed in CountedIndexReader's finalizer!");
-            }
-        }
-    }
-
-    static class CountedIndexSearcher {
-        private Searcher mSearcher;
-        private CountedIndexReader mReader;
-        private int mCount = 1;
-        public CountedIndexSearcher(CountedIndexReader reader) {
-            mReader= reader;
-            mSearcher = new IndexSearcher(mReader.getReader());
-        }
-        public synchronized Searcher getSearcher() { return mSearcher; }
-        public synchronized void forceClose() {
-            mReader.forceClose();
-            mReader = null;
-        }
-        public synchronized void release() {
-            mCount--;
-            assert(mCount >= 0);
-            if (0 == mCount) {
-                mReader.release();
-                mReader= null;
-            }
-        }
-        public synchronized CountedIndexSearcher addRef() {
-            assert(mCount > 0);
-            mCount++;
-            return this;
         }
     }
 
@@ -1180,24 +1049,28 @@ public final class MailboxIndex
     public static final String GROUP_BY_MESSAGE      = "message";
     public static final String GROUP_BY_NONE         = "none";
 
-    public static final String SEARCH_FOR_CONVERSATIONS = "conversation";
-    public static final String SEARCH_FOR_MESSAGES = "message";
-    public static final String SEARCH_FOR_CONTACTS = "contact";
     public static final String SEARCH_FOR_APPOINTMENTS = "appointment";
-    public static final String SEARCH_FOR_TASKS = "task";
+    public static final String SEARCH_FOR_CONTACTS = "contact";
+    public static final String SEARCH_FOR_CONVERSATIONS = "conversation";
+    public static final String SEARCH_FOR_DOCUMENTS = "document";
+    public static final String SEARCH_FOR_MESSAGES = "message";
     public static final String SEARCH_FOR_NOTES = "note";
+    public static final String SEARCH_FOR_TASKS = "task";
     public static final String SEARCH_FOR_WIKI = "wiki";
 
-    public static final String SEARCH_FOR_DOCUMENT = "document";
+    public static final String SEARCH_FOR_EVERYTHING = SEARCH_FOR_APPOINTMENTS + ',' + SEARCH_FOR_CONTACTS + ',' +
+                                                       SEARCH_FOR_DOCUMENTS + ',' + SEARCH_FOR_MESSAGES + ',' +
+                                                       SEARCH_FOR_NOTES + ',' + SEARCH_FOR_TASKS + ',' +
+                                                       SEARCH_FOR_WIKI;
 
     public static enum SortBy {
-        DATE_ASCENDING  ("dateAsc",   (byte)(DbMailItem.SORT_BY_DATE | DbMailItem.SORT_ASCENDING)), 
-        DATE_DESCENDING ("dateDesc",  (byte)(DbMailItem.SORT_BY_DATE | DbMailItem.SORT_DESCENDING)),
-        SUBJ_ASCENDING  ("subjAsc",   (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING)),
-        SUBJ_DESCENDING ("subjDesc",  (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_DESCENDING)),
-        NAME_ASCENDING  ("nameAsc",   (byte)(DbMailItem.SORT_BY_SENDER | DbMailItem.SORT_ASCENDING)),
-        NAME_DESCENDING ("nameDesc",  (byte)(DbMailItem.SORT_BY_SENDER | DbMailItem.SORT_DESCENDING)),
-        SCORE_DESCENDING("score", (byte)0);
+        DATE_ASCENDING  ("dateAsc",  (byte) (DbMailItem.SORT_BY_DATE | DbMailItem.SORT_ASCENDING)), 
+        DATE_DESCENDING ("dateDesc", (byte) (DbMailItem.SORT_BY_DATE | DbMailItem.SORT_DESCENDING)),
+        SUBJ_ASCENDING  ("subjAsc",  (byte) (DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING)),
+        SUBJ_DESCENDING ("subjDesc", (byte) (DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_DESCENDING)),
+        NAME_ASCENDING  ("nameAsc",  (byte) (DbMailItem.SORT_BY_SENDER | DbMailItem.SORT_ASCENDING)),
+        NAME_DESCENDING ("nameDesc", (byte) (DbMailItem.SORT_BY_SENDER | DbMailItem.SORT_DESCENDING)),
+        SCORE_DESCENDING("score",    (byte) 0);
 
         static HashMap<String, SortBy> sNameMap = new HashMap<String, SortBy>();
 
@@ -1254,7 +1127,7 @@ public final class MailboxIndex
                 types[i] = MailItem.TYPE_NOTE;
             } else if (SEARCH_FOR_WIKI.equals(strs[i])) {
                 types[i] = MailItem.TYPE_WIKI;
-            } else if (SEARCH_FOR_DOCUMENT.equals(strs[i])) {
+            } else if (SEARCH_FOR_DOCUMENTS.equals(strs[i])) {
                 types[i] = MailItem.TYPE_DOCUMENT;
             } else 
                 throw ServiceException.INVALID_REQUEST("unknown groupBy: "+strs[i], null);
@@ -1265,7 +1138,7 @@ public final class MailboxIndex
 
     protected Spans getSpans(SpanQuery q) throws IOException {
         synchronized(getLock()) {        
-            CountedIndexReader reader = this.getCountedIndexReader();
+            RefCountedIndexReader reader = this.getCountedIndexReader();
             try {
                 IndexReader iReader = reader.getReader();
                 return q.getSpans(iReader);
@@ -1388,7 +1261,7 @@ public final class MailboxIndex
 
             String sortField = doc.get(mSortField);
             String partName = doc.get(LuceneFields.L_PARTNAME);
-            String dateStr = doc.get(LuceneFields.L_DATE);
+            String dateStr = doc.get(LuceneFields.L_SORT_DATE);
             long docDate = DateField.stringToTime(dateStr);
             // fix for Bug 311 -- SQL truncates dates when it stores them
             long truncDocDate = (docDate /1000) * 1000;
@@ -1553,12 +1426,12 @@ public final class MailboxIndex
                 c.types.add(MailItem.TYPE_MESSAGE);
                 c.types.add(MailItem.TYPE_NOTE);
 
-                String lucSortField = LuceneFields.L_DATE;
+                String lucSortField = LuceneFields.L_SORT_DATE;
 
                 ChkIndexStage2Callback callback = new ChkIndexStage2Callback(this, lucSortField, false);
 
                 DbMailItem.search(callback.msgsInMailbox, conn, c);
-                MailboxIndex.CountedIndexSearcher searcher = null;
+                RefCountedIndexSearcher searcher = null;
                 try {
                     callback.beginIterating();
                     searcher = getCountedIndexSearcher();
@@ -1600,12 +1473,12 @@ public final class MailboxIndex
                 c.types.add(MailItem.TYPE_NOTE);
 
 
-                String lucSortField = LuceneFields.L_DATE;
+                String lucSortField = LuceneFields.L_SORT_DATE;
 
                 ChkIndexStage2Callback callback = new ChkIndexStage2Callback(this, lucSortField, true);
 
                 DbMailItem.search(callback.msgsInMailbox, conn, c);
-                MailboxIndex.CountedIndexSearcher searcher = null;
+                RefCountedIndexSearcher searcher = null;
                 try {
                     callback.beginIterating();
                     searcher = getCountedIndexSearcher();
@@ -1635,15 +1508,16 @@ public final class MailboxIndex
             IndexWriter writer = null;
             try {
                 flush();
-                //assert(false);
-                // TODO - broken right now, need way to forcibly close all open indices???
+                // FIXME maybe: under Windows only, this can fail.  Might need way to forcibly close all open indices???
                 //				closeIndexReader();
-                sLog.info("****Deleting index " + mIdxPath);
-                File path = new File(mIdxPath);
+                if (sLog.isDebugEnabled())
+                    sLog.debug("****Deleting index " + mIdxDirectory.toString());
 
                 // can use default analyzer here since it is easier, and since we aren't actually
                 // going to do any indexing...
-                writer = new IndexWriter(path, ZimbraAnalyzer.getDefaultAnalyzer(), true);
+//                sLog.info("MI"+this.toString()+" Opening IndexWriter(3) "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
+                writer = new IndexWriter(mIdxDirectory, ZimbraAnalyzer.getDefaultAnalyzer(), true);
+//                sLog.info("MI"+this.toString()+" Opened IndexWriter(3) "+ writer+" for "+this+" dir="+mIdxDirectory.toString());
             } finally {
                 if (writer != null) {
                     writer.close();
@@ -1653,22 +1527,12 @@ public final class MailboxIndex
     }
 
     protected int countTermOccurences(String fieldName, String term) throws IOException {
-        CountedIndexReader reader = getCountedIndexReader();
+        RefCountedIndexReader reader = getCountedIndexReader();
         try {
             TermEnum e = reader.getReader().terms(new Term(fieldName, term));
             return e.docFreq();
         } finally {
             reader.release();
-        }
-    }
-
-    void hackIndex() throws IOException
-    {
-        synchronized(getLock()) {        
-            //
-            // this is the place where i put test code when i want to try something quickly 
-            // that requires an actual indexreader
-            //
         }
     }
 
@@ -1682,10 +1546,6 @@ public final class MailboxIndex
             mIdx = idx;
         }
         void close() { };
-
-        void hackIndex() throws IOException {
-            mIdx.hackIndex();
-        }
 
         public synchronized Spans getSpans(SpanQuery q) throws IOException {
             return mIdx.getSpans(q);
@@ -1722,9 +1582,9 @@ public final class MailboxIndex
         }
 
         private static class TermEnumCallback implements MailboxIndex.TermEnumInterface {
-            private Collection mCollection;
-
-            TermEnumCallback(Collection collection) {
+            private Collection<TermInfo> mCollection;
+            
+            TermEnumCallback(Collection<TermInfo> collection) {
                 mCollection = collection;
             }
             public void onTerm(Term term, int docFreq) {
@@ -1737,7 +1597,7 @@ public final class MailboxIndex
             }
         }
 
-        public void enumerateTerms(Collection /*TermEnumCallback.TermInfo*/ collection, String field) throws IOException {
+        public void enumerateTerms(Collection<TermInfo>collection, String field) throws IOException {
             TermEnumCallback cb = new TermEnumCallback(collection);
             mIdx.enumerateTermsForField(new Term(field,""), cb);
         }
@@ -1788,28 +1648,28 @@ public final class MailboxIndex
             case MailItem.TYPE_DOCUMENT:
             case MailItem.TYPE_WIKI:
                 try {
-                    com.zimbra.cs.mailbox.Document document = (com.zimbra.cs.mailbox.Document)item;
+                    com.zimbra.cs.mailbox.Document document = (com.zimbra.cs.mailbox.Document) item;
                     ParsedDocument pd = new ParsedDocument(document.getBlob().getBlob().getFile(),
                                 document.getName(), 
                                 document.getContentType(),
                                 timestamp,
                                 document.getCreator());
                     indexDocument(mbox, redo, deleteFirst, pd, document);
-                } catch (IOException e) {
-                    throw ServiceException.FAILURE("indexDocument caught Exception", e);
+                } catch (IOException ioe) {
+                    throw ServiceException.FAILURE("indexDocument caught Exception", ioe);
                 }
                 break;
-//            case MailItem.TYPE_CHAT:
+            case MailItem.TYPE_CHAT:
             case MailItem.TYPE_MESSAGE:
-                Message msg =  mbox.getMessageById(null, itemId);
-                InputStream is =msg.getRawMessage();
+                Message msg = (Message) item;
+                InputStream is = msg.getContentStream();
                 MimeMessage mm;
                 try {
                     mm = new Mime.FixedMimeMessage(JMSession.getSession(), is);
                     ParsedMessage pm = new ParsedMessage(mm, timestamp, mbox.attachmentsIndexingEnabled());
                     indexMessage(mbox, redo, deleteFirst, pm, msg);
-                } catch (Throwable e) {
-                    sLog.warn("Skipping indexing; Unable to parse message " + itemId + ": " + e.toString(), e);
+                } catch (Throwable t) {
+                    sLog.warn("Skipping indexing; Unable to parse message " + itemId + ": " + t.toString(), t);
                     // Eat up all errors during message analysis.  Throwing
                     // anything here will force server halt during crash
                     // recovery.  Because we can't possibly predict all
@@ -1833,10 +1693,29 @@ public final class MailboxIndex
             default:
                 if (redo != null)
                     redo.abort();
-            throw ServiceException.FAILURE("Invalid item type for indexing: type=" + itemType, null);
+                throw ServiceException.FAILURE("Invalid item type for indexing: type=" + itemType, null);
         }
     }
-
+    
+    public void indexCalendarItem(Mailbox mbox, IndexItem redo, boolean deleteFirst, 
+        CalendarItem item, List<Document> docList, long date) throws ServiceException {
+        
+        initAnalyzer(mbox);
+        synchronized(getLock()) {
+            int indexId = item.getIndexId();
+            
+            try {
+                if (docList != null) {
+                    Document[] docs = new Document[docList.size()];
+                    docs = docList.toArray(docs);
+                    addDocument(redo, docs, indexId, date, item, deleteFirst);
+                }
+            } catch (IOException e) {
+                throw ServiceException.FAILURE("indexMessage caught IOException", e);
+            }
+        }
+    }
+    
     /**
      * Index a message in the specified mailbox.
      * @param mailboxId
@@ -1855,7 +1734,7 @@ public final class MailboxIndex
                 if (docList != null) {
                     Document[] docs = new Document[docList.size()];
                     docs = docList.toArray(docs);
-                    addDocument(redo, docs, indexId, pm.getReceivedDate(), deleteFirst);
+                    addDocument(redo, docs, indexId, pm.getReceivedDate(), msg, deleteFirst);
                 }
             } catch (IOException e) {
                 throw ServiceException.FAILURE("indexMessage caught IOException", e);
@@ -1897,8 +1776,6 @@ public final class MailboxIndex
                 }
 
                 Document doc = new Document();
-                String subj = contact.getFileAsString().toLowerCase();
-                String name = (subj.length() > DbMailItem.MAX_SENDER_LENGTH ? subj.substring(0, DbMailItem.MAX_SENDER_LENGTH) : subj);
 
                 StringBuilder searchText = new StringBuilder();
                 appendContactField(searchText, contact, Contact.A_company);
@@ -1918,21 +1795,17 @@ public final class MailboxIndex
                 searchText.append(ZimbraAnalyzer.getAllTokensConcatenated(LuceneFields.L_H_TO, emailStr));
                 
                 /* put the email addresses in the "To" field so they can be more easily searched */
-                doc.add(new Field(LuceneFields.L_H_TO, emailStr,                                               false/*store*/, true/*index*/, true/*token*/));
-
+                doc.add(new Field(LuceneFields.L_H_TO, emailStr,  Field.Store.NO, Field.Index.TOKENIZED));
+                
                 /* put the name in the "From" field since the MailItem table uses 'Sender'*/
-                doc.add(new Field(LuceneFields.L_H_FROM, name,                                                  false/*store*/, true/*index*/, true/*token*/ ));
-
+                doc.add(new Field(LuceneFields.L_H_FROM, contact.getSender(),  Field.Store.NO, Field.Index.TOKENIZED));
                 /* bug 11831 - put contact searchable data in its own field so wildcard search works better  */
-                doc.add(new Field(LuceneFields.L_CONTACT_DATA, searchText.toString(),                false/*store*/, true/*index*/, true/*token*/));
-
-                doc.add(new Field(LuceneFields.L_CONTENT, contentText.toString(),                      false/*store*/, true/*index*/, true/*token*/));
-                doc.add(new Field(LuceneFields.L_H_SUBJECT, subj,                                              false/*store*/, true/*index*/, true/*token*/));
-                doc.add(new Field(LuceneFields.L_PARTNAME, LuceneFields.L_PARTNAME_CONTACT,       true/*store*/,  true/*index*/, true/*token*/));
-                doc.add(new Field(LuceneFields.L_SORT_SUBJECT, subj.toUpperCase(),                     true/*store*/,  true/*index*/, false /*token*/));
-                doc.add(new Field(LuceneFields.L_SORT_NAME, name.toUpperCase(),                         false/*store*/, true/*index*/, false /*token*/));
-
-                addDocument(redo, doc, indexId, contact.getDate(), deleteFirst);
+                doc.add(new Field(LuceneFields.L_CONTACT_DATA, searchText.toString(), Field.Store.NO, Field.Index.TOKENIZED));
+                doc.add(new Field(LuceneFields.L_CONTENT, contentText.toString(), Field.Store.NO, Field.Index.TOKENIZED));
+                doc.add(new Field(LuceneFields.L_H_SUBJECT, contact.getSubject(), Field.Store.NO, Field.Index.TOKENIZED));
+                doc.add(new Field(LuceneFields.L_PARTNAME, LuceneFields.L_PARTNAME_CONTACT, Field.Store.YES, Field.Index.UN_TOKENIZED));
+                
+                addDocument(redo, doc, indexId, contact.getDate(), contact, deleteFirst);
 
             } catch (IOException ioe) {
                 throw ServiceException.FAILURE("indexContact caught IOException", ioe);
@@ -1954,7 +1827,7 @@ public final class MailboxIndex
                 sLog.debug("indexNote("+note+")");
             }
             try {
-                String toIndex = note.getContent();
+                String toIndex = note.getText();
                 int indexId = note.getIndexId(); 
 
                 if (sLog.isDebugEnabled()) {
@@ -1962,22 +1835,10 @@ public final class MailboxIndex
                 }
 
                 Document doc = new Document();
-                doc.add(Field.UnStored(LuceneFields.L_CONTENT, toIndex));
-
-                String subj = toIndex.toLowerCase();
-                String name = (subj != null && subj.length() > DbMailItem.MAX_SENDER_LENGTH ? subj.substring(0, DbMailItem.MAX_SENDER_LENGTH) : subj);
-
-                doc.add(new Field(LuceneFields.L_H_SUBJECT, subj,                                              false/*store*/, true/*index*/, true/*token*/));
-                doc.add(new Field(LuceneFields.L_PARTNAME, LuceneFields.L_PARTNAME_NOTE,            true/*store*/, true/*index*/, false/*tokenize*/));
-
-                doc.add(new Field(LuceneFields.L_SORT_SUBJECT, subj.toUpperCase(), false/*store*/, true/*index*/, false /*token*/));
-                doc.add(new Field(LuceneFields.L_SORT_NAME, name.toUpperCase(), false/*store*/, true/*index*/, false /*token*/));
-
-//              String dateString = DateField.timeToString(note.getDate());
-//              mLog.debug("Note date is: "+dateString);
-//              doc.add(Field.Text(LuceneFields.L_DATE, dateString));
-
-                addDocument(redo, doc, indexId, note.getDate(), deleteFirst);
+                doc.add(new Field(LuceneFields.L_CONTENT, toIndex, Field.Store.NO, Field.Index.TOKENIZED));
+                doc.add(new Field(LuceneFields.L_H_SUBJECT, toIndex, Field.Store.NO, Field.Index.TOKENIZED));
+                doc.add(new Field(LuceneFields.L_PARTNAME, LuceneFields.L_PARTNAME_NOTE, Field.Store.YES, Field.Index.UN_TOKENIZED));
+                addDocument(redo, doc, indexId, note.getDate(), note, deleteFirst);
 
             } catch (IOException e) {
                 throw ServiceException.FAILURE("indexNote caught IOException", e);
@@ -1986,123 +1847,23 @@ public final class MailboxIndex
     }    
 
     public void indexDocument(Mailbox mbox, IndexItem redo, boolean deleteFirst, 
-                ParsedDocument pd, com.zimbra.cs.mailbox.Document doc)  throws ServiceException {
+        ParsedDocument pd, com.zimbra.cs.mailbox.Document doc)  throws ServiceException {
         initAnalyzer(mbox);
         synchronized(getLock()) {        
             try {
                 int indexId = doc.getIndexId();
-                addDocument(redo, pd.getDocument(), indexId, pd.getCreatedDate(), deleteFirst);
+                addDocument(redo, pd.getDocument(), indexId, pd.getCreatedDate(), doc, deleteFirst);
             } catch (IOException e) {
                 throw ServiceException.FAILURE("indexDocument caught Exception", e);
             }
         }
     }
     
-    final Object getLock() {
+    private final Object getLock() {
         if (sNewLockModel)
             return mMailbox;
         else
             return this;
     }
-    
-    private static final class IndexWritersSweeper extends Thread {
-        
-        private boolean mShutdown = false;
-        
-        public IndexWritersSweeper() {
-        	super("IndexWritersSweeperThread");
-        }        
 
-        /**
-         * Shutdown the sweeper thread
-         */
-        synchronized void signalShutdown() {
-            mShutdown = true;
-            notify();
-        }
-        
-        /**
-         * Main loop for the Sweeper thread.  This thread does a sweep automatically
-         * every (mSweepIntervalMS) ms, or it will run a sweep when woken up
-         * bia the wakeupSweeperThread() API
-         */
-        public void run() {
-            sLog.info(getName() + " thread starting");
-
-            boolean shutdown = false;
-            long startTime = System.currentTimeMillis();
-
-            while (!shutdown) {
-                // Sleep until next scheduled wake-up time, or until notified.
-                synchronized (this) {
-                    if (!mShutdown) {  // Don't go into wait() if shutting down.  (bug 1962)
-                        long now = System.currentTimeMillis();
-                        long until = startTime + sSweepIntervalMS;
-                        if (until > now) {
-                            try {
-                                wait(until - now);
-                            } catch (InterruptedException e) {}
-                        }
-                    }
-                    shutdown = mShutdown;
-                }
-
-                startTime = System.currentTimeMillis();
-                
-
-                // Flush out index writers that have been idle too long.
-                MailboxIndex toRemove;
-                int removed = 0;
-                int sizeAfter = 0;
-                int sizeBefore = -1;
-                do {
-                    synchronized (sOpenIndexWriters) {
-                        if (sizeBefore == -1)
-                            sizeBefore = sOpenIndexWriters.size();
-                        toRemove = null;
-                        long cutoffTime = startTime - sIdleWriterFlushTimeMS;
-                        for (Iterator it = sOpenIndexWriters.entrySet().iterator(); toRemove==null && it.hasNext(); ) {
-                            Map.Entry entry = (Map.Entry) it.next();
-                            MailboxIndex mi = (MailboxIndex) entry.getKey();
-                            if (mi.getLastWriteTime() < cutoffTime) {
-                                removed++;
-                                toRemove = mi;
-                                it.remove();
-                                toRemove.mIndexWriterMutex.lock();
-                                sReservedWriterSlots++;
-                            }
-                        }
-                        sizeAfter = sOpenIndexWriters.size();
-                        ZimbraPerf.COUNTER_IDX_WRT.increment(sizeAfter);
-                    }
-                    if (toRemove != null) {
-                        try {
-                        	toRemove.closeIndexWriterAfterRemove();
-                        } finally {
-                            toRemove.mIndexWriterMutex.unlock();
-                    		assert(!toRemove.mIndexWriterMutex.isHeldByCurrentThread());
-                        	synchronized(sOpenIndexWriters) {
-                        		sReservedWriterSlots--;
-                        		assert(toRemove.mIndexWriter == null);
-                        	}                        	
-                        }
-                    }
-                    synchronized(this) {
-                        if (mShutdown)
-                            shutdown = true;
-                    }
-                } while (!shutdown && toRemove != null);
-                
-                long elapsed = System.currentTimeMillis() - startTime;
-                
-                if (removed > 0 || sizeAfter > 0)
-                    sLog.info("open index writers sweep: before=" + sizeBefore +
-                                ", closed=" + removed +
-                                ", after=" + sizeAfter + " (" + elapsed + "ms)");
-            }
-
-            sLog.info(getName() + " thread exiting");
-        }
-    }
-    
 }

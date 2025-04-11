@@ -41,7 +41,9 @@ import javax.crypto.spec.SecretKeySpec;
 import org.apache.commons.codec.binary.Base64;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.util.ZimbraLog;
 
 /**
  * @author schemers
@@ -55,17 +57,28 @@ public class DataSource extends NamedEntry implements Comparable {
         StringUtil.getSimpleClassName(DataSource.class.getName());
     
     public enum Type {
-        pop3;
+        pop3, imap;
         
         public static Type fromString(String s) throws ServiceException {
             try {
                 return Type.valueOf(s);
             } catch (IllegalArgumentException e) {
-                throw ServiceException.INVALID_REQUEST("invalid type: "+s+", valid values: "+Arrays.asList(Type.values()), e); 
+                throw ServiceException.INVALID_REQUEST("invalid type: " + s + ", valid values: " + Arrays.asList(Type.values()), e); 
             }
         }
     };
-    
+
+    public enum ConnectionType {
+        cleartext, ssl;
+        
+        public static ConnectionType fromString(String s) throws ServiceException {
+            try {
+                return ConnectionType.valueOf(s);
+            } catch (IllegalArgumentException e) {
+                throw ServiceException.INVALID_REQUEST("invalid type: " + s + ", valid values: " + Arrays.asList(Type.values()), e); 
+            }
+        }
+    }
     public static final String CT_CLEARTEXT = "cleartext";
     public static final String CT_SSL = "ssl";
     
@@ -82,7 +95,18 @@ public class DataSource extends NamedEntry implements Comparable {
     
     public boolean isEnabled() { return getBooleanAttr(Provisioning.A_zimbraDataSourceEnabled, false); }
 
-    public String getConnectionType() { return getAttr(Provisioning.A_zimbraDataSourceConnectionType); }
+    public ConnectionType getConnectionType() {
+        String val = getAttr(Provisioning.A_zimbraDataSourceConnectionType);
+        ConnectionType connectionType = null;
+        if (val != null) {
+            try {
+                connectionType = ConnectionType.fromString(val);
+            } catch (ServiceException e) {
+                ZimbraLog.mailbox.warn("Unable to determine connection type of " + toString(), e);
+            }
+        }
+        return connectionType;
+    }
     
     public int getFolderId() { return getIntAttr(Provisioning.A_zimbraDataSourceFolderId, -1); }
     
@@ -100,6 +124,28 @@ public class DataSource extends NamedEntry implements Comparable {
     public String getDecryptedPassword() throws ServiceException {
         String data = getAttr(Provisioning.A_zimbraDataSourcePassword);
         return data == null ? null : decryptData(getId(), data); 
+    }
+    
+    /**
+     * Returns the poll interval in milliseconds, or 0 if
+     * {@link Provisioning#A_zimbraDataSourcePollingInterval} is not specified.
+     */
+    public long getPollingInterval() {
+        long interval = getTimeInterval(Provisioning.A_zimbraDataSourcePollingInterval, 0);
+        long safeguard = 10 * Constants.MILLIS_PER_SECOND;
+        if (0 < interval && interval < safeguard) {
+            // Don't allow anyone to poll more frequently than every 10 seconds
+            interval = safeguard;
+        }
+        return interval;
+    }
+    
+    /**
+     * Returns <tt>true</tt> if this data source has a scheduled poll interval.
+     * @see #getPollInterval
+     */
+    public boolean isScheduled() {
+        return getPollingInterval() != 0;
     }
 
     /**
@@ -183,7 +229,7 @@ public class DataSource extends NamedEntry implements Comparable {
             parts.add("port=" + getPort());
         }
         if (getConnectionType() != null) {
-            parts.add("connectionType=" + getConnectionType());
+            parts.add("connectionType=" + getConnectionType().name());
         }
         if (getUsername() != null) {
             parts.add("username=" + getUsername());

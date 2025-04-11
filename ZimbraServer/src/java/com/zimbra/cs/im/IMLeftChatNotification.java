@@ -25,31 +25,25 @@
 package com.zimbra.cs.im;
 
 import java.util.Formatter;
-import com.zimbra.cs.service.im.IMService;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.IMConstants;
 
-public class IMLeftChatNotification implements IMNotification {
+public class IMLeftChatNotification extends IMChatNotification {
 
-    IMAddr mFromAddr;
-    String mThreadId;
-    
     IMLeftChatNotification(IMAddr from, String threadId) {
-        mFromAddr = from;
-        mThreadId = threadId;
+        super(from, threadId);
     }
-            
+
     public String toString() {
-        return new Formatter().format("IMLeftChatEvent: From: %s  Thread: %s", 
-                mFromAddr, mThreadId).toString();
+        return new Formatter().format("IMLeftChatNotification: %s", super.toString()).toString();
     }
-    
+
     /* (non-Javadoc)
-     * @see com.zimbra.cs.im.IMNotification#toXml(com.zimbra.soap.Element)
-     */
+    * @see com.zimbra.cs.im.IMNotification#toXml(com.zimbra.common.soap.Element)
+    */
     public Element toXml(Element parent) {
-        Element toRet = parent.addElement(IMService.E_LEFTCHAT);
-        toRet.addAttribute(IMService.A_THREAD_ID, mThreadId);
-        toRet.addAttribute(IMService.A_ADDRESS, mFromAddr.getAddr());
+        Element toRet = create(parent, IMConstants.E_LEFTCHAT);
+        super.toXml(toRet);
         return toRet;
     }
 }

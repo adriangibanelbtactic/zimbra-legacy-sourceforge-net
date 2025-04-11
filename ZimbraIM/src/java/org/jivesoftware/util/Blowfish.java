@@ -11,6 +11,7 @@
  *
  * Released under the Apache 2.0 license.
  */
+
 package org.jivesoftware.util;
 
 import java.util.*;

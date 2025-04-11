@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3158 $
+ * $Date: 2005-12-04 22:55:49 -0300 (Sun, 04 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.muc.spi;
 
 import org.dom4j.Element;
@@ -208,7 +195,7 @@ public class MUCRoomImpl implements MUCRoom {
      * Every presence packet can include the JID of every occupant unless the owner deactives this
      * configuration. 
      */
-    private boolean canAnyoneDiscoverJID = false;
+    private boolean canAnyoneDiscoverJID = true;
 
     /**
      * Enables the logging of the conversation. The conversation in the room will be saved to the
@@ -932,7 +919,7 @@ public class MUCRoomImpl implements MUCRoom {
 
         public JID getRoleAddress() {
             if (crJID == null) {
-                crJID = new JID(room.getName(), server.getServiceDomain(), "");
+                crJID = new JID(room.getName());
             }
             return crJID;
         }

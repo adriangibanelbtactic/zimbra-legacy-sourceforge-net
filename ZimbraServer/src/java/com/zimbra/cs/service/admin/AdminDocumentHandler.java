@@ -38,14 +38,39 @@ import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.account.Provisioning.CalendarResourceBy;
 import com.zimbra.cs.account.Provisioning.ServerBy;
+import com.zimbra.cs.mailbox.Mailbox;
+import com.zimbra.cs.operation.BlockingOperation;
+import com.zimbra.cs.operation.Requester;
+import com.zimbra.cs.operation.Scheduler.Priority;
 import com.zimbra.cs.session.Session;
-import com.zimbra.cs.session.SessionCache;
 import com.zimbra.soap.DocumentHandler;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /** @author schemers */
 public abstract class AdminDocumentHandler extends DocumentHandler {
+
+    @Override
+    public Object preHandle(Element request, Map<String, Object> context) throws ServiceException { 
+        Session session = getSession(context);
+        ZimbraSoapContext zsc = getZimbraSoapContext(context);
+        Mailbox.OperationContext octxt = null;
+        Mailbox mbox = null;
+
+        if (zsc.getAuthToken() != null)
+            octxt = zsc.getOperationContext();
+        return BlockingOperation.schedule(request.getName(), session, octxt, mbox, Requester.ADMIN, getSchedulerPriority(), 1);   
+    }
+
+    @Override
+    public void postHandle(Object userObj) { 
+        ((BlockingOperation) userObj).finish();
+    }
+
+    protected Priority getSchedulerPriority() {
+        return Priority.INTERACTIVE_HIGH;
+    }
 
 
     @Override
@@ -90,7 +115,7 @@ public abstract class AdminDocumentHandler extends DocumentHandler {
             xpath = getProxiedAccountElementPath();
             Element elt = (xpath != null ? getXPathElement(request, xpath) : null);
             if (elt != null) {
-                Account acct = prov.get(AccountBy.fromString(elt.getAttribute(AdminService.A_BY)), elt.getText());
+                Account acct = prov.get(AccountBy.fromString(elt.getAttribute(AdminConstants.A_BY)), elt.getText());
                 if (acct != null && !Provisioning.onLocalServer(acct))
                     return proxyRequest(request, context, acct.getId());
             }
@@ -131,6 +156,6 @@ public abstract class AdminDocumentHandler extends DocumentHandler {
      * @return An {@link com.zimbra.cs.session.AdminSession}. */
     @Override
     public Session getSession(Map<String, Object> context) {
-        return getSession(context, SessionCache.SESSION_ADMIN);
+        return getSession(context, Session.Type.ADMIN);
     }
 }

@@ -21,7 +21,7 @@
 * @constructor DynSelect_XFormItem
 * @author Greg Solovyev
 **/
-function DynSelect_XFormItem() {}
+DynSelect_XFormItem = function() {}
 XFormItemFactory.createItemType("_DYNSELECT_", "dynselect", DynSelect_XFormItem, OSelect1_XFormItem);
 DynSelect_XFormItem.prototype.dataFetcherClass = null;
 DynSelect_XFormItem.prototype.dataFetcherMethod = null;
@@ -40,6 +40,7 @@ DynSelect_XFormItem.prototype.initFormItem = function () {
 }
 DynSelect_XFormItem.prototype.changeChoicesCallback = 
 function (data) {
+	DBG.println(AjxDebug.DBG1, AjxBuffer.concat(this.getId(),".choices came back"));
 	var choices = this.getChoices();
 	if(!choices)
 		return;
@@ -48,6 +49,7 @@ function (data) {
 }
 
 DynSelect_XFormItem.prototype.onKeyUp = function(value, event) {
+	DBG.println(AjxDebug.DBG1, AjxBuffer.concat(this.getId(),".onKeyUp"));
 	var method = this.getKeyUpMethod();
 	if(method) {
 		method.call(this, value, event);

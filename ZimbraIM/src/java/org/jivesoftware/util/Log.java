@@ -1,34 +1,21 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3195 $
+ * $Date: 2005-12-13 10:07:30 -0800 (Tue, 13 Dec 2005) $
+ *
+ * Copyright (C) 1999-2004 Jive Software. All rights reserved.
+ *
+ * This software is the proprietary information of Jive Software.
+ * Use is subject to license terms.
  */
+
 package org.jivesoftware.util;
 
 import com.zimbra.common.util.ZimbraLog;
 
 /**
  */
-public class Log {
+public final class Log {
 
     /**
      * This method is used to initialize the Log class. For normal operations this method
@@ -72,6 +59,12 @@ public class Log {
     public static void debug(String s, Throwable throwable) {
         ZimbraLog.im.debug(s, throwable);
     }
+    
+    public static void debug(String format, Object ... objects) {
+        if (isDebugEnabled()) {
+            ZimbraLog.im.debug(String.format(format, objects));
+        }
+    }
 
     public static void info(String s) {
         ZimbraLog.im.info(s);
@@ -83,6 +76,12 @@ public class Log {
 
     public static void info(String s, Throwable throwable) {
         ZimbraLog.im.info(s, throwable);
+    }
+    
+    public static void info(String format, Object ... objects) {
+        if (isInfoEnabled()) {
+            ZimbraLog.im.info(String.format(format, objects));
+        }
     }
 
     public static void warn(String s) {
@@ -96,6 +95,12 @@ public class Log {
     public static void warn(String s, Throwable throwable) {
         ZimbraLog.im.warn(s,throwable);
     }
+    
+    public static void warn(String format, Object ... objects) {
+        if (isWarnEnabled()) {
+            ZimbraLog.im.warn(String.format(format, objects));
+        }
+    }
 
     public static void error(String s) {
         ZimbraLog.im.error(s);
@@ -107,6 +112,12 @@ public class Log {
 
     public static void error(String s, Throwable throwable) {
         ZimbraLog.im.error(s,throwable);
+    }
+    
+    public static void error(String format, Object ... objects) {
+        if (isErrorEnabled()) {
+            ZimbraLog.im.error(String.format(format, objects));
+        }
     }
 
     public static void fatal(String s) {

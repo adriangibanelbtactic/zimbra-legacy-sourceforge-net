@@ -23,24 +23,13 @@
  * ***** END LICENSE BLOCK *****
  */
 
-/*
- * Created on Nov 29, 2004
- *
- * DO NOT INSTANTIATE THIS DIRECTLY -- instead call SessionCache.getNewSession() 
- * to create objects of this type.
- */
 package com.zimbra.cs.session;
 
-import java.io.IOException;
-import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 
-import com.zimbra.cs.account.Account;
-import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.im.IMNotification;
 import com.zimbra.cs.im.IMPersona;
 import com.zimbra.cs.im.IMRouter;
@@ -48,45 +37,145 @@ import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
 import com.zimbra.cs.operation.Operation;
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
 import com.zimbra.common.util.StringUtil;
 
+/**
+ *  A {@link Session} is identified by an (accountId, sessionID) pair.  A single
+ *  account may have multiple active sessions simultaneously.<p>
+ *  
+ *  In general, Sessions are created and managed by the {@link SessionCache} but
+ *  this is not always the case.  Session subclasses  which are not stored in the 
+ *  SessionCache must take special care to manage their own lifetimes (timeouts, 
+ *  etc)
+ */
 public abstract class Session {
-    protected final String    mAccountId;
-    private   final String    mSessionId;
-    private   final int       mSessionType;
-    private   final IMPersona mPersona;
+    protected final String mAuthenticatedAccountId;
+    protected final String mTargetAccountId;
+    private   final Type   mSessionType;
 
-    protected Mailbox mMailbox;
-    private   long    mLastAccessed;
-    private   boolean mCleanedUp = false;
+    private   String    mSessionId;
+    protected Mailbox   mMailbox;
+    private   IMPersona mPersona;
+    private   long      mLastAccessed;
+    private   long      mCreationTime;
+    private   boolean   mCleanedUp = false;
 
-    /** Implementation of the Session interface */
-    public Session(String accountId, String sessionId, int type) throws ServiceException {
-        mAccountId = accountId;
-        mSessionId = sessionId;
+    
+    /**
+     * Session Type
+     */
+    public enum Type {
+        NULL(0, 0), // unused dummy session type
+        SOAP(1, 5), 
+        IMAP(2, 5), 
+        ADMIN(3, 5), 
+        WIKI(4, 0), 
+        SYNCLISTENER(5, 2), 
+        WAITSET(6, 0)
+        ;
+        
+        Type(int index, int maxPerAccount) {
+            mIndex = index;
+            mMaxPerAccount = maxPerAccount;
+        }
+        
+        private final int mIndex;
+        private final int mMaxPerAccount;
+        public final int getIndex() { return mIndex; }
+        public final int getMaxPerAccount() { return mMaxPerAccount; } 
+    }
+
+    /** Creates a <tt>Session</tt> of the given <tt>Type</tt> whose target
+     *  {@link Account} is the same as its authenticated <tt>Account</tt>.
+     * @param accountId  The account ID of the <tt>Session</tt>'s owner
+     * @param type       The type of <tt>Session</tt> being created */
+    public Session(String accountId, Type type) {
+        this(accountId, accountId, type);
+    }
+
+    /** Creates a <tt>Session</tt> of the given <tt>Type</tt> with its owner
+     *  and target specified separately.  In general, a <tt>Session</tt>
+     *  should only be created on the server where the target mailbox lives.
+     *  
+     * @param authId    The account ID of the <tt>Session</tt>'s owner
+     * @param targetId  The account ID of the {@link Mailbox} the
+     *                  <tt>Session</tt> is attached to
+     * @param type      The type of <tt>Session</tt> being created */
+    public Session(String authId, String targetId, Type type) {
+        mAuthenticatedAccountId = authId;
+        mTargetAccountId = targetId == null ? authId : targetId;
         mSessionType = type;
+        mCreationTime = System.currentTimeMillis();
 
-        Account acct = Provisioning.getInstance().get(AccountBy.id, accountId);
-        if (acct != null && Provisioning.onLocalServer(acct)) {
-            // add this Session to the Mailbox or die trying
-            mMailbox = MailboxManager.getInstance().getMailboxByAccountId(accountId);
+        updateAccessTime();
+    }
+
+    /** Registers the session as a listener on the target mailbox and adds
+     *  it to the session cache.  When a session is added to the cache, its
+     *  session ID is initialized.
+     *  
+     * @see #isMailboxListener()
+     * @see #isRegisteredInCache() */
+    public Session register() throws ServiceException {
+        if (mSessionId != null)
+            return this;
+
+        if (isMailboxListener()) {
+            mMailbox = MailboxManager.getInstance().getMailboxByAccountId(mTargetAccountId);
             mMailbox.addListener(this);
 
-            // add this Session to the IM Persona, or die trying
-            if (this.shouldRegisterWithIM()) {
-                synchronized(mMailbox) {
-                    mPersona = IMRouter.getInstance().findPersona(null, mMailbox, false);
+            if (shouldRegisterWithIM() && mAuthenticatedAccountId.equalsIgnoreCase(mTargetAccountId)) {
+                mPersona = IMRouter.getInstance().findPersona(null, mMailbox);
+                synchronized (mPersona.getLock()) {
                     mPersona.addListener(this);
                 }
-            } else {
-                mPersona = null;
             }
-        } else {
-            mMailbox = null;  mPersona = null;
         }
 
-        mLastAccessed = System.currentTimeMillis();
+        // registering the session automatically sets mSessionId
+        if (isRegisteredInCache())
+            SessionCache.registerSession(this);
+
+        return this;
     }
+
+    /** Unregisters the session as a listener on the target mailbox and removes
+     *  it from the session cache.  When a session is removed from the cache,
+     *  its session ID is nulled out.
+     *  
+     * @see #isMailboxListener()
+     * @see #isRegisteredInCache() */
+    public Session unregister() {
+        if (mMailbox != null && isMailboxListener()) {
+            mMailbox.removeListener(this);
+            mMailbox = null;
+        }
+
+        if (mPersona != null) {
+            synchronized (mPersona.getLock()) {
+                mPersona.removeListener(this);
+            }
+            mPersona = null;
+        }
+
+        if (mSessionId != null && isRegisteredInCache()) {
+            SessionCache.unregisterSession(this);
+            mSessionId = null;
+        }
+
+        return this;
+    }
+
+    /** Whether the session should be attached to the target {@link Mailbox}
+     *  when its {@link #register()} method is invoked. */
+    abstract protected boolean isMailboxListener();
+
+    /** Whether the session should be added to the {@link SessionCache} when
+     *  its {@link #register()} method is invoked.  A session ID is assigned
+     *  when a session is added to the cache. */
+    abstract protected boolean isRegisteredInCache();
+
 
     public static class RecentOperation {
         public long mTimestamp;
@@ -116,28 +205,32 @@ public abstract class Session {
     }
 
     synchronized public List<RecentOperation> getRecentOperations() { return mRecentOperations; }
-    
-    public void dumpState(Writer w) {
-        try {
-            w.write(this.toString());
-        } catch(IOException e) { e.printStackTrace(); };
+
+    public final void encodeState(Element parent) {
+        doEncodeState(parent);
     }
+    
+    protected void doEncodeState(Element parent) { }
 
     /** Returns the Session's identifier. */
     public String getSessionId() { 
         return mSessionId;
     }
 
+    /** Sets the Session's identifier. */
+    Session setSessionId(String sessionId) { 
+        mSessionId = sessionId;
+        return this;
+    }
+
     /** Returns the type of the Session.
-     * 
-     * @see SessionCache#SESSION_ADMIN
-     * @see SessionCache#SESSION_SOAP
-     * @see SessionCache#SESSION_IMAP */
-    public int getSessionType() {
+     * @see Type */
+    public Session.Type getSessionType() {
         return mSessionType;
     }
 
-    /** Returns the maximum idle duration (in milliseconds) for the Session. */
+    /** Returns the maximum idle duration (in milliseconds) for the Session.
+     *  The idle lifetime must be CONSTANT  */
     protected abstract long getSessionIdleLifetime();
 
     /** Returns the {@link Mailbox} (if any) this Session is listening on. */
@@ -147,35 +240,32 @@ public abstract class Session {
 
     /** Returns whether the submitted account ID matches that of the Session's owner. */
     public boolean validateAccountId(String accountId) {
-        return mAccountId.equals(accountId);
+        return mAuthenticatedAccountId.equals(accountId);
     }
 
-    public abstract void notifyPendingChanges(PendingModifications pns);
-    
-    public abstract void notifyIM(IMNotification imn);
-    
-    /**
-     * @return TRUE if this session should be registered with IM
-     */
-    protected abstract boolean shouldRegisterWithIM();
-
-    public static enum RegisterNotificationResult {
-        NO_NOTIFY, // notifications are not available for this session
-        SENT_DATA, // notifications were waiting, have been sent
-        WAITING; // none waiting, go ahead and block 
-    }
-
-    /**
-     * A push channel has come online
+    /** Handles the set of changes from a single Mailbox transaction.
+     *  <p>
+     *  Takes a set of new mailbox changes and caches it locally.  This is
+     *  currently initiated from inside the Mailbox transaction commit, but we
+     *  still shouldn't assume that execution of this method is synchronized
+     *  on the Mailbox.
+     *  <p>
+     *  *All* changes are currently cached, regardless of the client's state/views.
      *
-     * @return TRUE if the channel should stay open (wait for more data) or FALSE if the channel 
-     *          has been used (data was sent         
-     * @param conn
-     * @throws ServiceException 
-     */
-    public RegisterNotificationResult registerNotificationConnection(OzNotificationConnectionHandler conn)
-    throws ServiceException { 
-        return RegisterNotificationResult.NO_NOTIFY; 
+     * @param changeId The sync-token change Id of the change 
+     * @param pms   A set of new change notifications from our Mailbox  */
+    public abstract void notifyPendingChanges(int changeId, PendingModifications pns);
+    
+    /** Notify this session that an IM event has occured. */
+    public void notifyIM(IMNotification imn) {
+        // do nothing by default.
+    }
+    
+    /** Returns whether this session should be registered with IM (i.e. if the
+     *  existence of this session should lead to an "online" presence in the
+     *  IM system for this user. */
+    protected boolean shouldRegisterWithIM() { 
+        return false;
     }
 
     /** Disconnects from any resources and deregisters as a {@link Mailbox} listener. */
@@ -185,13 +275,7 @@ public abstract class Session {
 
         try {
             cleanup();
-            if (mMailbox != null)
-                mMailbox.removeListener(this);
-            if (mPersona != null) {
-                synchronized (mMailbox) {
-                    mPersona.removeListener(this);
-                }
-            }
+            unregister();
         } finally {
             mCleanedUp = true;
         }
@@ -199,38 +283,42 @@ public abstract class Session {
     }
 
     abstract protected void cleanup();
-
-    /**
-     * Public API for updating the access time of a session
-     */
-    public void updateAccessTime() {
-    	// go through the session cache so that the session cache's
-    	// time-ordered access list stays correct
-    	// see bug 16242
-       	 SessionCache.lookup(mSessionId, mAccountId);
+    
+    public long getLastAccessTime() { 
+        return mLastAccessed;
     }
     
-    /**
-     * This API must only be called by the SessionCache,
-     * all other callers should use updateAccessTime()
-     */
-    void sessionCacheSetLastAccessTime() {
-		mLastAccessed = System.currentTimeMillis();    	
+    public long getCreationTime() { 
+        return mCreationTime; 
+    }
+
+    public void updateAccessTime() {
+        mLastAccessed = System.currentTimeMillis();
     }
 
     public boolean accessedAfter(long otherTime) {
         return (mLastAccessed > otherTime);
     }
 
-    public String getAccountId() {
-    	return mAccountId;
+    /** Returns the account ID of the <tt>Session</tt>'s owner.
+     * @see #getTargetAccountId() */
+    public String getAuthenticatedAccountId() {
+        return mAuthenticatedAccountId;
+    }
+
+    /** Returns the account ID of the {@link Mailbox} that the <tt>Session</tt>
+     *  is attached to.
+     * @see #getAuthenticatedAccountId() */
+    public String getTargetAccountId() {
+        return mTargetAccountId;
     }
 
     private SimpleDateFormat mDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSS");
 
+    @Override
     public String toString() {
         String dateString = mDateFormat.format(new Date(mLastAccessed));
         return StringUtil.getSimpleClassName(this) + ": {sessionId: " + mSessionId +
-            ", accountId: " + mAccountId + ", lastAccessed: " + dateString + "}";
+            ", accountId: " + mAuthenticatedAccountId + ", lastAccessed: " + dateString + "}";
     }
 }

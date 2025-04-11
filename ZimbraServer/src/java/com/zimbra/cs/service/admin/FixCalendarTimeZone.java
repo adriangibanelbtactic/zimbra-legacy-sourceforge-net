@@ -30,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.NamedEntry;
@@ -37,7 +39,6 @@ import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class FixCalendarTimeZone extends AdminDocumentHandler {
@@ -51,10 +52,10 @@ public class FixCalendarTimeZone extends AdminDocumentHandler {
     public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
 
-        boolean sync = request.getAttributeBool(AdminService.A_TZFIXUP_SYNC, false);
-        long after = request.getAttributeLong(AdminService.A_TZFIXUP_AFTER, DEFAULT_FIXUP_AFTER);
-        String country = request.getAttribute(AdminService.A_COUNTRY, null);
-        List<Element> acctElems = request.listElements(AdminService.E_ACCOUNT);
+        boolean sync = request.getAttributeBool(AdminConstants.A_TZFIXUP_SYNC, false);
+        long after = request.getAttributeLong(AdminConstants.A_TZFIXUP_AFTER, DEFAULT_FIXUP_AFTER);
+        String country = request.getAttribute(AdminConstants.A_COUNTRY, null);
+        List<Element> acctElems = request.listElements(AdminConstants.E_ACCOUNT);
         List<String> acctNames = parseAccountNames(acctElems);
         if (acctNames.isEmpty())
             throw ServiceException.INVALID_REQUEST("Accounts must be specified", null);
@@ -66,14 +67,14 @@ public class FixCalendarTimeZone extends AdminDocumentHandler {
             thread.start();
         }
 
-        Element response = lc.createElement(AdminService.FIX_CALENDAR_TIME_ZONE_RESPONSE);
+        Element response = lc.createElement(AdminConstants.FIX_CALENDAR_TIME_ZONE_RESPONSE);
         return response;
     }
 
     protected List<String> parseAccountNames(List<Element> acctElems) throws ServiceException {
         List<String> a = new ArrayList<String>(acctElems.size());
         for (Element elem : acctElems) {
-            String name = elem.getAttribute(AdminService.A_NAME);
+            String name = elem.getAttribute(AdminConstants.A_NAME);
             if (ALL.equals(name)) {
                 List<String> all = new ArrayList<String>(1);
                 all.add(ALL);

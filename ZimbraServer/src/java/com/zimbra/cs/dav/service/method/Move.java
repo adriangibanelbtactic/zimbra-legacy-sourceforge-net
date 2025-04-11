@@ -28,6 +28,7 @@ import java.io.IOException;
 
 import javax.servlet.http.HttpServletResponse;
 
+import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavException;
 import com.zimbra.cs.dav.DavProtocol;
@@ -43,11 +44,11 @@ public class Move extends DavMethod {
 		return MOVE;
 	}
 	
-	public void handle(DavContext ctxt) throws DavException, IOException {
+	public void handle(DavContext ctxt) throws DavException, IOException, ServiceException {
 		String destination = ctxt.getRequest().getHeader(DavProtocol.HEADER_DESTINATION);
 		if (destination == null)
 			throw new DavException("no destination specified", HttpServletResponse.SC_BAD_REQUEST, null);
-		DavResource rs = UrlNamespace.getResource(ctxt);
+		DavResource rs = ctxt.getRequestedResource();
 		Collection col = UrlNamespace.getCollectionAtUrl(ctxt, destination);
 		if (!(col instanceof MailItemResource))
 			throw new DavException("cannot move", HttpServletResponse.SC_BAD_REQUEST, null);

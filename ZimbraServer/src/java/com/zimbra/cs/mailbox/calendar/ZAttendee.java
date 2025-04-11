@@ -30,6 +30,8 @@ import com.zimbra.cs.mailbox.calendar.ZCalendar.ZParameter;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZProperty;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 
 public class ZAttendee extends CalendarUser {
 
@@ -243,5 +245,91 @@ public class ZAttendee extends CalendarUser {
 
     public boolean addressMatches(String addr) {
         return getAddress().equalsIgnoreCase(addr);
+    }
+
+    public Element toXml(Element parent) {
+        Element atElt = parent.addElement(MailConstants.E_CAL_ATTENDEE);
+        // address
+        atElt.addAttribute(MailConstants.A_ADDRESS, getAddress());
+        atElt.addAttribute(MailConstants.A_URL, getAddress());  // for backward compatibility
+        // CN
+        if (hasCn())
+            atElt.addAttribute(MailConstants.A_DISPLAY, getCn());
+        // SENT-BY
+        if (hasSentBy())
+            atElt.addAttribute(MailConstants.A_CAL_SENTBY, getSentBy());
+        // DIR
+        if (hasDir())
+            atElt.addAttribute(MailConstants.A_CAL_DIR, getDir());
+        // LANGUAGE
+        if (hasLanguage())
+            atElt.addAttribute(MailConstants.A_CAL_LANGUAGE, getLanguage());
+        // CUTYPE
+        if (hasCUType())
+            atElt.addAttribute(MailConstants.A_CAL_CUTYPE, getCUType());
+        // ROLE
+        if (hasRole())
+            atElt.addAttribute(MailConstants.A_CAL_ROLE, getRole());
+        // PARTSTAT
+        if (hasPartStat())
+            atElt.addAttribute(MailConstants.A_CAL_PARTSTAT, getPartStat());
+        // RSVP
+        if (hasRsvp())
+            atElt.addAttribute(MailConstants.A_CAL_RSVP, getRsvp().booleanValue());
+        // MEMBER
+        if (hasMember())
+            atElt.addAttribute(MailConstants.A_CAL_MEMBER, getMember());
+        // DELEGATED-TO
+        if (hasDelegatedTo())
+            atElt.addAttribute(MailConstants.A_CAL_DELEGATED_TO, getDelegatedTo());
+        // DELEGATED-FROM
+        if (hasDelegatedFrom())
+            atElt.addAttribute(MailConstants.A_CAL_DELEGATED_FROM, getDelegatedFrom());
+        return atElt;
+    }
+
+    public static ZAttendee parse(Element element) throws ServiceException {
+        String address = element.getAttribute(MailConstants.A_ADDRESS);
+        String cn = element.getAttribute(MailConstants.A_DISPLAY, null);
+        String sentBy = element.getAttribute(MailConstants.A_CAL_SENTBY, null);
+        String dir = element.getAttribute(MailConstants.A_CAL_DIR, null);
+        String lang = element.getAttribute(MailConstants.A_CAL_LANGUAGE, null);
+
+        String cutype = element.getAttribute(MailConstants.A_CAL_CUTYPE, null);
+        if (cutype != null)
+            validateAttr(IcalXmlStrMap.sCUTypeMap, MailConstants.A_CAL_CUTYPE, cutype);
+
+        String role = element.getAttribute(MailConstants.A_CAL_ROLE, null);
+        if (role != null)
+            validateAttr(IcalXmlStrMap.sRoleMap, MailConstants.A_CAL_ROLE, role);
+
+        String partStat = element.getAttribute(MailConstants.A_CAL_PARTSTAT, null);
+        if (partStat != null)
+            validateAttr(IcalXmlStrMap.sPartStatMap,
+                         MailConstants.A_CAL_PARTSTAT, partStat);
+
+        String member = element.getAttribute(MailConstants.A_CAL_MEMBER, null);
+        String delTo = element.getAttribute(MailConstants.A_CAL_DELEGATED_TO, null);
+        String delFrom = element.getAttribute(MailConstants.A_CAL_DELEGATED_FROM, null);
+
+        boolean rsvp = element.getAttributeBool(MailConstants.A_CAL_RSVP, false);
+//        if (partStat.equals(IcalXmlStrMap.PARTSTAT_NEEDS_ACTION))
+//            rsvp = true;
+
+        ZAttendee at =
+            new ZAttendee(address, cn, sentBy, dir, lang,
+                          cutype, role, partStat,
+                          rsvp ? Boolean.TRUE : Boolean.FALSE,
+                          member, delTo, delFrom);
+        return at;
+    }
+
+    private static void validateAttr(IcalXmlStrMap map, String attrName,
+            String value) throws ServiceException {
+        if (!map.validXml(value)) {
+            throw ServiceException.INVALID_REQUEST("Invalid value '"
+                    + value + "' specified for attribute:" + attrName, null);
+        }
+
     }
 }

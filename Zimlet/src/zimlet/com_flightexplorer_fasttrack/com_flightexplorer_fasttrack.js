@@ -494,8 +494,8 @@ function (menuItemId, flightData,flightCode) {
 	if(name)
 		appt.setName(name);
 
-	//this._appCtxt.getApp(ZmZimbraMail.CALENDAR_APP).getApptComposeController().show(appt);				
-	this._appCtxt.getApp(ZmZimbraMail.CALENDAR_APP).getCalController()._showQuickAddDialog(appt, false);
+	//AjxDispatcher.run("GetApptComposeController").show(appt);				
+	AjxDispatcher.run("GetCalController")._showQuickAddDialog(appt, false);
 }
 
 Com_Flightexplorer_Fasttrack.prototype.createAppointment = 
@@ -513,8 +513,8 @@ function(startDate) {
 	newAppt.setEndDate(newAppt.getStartTime() + ZmCalViewController.DEFAULT_APPOINTMENT_DURATION);
 	newAppt.resetRepeatWeeklyDays();
 	newAppt.resetRepeatMonthlyDayList();
-	newAppt.repeatYearlyMonthsList = startDate.getMonth();
-	newAppt.repeatCustomDayOfWeek = ZmAppt.SERVER_WEEK_DAYS[startDate.getDay()];	
+	newAppt.resetRepeatYearlyMonthsList(startDate.getMonth());
+	newAppt.resetRepeatCustomDayOfWeek();
 	return newAppt;
 }
 

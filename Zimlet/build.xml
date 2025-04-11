@@ -1,14 +1,25 @@
 <project name="Zimlet" default="package">
 
-	<!--
+    <property file='build-custom.properties' />
+
+    <!--
 	
 		Use the target reload-zimlets-extra to build all the zimlets, both core and extra,
 		install all the zimlets, then restart the tomcat.
 		
 	-->
 	<property environment="env"/>
-	<property name="zimbra.home.dir" location="/opt/zimbra" />
-	<property name="deploy.dir" value="${zimbra.home.dir}/tomcat/webapps"/>
+
+    <property name="zimbra.home.dir" location="/opt/zimbra" />
+    <property name="tomcat.home.dir" location="${zimbra.home.dir}/tomcat" />
+    <property name="jetty.home.dir" location="${zimbra.home.dir}/jetty" />
+    <condition property="use-jetty"><isset property="env.ZIMBRA_USE_JETTY"/></condition>
+    <condition property="use-tomcat"><not><isset property="use-jetty"/></not></condition>
+    <condition property="webserver.name" value="jetty"><isset property="use-jetty"/></condition>
+    <condition property="webserver.name" value="tomcat"><isset property="use-tomcat"/></condition>
+    <property name="webserver.root.dir" location="${zimbra.home.dir}/${webserver.name}"/>
+
+	<property name="deploy.dir" value="${webserver.root.dir}/webapps"/>
 	<property name="deploy.lib.path" value="/service/WEB-INF"/>
 	<property name="deploy.jsp.path" value="/service/jsp"/>
 
@@ -37,8 +48,8 @@
 	<property name="generated.dir" location="${build.dir}/generated" />
 	<property name="generated.java.dir" location="${generated.dir}/src/java" />
 
-	<property name="zimlets" value="com_zimbra_phone,com_zimbra_url,com_zimbra_email,com_zimbra_date,com_zimbra_search"/>
-    <property name="zimlets-extra" value="com_zimbra_tracking,com_zimbra_xslt,com_zimbra_ymaps,com_zimbra_evite,com_zimbra_po,com_zimbra_bugz,com_flightexplorer_fasttrack,com_zimbra_travelagent,com_zimbra_collector,com_zimbra_jspsample,com_zimbra_photo,com_zimbra_ytraffic,com_zimbra_gtranslator,com_zimbra_sforce,com_zimbra_sms,com_zimbra_amzn,com_zimbra_wikipedia,com_zimbra_asterisk,com_zimbra_asteriskmwi"/>
+	<property name="zimlets" value="com_zimbra_phone,com_zimbra_url,com_zimbra_email,com_zimbra_date,com_zimbra_html"/>
+    <property name="zimlets-extra" value="com_zimbra_webex,com_zimbra_tracking,com_zimbra_xslt,com_zimbra_ymaps,com_zimbra_rss,com_zimbra_evite,com_zimbra_po,com_zimbra_bugz,com_flightexplorer_fasttrack,com_zimbra_travelagent,com_zimbra_arcade,com_zimbra_collector,com_zimbra_jspsample,com_zimbra_photo,com_zimbra_ytraffic,com_zimbra_gtranslator,com_zimbra_sforce,com_zimbra_sms,com_zimbra_amzn,com_zimbra_wikipedia,com_zimbra_asterisk,com_zimbra_asteriskmwi,com_zimbra_edu,com_zimbra_videos,com_zimbra_blog,com_zimbra_snapfish"/>
 
 	<condition property="is-windows">
 		<os family="windows" />

@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 1761 $
+ * $Date: 2005-08-09 19:34:09 -0300 (Tue, 09 Aug 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.handler;
 
 import org.dom4j.DocumentHelper;
@@ -77,7 +64,7 @@ public class IQOfflineMessagesHandler extends IQHandler implements ServerFeature
 
         if (offlineRequest.element("purge") != null) {
             // User requested to delete all offline messages
-            messageStore.deleteMessages(packet.getFrom().getNode());
+            messageStore.deleteMessages(packet.getFrom().toBareJID());
         }
         else if (offlineRequest.element("fetch") != null) {
             // Mark that offline messages shouldn't be sent when the user becomes available
@@ -85,7 +72,7 @@ public class IQOfflineMessagesHandler extends IQHandler implements ServerFeature
             ClientSession session = sessionManager.getSession(packet.getFrom());
             // User requested to receive all offline messages
             for (OfflineMessage offlineMessage : messageStore.getMessages(
-                    packet.getFrom().getNode(), false)) {
+                    packet.getFrom().toBareJID(), false)) {
                 sendOfflineMessage(offlineMessage, session);
             }
         }
@@ -103,7 +90,7 @@ public class IQOfflineMessagesHandler extends IQHandler implements ServerFeature
                 }
                 if ("view".equals(item.attributeValue("action"))) {
                     // User requested to receive specific message
-                    OfflineMessage offlineMsg = messageStore.getMessage(packet.getFrom().getNode(),
+                    OfflineMessage offlineMsg = messageStore.getMessage(packet.getFrom().toBareJID(),
                             creationDate);
                     if (offlineMsg != null) {
                         ClientSession session = sessionManager.getSession(packet.getFrom());
@@ -112,7 +99,7 @@ public class IQOfflineMessagesHandler extends IQHandler implements ServerFeature
                 }
                 else if ("remove".equals(item.attributeValue("action"))) {
                     // User requested to delete specific message
-                    messageStore.deleteMessage(packet.getFrom().getNode(), creationDate);
+                    messageStore.deleteMessage(packet.getFrom().toBareJID(), creationDate);
                 }
             }
         }
@@ -163,14 +150,14 @@ public class IQOfflineMessagesHandler extends IQHandler implements ServerFeature
         dataForm.addField(field);
 
         field = new XFormFieldImpl("number_of_messages");
-        field.addValue(String.valueOf(messageStore.getMessages(senderJID.getNode(), false).size()));
+        field.addValue(String.valueOf(messageStore.getMessages(senderJID.toBareJID(), false).size()));
         dataForm.addField(field);
 
         return dataForm;
     }
 
     public boolean hasInfo(String name, String node, JID senderJID) {
-        return NAMESPACE.equals(node) && userManager.isRegisteredUser(senderJID.getNode());
+        return NAMESPACE.equals(node) && userManager.isRegisteredUser(senderJID.toBareJID());
     }
 
     public Iterator<Element> getItems(String name, String node, JID senderJID) {
@@ -178,7 +165,7 @@ public class IQOfflineMessagesHandler extends IQHandler implements ServerFeature
         stopOfflineFlooding(senderJID);
         List<Element> answer = new ArrayList<Element>();
         Element item;
-        for (OfflineMessage offlineMessage : messageStore.getMessages(senderJID.getNode(), false)) {
+        for (OfflineMessage offlineMessage : messageStore.getMessages(senderJID.toBareJID(), false)) {
             item = DocumentHelper.createElement("item");
             item.addAttribute("jid", senderJID.toBareJID());
             item.addAttribute("name", offlineMessage.getFrom().toString());

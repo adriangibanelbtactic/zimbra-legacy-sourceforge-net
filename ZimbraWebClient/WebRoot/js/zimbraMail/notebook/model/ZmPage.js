@@ -23,7 +23,7 @@
  * ***** END LICENSE BLOCK *****
  */
 
-function ZmPage(appCtxt, id, list) {
+ZmPage = function(appCtxt, id, list) {
 	if (arguments.length == 0) return;
 	ZmNotebookItem.call(this, appCtxt, ZmItem.PAGE, id, list);
 }
@@ -62,7 +62,7 @@ ZmPage.save = function(appCtxt, folderId, name, content, callback, errorCallback
 ZmPage.createFromDom = function(node, args) {
 	var page = new ZmPage(args.appCtxt, null, args.list);
 	page.set(node);
-	var notebookApp = args.appCtxt.getApp(ZmZimbraMail.NOTEBOOK_APP);
+	var notebookApp = args.appCtxt.getApp(ZmApp.NOTEBOOK);
 	var cache = notebookApp.getNotebookCache();
 	cache.putPage(page);
 	return page;
@@ -101,7 +101,7 @@ ZmPage.prototype.getContent = function(callback, errorCallback) {
 ZmPage.prototype.getNotebook =
 function() {
 	if (!this._notebook) {
-		var folder = this._appCtxt.getTree(ZmOrganizer.NOTEBOOK).getById(this.folderId);
+		var folder = this._appCtxt.getById(this.folderId);
 		while (folder && folder.parent && (folder.parent.id != ZmOrganizer.ID_ROOT)) {
 			folder = folder.parent;
 		}
@@ -120,10 +120,18 @@ ZmPage.prototype.isReadOnly =
 function() {
 	if (this.isIndex())
 		return true;
-		
-	return this.isShared()
-		? this.getNotebook().isReadOnly()
-		: false;
+	
+	//if one of the ancestor is readonly then no chances of childs being writable		
+	var isReadOnly = false;
+	var folder = this._appCtxt.getById(this.folderId);
+	while (folder && folder.parent && (folder.parent.id != ZmOrganizer.ID_ROOT) && !folder.isReadOnly()) {
+		folder = folder.parent;
+	}
+	if(folder && folder.isReadOnly()){
+		isReadOnly = true;
+	}
+	
+	return isReadOnly;
 };
 
 ZmPage.prototype.isIndex =
@@ -209,6 +217,11 @@ function(version, callback, errorCallback, traverseUp) {
 	if (!params.asyncMode) {
 		this._loadHandleResponse(callback, response);
 	}
+};
+
+ZmPage.prototype.getPrintHtml =
+function(preferHtml, callback) {
+	return ZmNotebookPageView.getPrintHtml(this, this._appCtxt);
 };
 
 /***

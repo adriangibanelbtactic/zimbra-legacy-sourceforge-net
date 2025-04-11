@@ -27,14 +27,16 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.DataSource;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.DataSourceBy;
+import com.zimbra.cs.db.DbImapFolder;
 import com.zimbra.cs.db.DbPop3Message;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -47,17 +49,16 @@ public class DeleteDataSource extends MailDocumentHandler {
         Provisioning prov = Provisioning.getInstance();
         Account account = getRequestedAccount(zsc);
         
-        if (!canAccessAccount(zsc, account))
-            throw ServiceException.PERM_DENIED("can not access account");
-
+        canModifyOptions(zsc, account);
+        
         Mailbox mbox = getRequestedMailbox(zsc);
 
         for (Element eDsrc : request.listElements()) {
             DataSource dsrc = null;
-            String name, id = eDsrc.getAttribute(MailService.A_ID, null);
+            String name, id = eDsrc.getAttribute(MailConstants.A_ID, null);
             if (id != null)
                 dsrc = prov.get(account, DataSourceBy.id, id);
-            else if ((name = eDsrc.getAttribute(MailService.A_NAME, null)) != null)
+            else if ((name = eDsrc.getAttribute(MailConstants.A_NAME, null)) != null)
                 dsrc = prov.get(account, DataSourceBy.name, name);
             else
                 throw ServiceException.INVALID_REQUEST("must specify either 'id' or 'name'", null);
@@ -71,9 +72,11 @@ public class DeleteDataSource extends MailDocumentHandler {
             prov.deleteDataSource(account, dataSourceId);
             if (dstype == DataSource.Type.pop3)
                 DbPop3Message.deleteUids(mbox, dataSourceId);
+            else if (dstype == DataSource.Type.imap)
+                DbImapFolder.deleteImapData(mbox, dataSourceId);
         }
         
-        Element response = zsc.createElement(MailService.DELETE_DATA_SOURCE_RESPONSE);
+        Element response = zsc.createElement(MailConstants.DELETE_DATA_SOURCE_RESPONSE);
         return response;
     }
 }

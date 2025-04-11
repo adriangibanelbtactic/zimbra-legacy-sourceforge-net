@@ -31,12 +31,13 @@ package com.zimbra.cs.service.admin;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.service.account.ToXML;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.AccountBy;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -44,7 +45,7 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class GetAccount extends AdminDocumentHandler {
 
-    private static final String[] TARGET_ACCOUNT_PATH = new String[] { AdminService.E_ACCOUNT };
+    private static final String[] TARGET_ACCOUNT_PATH = new String[] { AdminConstants.E_ACCOUNT };
     protected String[] getProxiedAccountElementPath()  { return TARGET_ACCOUNT_PATH; }
 
     /**
@@ -58,9 +59,9 @@ public class GetAccount extends AdminDocumentHandler {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Provisioning prov = Provisioning.getInstance();
 
-        boolean applyCos = request.getAttributeBool(AdminService.A_APPLY_COS, true);        
-        Element a = request.getElement(AdminService.E_ACCOUNT);
-	    String key = a.getAttribute(AdminService.A_BY);
+        boolean applyCos = request.getAttributeBool(AdminConstants.A_APPLY_COS, true);
+        Element a = request.getElement(AdminConstants.E_ACCOUNT);
+	    String key = a.getAttribute(AdminConstants.A_BY);
         String value = a.getText();
 
 	    Account account = prov.get(AccountBy.fromString(key), value);
@@ -71,8 +72,8 @@ public class GetAccount extends AdminDocumentHandler {
         if (!canAccessAccount(lc, account))
             throw ServiceException.PERM_DENIED("can not access account");
 
-	    Element response = lc.createElement(AdminService.GET_ACCOUNT_RESPONSE);
-        ToXML.encodeAccount(response, account, applyCos);
+	    Element response = lc.createElement(AdminConstants.GET_ACCOUNT_RESPONSE);
+        ToXML.encodeAccountOld(response, account, applyCos);
 
 	    return response;
 	}

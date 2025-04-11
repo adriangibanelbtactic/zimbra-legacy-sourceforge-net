@@ -29,15 +29,16 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.zimbra.cs.util.L10nUtil;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
+import com.zimbra.common.soap.AccountConstants;
 
 public class GetAllLocales extends AccountDocumentHandler {
 
     public Element handle(Element request, Map<String, Object> context) {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Locale locales[] = L10nUtil.getAllLocalesSorted();
-        Element response = lc.createElement(AccountService.GET_ALL_LOCALES_RESPONSE);
+        Element response = lc.createElement(AccountConstants.GET_ALL_LOCALES_RESPONSE);
         for (Locale locale : locales) {
             ToXML.encodeLocale(response, locale);
         }

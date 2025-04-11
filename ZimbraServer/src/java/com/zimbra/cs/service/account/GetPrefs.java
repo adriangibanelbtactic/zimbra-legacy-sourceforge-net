@@ -32,12 +32,12 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Map.Entry;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -49,10 +49,7 @@ public class GetPrefs extends AccountDocumentHandler  {
 		ZimbraSoapContext lc = getZimbraSoapContext(context);
         Account acct = getRequestedAccount(lc);
 
-        if (!canAccessAccount(lc, acct))
-            throw ServiceException.PERM_DENIED("can not access account");
-     
-        Element response = lc.createElement(AccountService.GET_PREFS_RESPONSE);
+        Element response = lc.createElement(AccountConstants.GET_PREFS_RESPONSE);
         handle(request, response, acct);
         return response;
     }
@@ -68,58 +65,44 @@ public class GetPrefs extends AccountDocumentHandler  {
 	 */
 	public static void handle(Element request, Element response, Account acct) throws ServiceException {
 		HashSet<String> specificPrefs = null;
-		for (Iterator it = request.elementIterator(AccountService.E_PREF); it.hasNext(); ) {
+		for (Iterator it = request.elementIterator(AccountConstants.E_PREF); it.hasNext(); ) {
 			if (specificPrefs == null)
 				specificPrefs = new HashSet<String>();
 			Element e = (Element) it.next();
-			String name = e.getAttribute(AccountService.A_NAME);
+			String name = e.getAttribute(AccountConstants.A_NAME);
 			if (name != null)
 				specificPrefs.add(name);
 		}
 	
-		Map map = null; 
-		map = acct.getAttrs();
-		
+		Map<String, Object> map = acct.getAttrs();
 		if (map != null) {
 			Locale lc = Provisioning.getInstance().getLocale(acct);
 			doPrefs(acct, lc.toString(), response, map, specificPrefs);
 		}
 	}
     
-    public static void doPrefs(Account acct, String locale, Element prefs, Map attrsMap, HashSet<String> specificPrefs) throws ServiceException {
-        
-        boolean needLocale = ((specificPrefs == null ) || specificPrefs.contains(Provisioning.A_zimbraPrefLocale));
-        if (needLocale) {
-            Element pref = prefs.addElement(AccountService.E_PREF);
-            pref.addAttribute(AccountService.A_NAME, Provisioning.A_zimbraPrefLocale);
-            pref.setText(locale);   
-         }
+	public static void doPrefs(Account acct, String locale, Element prefs, Map<String, Object> attrsMap, HashSet<String> specificPrefs) {
+		boolean needLocale = (specificPrefs == null || specificPrefs.contains(Provisioning.A_zimbraPrefLocale));
+		if (needLocale)
+            prefs.addKeyValuePair(Provisioning.A_zimbraPrefLocale, locale, AccountConstants.E_PREF, AccountConstants.A_NAME);
 
-        for (Iterator mi = attrsMap.entrySet().iterator(); mi.hasNext(); ) {
-            Map.Entry entry = (Entry) mi.next();
-            String key = (String) entry.getKey();
-            
-            if (specificPrefs != null && !specificPrefs.contains(key))
-                continue;
-         
-            if (!key.startsWith("zimbraPref") || key.equals(Provisioning.A_zimbraPrefLocale))
-                continue;
-            
-            Object value = entry.getValue();
-            
-            if (value instanceof String[]) {
-                String sa[] = (String[]) value;
-                for (int i = 0; i < sa.length; i++) {
-                    Element pref = prefs.addElement(AccountService.E_PREF);
-                    pref.addAttribute(AccountService.A_NAME, key);
-                    pref.setText(sa[i]);
-                }
-            } else {
-                Element pref = prefs.addElement(AccountService.E_PREF);
-                pref.addAttribute(AccountService.A_NAME, key);
-                pref.setText((String) value);
+		for (Map.Entry<String, Object> entry : attrsMap.entrySet()) {
+			String key = entry.getKey();
+
+			if (specificPrefs != null && !specificPrefs.contains(key))
+				continue;
+			if (!key.startsWith("zimbraPref") || key.equals(Provisioning.A_zimbraPrefLocale))
+				continue;
+
+			Object value = entry.getValue();
+			if (value instanceof String[]) {
+				String sa[] = (String[]) value;
+				for (int i = 0; i < sa.length; i++)
+                    prefs.addKeyValuePair(key, sa[i], AccountConstants.E_PREF, AccountConstants.A_NAME);
+			} else {
+                prefs.addKeyValuePair(key, (String) value, AccountConstants.E_PREF, AccountConstants.A_NAME);
             }
-        }
-    }   
+		}
+	}   
 
 }

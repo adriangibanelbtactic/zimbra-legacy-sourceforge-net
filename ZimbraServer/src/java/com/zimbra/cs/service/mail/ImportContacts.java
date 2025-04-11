@@ -30,22 +30,25 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.cs.mailbox.Contact;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
-import com.zimbra.cs.operation.CreateContactOperation;
-import com.zimbra.cs.operation.Operation.Requester;
+import com.zimbra.cs.mime.ParsedContact;
 import com.zimbra.cs.service.FileUploadServlet;
 import com.zimbra.cs.service.FileUploadServlet.Upload;
 import com.zimbra.cs.service.formatter.ContactCSV;
 import com.zimbra.cs.service.formatter.ContactCSV.ParseException;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -53,7 +56,7 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class ImportContacts extends MailDocumentHandler  {
 
-    private static final String[] TARGET_FOLDER_PATH = new String[] { MailService.A_FOLDER };
+    private static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.A_FOLDER };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_FOLDER_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return true; }
 
@@ -63,20 +66,20 @@ public class ImportContacts extends MailDocumentHandler  {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(lc);
         OperationContext octxt = lc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 
-        String folder = request.getAttribute(MailService.A_FOLDER, DEFAULT_FOLDER_ID);
+        String folder = request.getAttribute(MailConstants.A_FOLDER, DEFAULT_FOLDER_ID);
         ItemId iidFolder = new ItemId(folder, lc);
 
-        String ct = request.getAttribute(MailService.A_CONTENT_TYPE);
+        String ct = request.getAttribute(MailConstants.A_CONTENT_TYPE);
         if (!ct.equals("csv"))
             throw ServiceException.INVALID_REQUEST("unsupported content type: " + ct, null);
         
-        Element content = request.getElement(MailService.E_CONTENT);
+        Element content = request.getElement(MailConstants.E_CONTENT);
         List<Map<String, String>> contacts = null;
         List<Upload> uploads = null;
         BufferedReader reader = null;
-        String attachment = content.getAttribute(MailService.A_ATTACHMENT_ID, null);
+        String attachment = content.getAttribute(MailConstants.A_ATTACHMENT_ID, null);
         try {
             if (attachment == null)
                 reader = new BufferedReader(new StringReader(content.getText()));
@@ -96,24 +99,21 @@ public class ImportContacts extends MailDocumentHandler  {
                 FileUploadServlet.deleteUploads(uploads);
         }
 
-//        CreateContactOperation op = new CreateContactOperation(session, octxt, mbox, Requester.SOAP, iidFolder, contacts, null);
-//        op.schedule();
-//        List<Contact> results = op.getContacts();
+        List<ItemId> idsList = ImportCsvContacts(octxt, mbox, iidFolder, contacts, null);
         
-        List<ItemId> idsList = CreateContactOperation.ImportCsvContacts(session, octxt, mbox, Requester.SOAP, iidFolder, contacts, null);
 
         StringBuilder ids = new StringBuilder();
         
         for (ItemId iid : idsList) {
             if (ids.length() > 0)
                 ids.append(",");
-            ids.append(iid.toString(lc));
+            ids.append(iid.toString(ifmt));
         }
 
-        Element response = lc.createElement(MailService.IMPORT_CONTACTS_RESPONSE);
-        Element cn = response.addElement(MailService.E_CONTACT);
-        cn.addAttribute(MailService.A_IDS, ids.toString());
-        cn.addAttribute(MailService.A_NUM, contacts.size());
+        Element response = lc.createElement(MailConstants.IMPORT_CONTACTS_RESPONSE);
+        Element cn = response.addElement(MailConstants.E_CONTACT);
+        cn.addAttribute(MailConstants.A_IDS, ids.toString());
+        cn.addAttribute(MailConstants.A_NUM, contacts.size());
         return response;
     }
     
@@ -129,4 +129,26 @@ public class ImportContacts extends MailDocumentHandler  {
             throw ServiceException.FAILURE(e.getMessage(), e);
         }
     }
+    
+    private final static int CHUNK_SIZE = 100;
+    
+    public static List<ItemId> ImportCsvContacts(OperationContext oc, Mailbox mbox, 
+        ItemId iidFolder, List<Map<String, String>> csvContacts, String tagsStr) throws ServiceException {
+        
+        List<ItemId> createdIds = new LinkedList<ItemId>();
+        Iterator<Map<String, String>> iter = csvContacts.iterator();
+        List<ParsedContact> curChunk = new LinkedList<ParsedContact>();
+        while (iter.hasNext()) {
+            curChunk.clear();
+            for (int i = 0; i < CHUNK_SIZE && iter.hasNext(); i++)
+                curChunk.add(new ParsedContact(iter.next()));
+
+            List<Contact> contacts = CreateContact.createContacts(oc, mbox, iidFolder, curChunk, tagsStr);
+            for (Contact c : contacts) 
+                createdIds.add(new ItemId(c));
+        }
+        
+        return createdIds;
+    }
+    
 }

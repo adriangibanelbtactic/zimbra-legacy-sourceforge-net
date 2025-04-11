@@ -103,7 +103,7 @@ public class ContentServlet extends ZimbraServlet {
     throws ServletException, IOException {
         ItemId iid = null;
         try {
-            iid = new ItemId(req.getParameter(PARAM_MSGID), null);
+            iid = new ItemId(req.getParameter(PARAM_MSGID), (String) null);
         } catch (ServiceException e) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "invalid id requested");
             return;
@@ -167,7 +167,7 @@ public class ContentServlet extends ZimbraServlet {
                         }
 
                         resp.setContentType(Mime.CT_TEXT_PLAIN);
-                        InputStream is = msg.getRawMessage();
+                        InputStream is = msg.getContentStream();
                         ByteUtil.copy(is, true, resp.getOutputStream(), false);
                     } else if (item instanceof Appointment) {
                         Appointment appt = (Appointment) item;
@@ -356,8 +356,7 @@ public class ContentServlet extends ZimbraServlet {
     }
     
     public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
-        ZimbraLog.clearContext();
-        mLog.debug("request url: %s, path info: ", req.getRequestURL(), req.getPathInfo());
+        mLog.debug("request url: " + req.getRequestURL() + " path info: " + req.getPathInfo());
         
         AuthToken authToken = getAuthTokenFromCookie(req, resp);
         if (authToken == null) 

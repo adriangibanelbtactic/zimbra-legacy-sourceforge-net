@@ -38,7 +38,7 @@ import com.zimbra.cs.index.MailboxIndex.SortBy;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.SoapProtocol;
+import com.zimbra.common.soap.SoapProtocol;
 
 class RemoteQueryOperation extends QueryOperation {
     
@@ -47,10 +47,6 @@ class RemoteQueryOperation extends QueryOperation {
     private UnionQueryOperation mOp = null;
     private ProxiedQueryResults mResults = null;
     private QueryTarget mTarget = null;
-
-    int getOpType() {
-        return OP_TYPE_REMOTE;
-    }
 
     boolean tryAddOredOperation(QueryOperation op) {
         QueryTargetSet targets = op.getQueryTargets();
@@ -119,7 +115,8 @@ class RemoteQueryOperation extends QueryOperation {
         return null;
     }
 
-    protected void setup(SoapProtocol proto, Account authenticatedAccount, boolean isAdmin, byte[] types, SortBy searchOrder, int offset, int limit, Mailbox.SearchResultMode mode) throws ServiceException {
+    protected void setup(SoapProtocol proto, Account authenticatedAccount, boolean isAdmin, SearchParams params) 
+    throws ServiceException {
         Provisioning prov  = Provisioning.getInstance();
         Account acct = prov.get(AccountBy.id, mTarget.toString());
         if (acct == null)
@@ -127,22 +124,18 @@ class RemoteQueryOperation extends QueryOperation {
 
         Server remoteServer = prov.getServer(acct);
 
-        SearchParams params = new SearchParams();
-        params.setSortBy(searchOrder);
-        params.setTypes(types);
-        params.setOffset(offset);
-        params.setLimit(limit);
-
         if (ZimbraLog.index.isDebugEnabled()) 
             ZimbraLog.index.debug("RemoteQuery of \""+mOp.toQueryString()+"\" sent to "+mTarget.toString()+" on server "+remoteServer.getName());
 
         params.setQueryStr(mOp.toQueryString());
         try {
-            mResults = new ProxiedQueryResults(proto, new AuthToken(authenticatedAccount, isAdmin).getEncoded(), mTarget.toString(), remoteServer.getName(), params, mode);
+            mResults = new ProxiedQueryResults(proto, new AuthToken(authenticatedAccount, isAdmin).getEncoded(), 
+                mTarget.toString(), remoteServer.getName(), params, params.getMode());
         } catch (AuthTokenException e) {
             throw ServiceException.FAILURE("AuthTokenException getting auth token: " + e.toString(), e);
         }
     }
+    
 
     protected void prepare(Mailbox mbx, ZimbraQueryResultsImpl res, MailboxIndex mbidx, SearchParams params, int chunkSize) {
         mParams = params;

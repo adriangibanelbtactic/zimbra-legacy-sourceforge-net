@@ -15,7 +15,7 @@
  */
 
 
-function DwtConfirmDialog(parent, className) {
+DwtConfirmDialog = function(parent, className) {
 	if (arguments.length == 0) return;
 	
 	var buttons = [ DwtDialog.YES_BUTTON, DwtDialog.NO_BUTTON, DwtDialog.CANCEL_BUTTON ];
@@ -23,7 +23,7 @@ function DwtConfirmDialog(parent, className) {
 	
 	this._questionDiv = document.createElement("DIV");
 	this._questionDiv.className = "DwtConfirmDialogQuestion";
-	this._contentDiv.appendChild(this._questionDiv);
+	this._getContentDiv().appendChild(this._questionDiv);
 	
 	this.registerCallback(DwtDialog.YES_BUTTON, this._handleYesButton, this);
 	this.registerCallback(DwtDialog.NO_BUTTON, this._handleNoButton, this);

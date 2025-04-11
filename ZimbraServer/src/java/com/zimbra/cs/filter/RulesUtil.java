@@ -36,16 +36,13 @@ import java.net.URL;
 
 import org.dom4j.DocumentException;
 
-import com.zimbra.cs.service.account.AccountService;
-import com.zimbra.cs.service.admin.AdminService;
-import com.zimbra.cs.service.mail.MailService;
 import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.common.util.ByteUtil;
-import com.zimbra.cs.util.Zimbra;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.ZimbraSoapContext;
-import com.zimbra.soap.SoapHttpTransport;
-import com.zimbra.soap.SoapTransport;
+import com.zimbra.common.util.CliUtil;
+import com.zimbra.common.soap.*;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapHttpTransport;
+import com.zimbra.common.soap.SoapTransport;
 
 /**
  * Saves filter rules for an account.
@@ -85,9 +82,8 @@ public class RulesUtil {
     }
     
     public static void main(String[] args) throws Exception {
-        Zimbra.toolSetup();
+        CliUtil.toolSetup();
         RulesUtil util = new RulesUtil();
-        RuleManager mgr = RuleManager.getInstance();
         if (args.length !=5) {
             util.usage();
             return;
@@ -99,13 +95,13 @@ public class RulesUtil {
     private void saveRules(String acctEmail, String pwd, String path, String mailHost, int port) throws Exception {
         // construct URL to source host
         URL src = new URL("http", mailHost, port, ZimbraServlet.USER_SERVICE_URI);
-        SoapTransport trans = new SoapHttpTransport(src.toExternalForm()); 
+        SoapTransport trans = new SoapHttpTransport(src.toExternalForm());
         
         // authenticate 
         Element authReq = createAuthRequest(acctEmail, pwd);
         Element authResp = trans.invokeWithoutSession(authReq);
-        String authToken = authResp.getAttribute(AdminService.E_AUTH_TOKEN);
-        String sessionId = authResp.getAttribute(ZimbraSoapContext.E_SESSION_ID, null);
+        String authToken = authResp.getAttribute(AdminConstants.E_AUTH_TOKEN);
+        String sessionId = authResp.getAttribute(HeaderConstants.E_SESSION_ID, null);
         trans.setAuthToken(authToken);
         if (sessionId != null)
             trans.setSessionId(sessionId);
@@ -127,7 +123,7 @@ public class RulesUtil {
         String content = new String(ByteUtil.getContent(new File(path)), "utf-8");
         // gonna go with XML here; may want to switch to a binary protocol at some point
         Element rules = Element.parseXML(content);
-        Element request = new Element.XMLElement(MailService.SAVE_RULES_REQUEST);
+        Element request = new Element.XMLElement(MailConstants.SAVE_RULES_REQUEST);
         request.addUniqueElement(rules);
         return request;
     }
@@ -139,9 +135,9 @@ public class RulesUtil {
      */
     private Element createAuthRequest(String acctEmail, String pwd) {
         // gonna go with XML here; may want to switch to a binary protocol at some point
-        Element request = new Element.XMLElement(AccountService.AUTH_REQUEST);
-        request.addAttribute(AccountService.E_ACCOUNT, acctEmail, Element.DISP_CONTENT);
-        request.addAttribute(AccountService.E_PASSWORD, pwd, Element.DISP_CONTENT);
+        Element request = new Element.XMLElement(AccountConstants.AUTH_REQUEST);
+        request.addAttribute(AccountConstants.E_ACCOUNT, acctEmail, Element.Disposition.CONTENT);
+        request.addAttribute(AccountConstants.E_PASSWORD, pwd, Element.Disposition.CONTENT);
         return request;
     }
 }

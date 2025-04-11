@@ -1,29 +1,19 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3187 $
+ * $Date: 2005-12-11 13:34:34 -0300 (Sun, 11 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
+import org.dom4j.Attribute;
+import org.dom4j.Element;
+import org.dom4j.QName;
 import org.dom4j.io.XMPPPacketReader;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.util.LocaleUtils;
@@ -155,25 +145,31 @@ public class ClientSession extends Session {
      * @param connection the connection with the client.
      * @return a newly created session between the server and a client.
      */
-    public static Session createSession(String serverName, XMPPPacketReader reader,
-            SocketConnection connection) throws XmlPullParserException, UnauthorizedException,
+    public static Session createSession(String serverName, SocketConnection connection,
+                Element streamElt) throws XmlPullParserException, UnauthorizedException,
             IOException
     {
-        XmlPullParser xpp = reader.getXPPParser();
-
-        boolean isFlashClient = xpp.getPrefix().equals("flash");
+        QName qname = streamElt.getQName();
+        
+        boolean isFlashClient = "flash".equals(qname.getNamespacePrefix());
         connection.setFlashClient(isFlashClient);
 
         // Conduct error checking, the opening tag should be 'stream'
         // in the 'etherx' namespace
-        if (!xpp.getName().equals("stream") && !isFlashClient) {
+        if (!"stream".equals(qname.getName()) && !isFlashClient) {
             throw new XmlPullParserException(
                     LocaleUtils.getLocalizedString("admin.error.bad-stream"));
         }
 
-        if (!xpp.getNamespace(xpp.getPrefix()).equals(ETHERX_NAMESPACE) &&
-                !(isFlashClient && xpp.getNamespace(xpp.getPrefix()).equals(FLASH_NAMESPACE)))
-        {
+//        if (!xpp.getNamespace(xpp.getPrefix()).equals(ETHERX_NAMESPACE) &&
+//                    !(isFlashClient && xpp.getNamespace(xpp.getPrefix()).equals(FLASH_NAMESPACE)))
+        
+        if (!ETHERX_NAMESPACE.equals(qname.getNamespaceURI()) &&
+                    (!isFlashClient && FLASH_NAMESPACE.equals(qname.getNamespaceURI()))) {
+                
+//        if (!streamElt.getNamespaceForPrefix(qname.getNamespacePrefix()).equals(ETHERX_NAMESPACE) &&
+//                    !(isFlashClient && streamElt.getNamespaceForPrefix(qname.getNamespacePrefix()).equals(FLASH_NAMESPACE)))
+//        {
             throw new XmlPullParserException(LocaleUtils.getLocalizedString(
                     "admin.error.bad-namespace"));
         }
@@ -211,13 +207,14 @@ public class ClientSession extends Session {
         // section 4.4.1).
         int majorVersion = 0;
         int minorVersion = 0;
-        for (int i = 0; i < xpp.getAttributeCount(); i++) {
-            if ("lang".equals(xpp.getAttributeName(i))) {
-                language = xpp.getAttributeValue(i);
+        for (Object obj: streamElt.attributes()) {
+            Attribute attrib = (Attribute)obj;
+            if ("lang".equals(attrib.getName())) {
+                language = attrib.getValue();
             }
-            if ("version".equals(xpp.getAttributeName(i))) {
+            if ("version".equals(attrib.getName())) {
                 try {
-                    int[] version = decodeVersion(xpp.getAttributeValue(i));
+                    int[] version = decodeVersion(attrib.getValue());
                     majorVersion = version[0];
                     minorVersion = version[1];
                 }
@@ -263,7 +260,7 @@ public class ClientSession extends Session {
         connection.setIdleTimeout(idleTimeout);
 
         // Create a ClientSession for this user.
-        Session session = SessionManager.getInstance().createClientSession(connection);
+        Session session = SessionManager.getInstance().createClientSession(connection, serverName);
 
         Writer writer = connection.getWriter();
         // Build the start packet response
@@ -503,7 +500,7 @@ public class ClientSession extends Session {
         if (authToken == null) {
             throw new UserNotFoundException();
         }
-        return getAddress().getNode();
+        return getAddress().toBareJID();
     }
 
     /**
@@ -532,7 +529,7 @@ public class ClientSession extends Session {
             throws UserNotFoundException
     {
         User user = userManager.getUser(auth.getUsername());
-        setAddress(new JID(user.getUsername(), getServerName(), resource));
+        setAddress(new JID(user.getUsername()+"/"+resource));
         authToken = auth;
 
         sessionManager.addSession(this);
@@ -611,7 +608,7 @@ public class ClientSession extends Session {
         if(offlineFloodStopped) {
             return false;
         }
-        String username = getAddress().getNode();
+        String username = getAddress().toBareJID();
         for (ClientSession session : sessionManager.getSessions(username)) {
             if (session.isOfflineFloodStopped()) {
                 return false;
@@ -795,6 +792,6 @@ public class ClientSession extends Session {
     }
 
     public String toString() {
-        return super.toString() + " presence: " + presence;
+        return super.toString() + " presence:" + presence;
     }
 }

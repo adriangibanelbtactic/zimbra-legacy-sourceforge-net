@@ -25,9 +25,9 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.util.StringUtil;
-import com.zimbra.soap.Element;
-import com.zimbra.cs.service.mail.MailService;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -87,17 +87,17 @@ public abstract class ZFilterAction {
     public abstract String toActionString();
 
     Element toElement(Element parent) {
-        Element a = parent.addElement(MailService.E_ACTION);
-        a.addAttribute(MailService.A_NAME, mName);
+        Element a = parent.addElement(MailConstants.E_ACTION);
+        a.addAttribute(MailConstants.A_NAME, mName);
         for (String arg : mArgs) {
-            a.addElement(MailService.E_FILTER_ARG).setText(arg);
+            a.addElement(MailConstants.E_FILTER_ARG).setText(arg);
         }
         return a;
     }
 
 
     private static String getArg(Element e) throws ServiceException {
-        String value = e.getElement(MailService.E_FILTER_ARG).getText();
+        String value = e.getElement(MailConstants.E_FILTER_ARG).getText();
         List<String> slist = StringUtil.parseSieveStringList(value);
         if (slist.size() != 1) {
             throw ZClientException.CLIENT_ERROR(String.format("unable to parse arg value(%s)", value), null);
@@ -106,7 +106,7 @@ public abstract class ZFilterAction {
     }
 
     public static ZFilterAction getAction(Element actionElement) throws ServiceException {
-        String n = actionElement.getAttribute(MailService.A_NAME);
+        String n = actionElement.getAttribute(MailConstants.A_NAME);
         if (n.equals(A_KEEP))
             return new ZKeepAction();
         else if (n.equals(A_DISCARD))

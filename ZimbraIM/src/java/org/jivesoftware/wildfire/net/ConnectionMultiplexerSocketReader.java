@@ -1,29 +1,17 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: $
+ * $Revision: $
+ * $Date: $
+ *
+ * Copyright (C) 2006 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.net;
 
+import org.apache.mina.common.IoSession;
 import org.dom4j.Element;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.wildfire.PacketRouter;
@@ -87,25 +75,43 @@ public class ConnectionMultiplexerSocketReader extends SocketReader {
     private MultiplexerPacketHandler packetHandler;
 
     public ConnectionMultiplexerSocketReader(PacketRouter router, RoutingTable routingTable,
-            String serverName, Socket socket, SocketConnection connection,
-            boolean useBlockingMode) {
-        super(router, routingTable, serverName, socket, connection, useBlockingMode);
+                Socket socket, SocketConnection connection)
+    {
+        super(router, routingTable, socket, connection);
         // Create a pool of threads that will process received packets. If more threads are
         // required then the command will be executed on the SocketReader process
         int coreThreads = JiveGlobals.getIntProperty("xmpp.multiplex.processing.core.threads", 10);
         int maxThreads = JiveGlobals.getIntProperty("xmpp.multiplex.processing.max.threads", 100);
         int queueSize = JiveGlobals.getIntProperty("xmpp.multiplex.processing.queue", 50);
         threadPool =
-                new ThreadPoolExecutor(coreThreads, maxThreads, 60, TimeUnit.SECONDS,
+            new ThreadPoolExecutor(coreThreads, maxThreads, 60, TimeUnit.SECONDS,
                         new LinkedBlockingQueue<Runnable>(queueSize),
                         new ThreadPoolExecutor.CallerRunsPolicy());
     }
+    
+    public ConnectionMultiplexerSocketReader(PacketRouter router, RoutingTable routingTable,
+                IoSession nioSocket, SocketConnection connection)
+    {
+        super(router, routingTable, nioSocket, connection);
+        
+        // Create a pool of threads that will process received packets. If more threads are
+        // required then the command will be executed on the SocketReader process
+        int coreThreads = JiveGlobals.getIntProperty("xmpp.multiplex.processing.core.threads", 10);
+        int maxThreads = JiveGlobals.getIntProperty("xmpp.multiplex.processing.max.threads", 100);
+        int queueSize = JiveGlobals.getIntProperty("xmpp.multiplex.processing.queue", 50);
+        threadPool =
+            new ThreadPoolExecutor(coreThreads, maxThreads, 60, TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<Runnable>(queueSize),
+                        new ThreadPoolExecutor.CallerRunsPolicy());
+    }
+    
 
-    boolean createSession(String namespace)
+    boolean createSession(String namespace, String host, Element streamElt)
             throws UnauthorizedException, XmlPullParserException, IOException {
         if (getNamespace().equals(namespace)) {
             // The connected client is a connection manager so create a ConnectionMultiplexerSession
-            session = ConnectionMultiplexerSession.createSession(serverName, reader, connection);
+            session = ConnectionMultiplexerSession.createSession(
+                        host, connection, streamElt);
             packetHandler = new MultiplexerPacketHandler(session.getAddress().getDomain());
             return true;
         }

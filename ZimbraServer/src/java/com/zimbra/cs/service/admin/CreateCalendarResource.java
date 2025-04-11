@@ -30,9 +30,10 @@ import java.util.Map;
 import com.zimbra.cs.service.account.ToXML;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.CalendarResource;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -53,8 +54,8 @@ public class CreateCalendarResource extends AdminDocumentHandler {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Provisioning prov = Provisioning.getInstance();
 
-        String name = request.getAttribute(AdminService.E_NAME).toLowerCase();
-        String password = request.getAttribute(AdminService.E_PASSWORD, null);
+        String name = request.getAttribute(AdminConstants.E_NAME).toLowerCase();
+        String password = request.getAttribute(AdminConstants.E_PASSWORD, null);
         Map<String, Object> attrs = AdminService.getAttrs(request, true);
 
         if (!canAccessEmail(lc, name))
@@ -68,9 +69,9 @@ public class CreateCalendarResource extends AdminDocumentHandler {
                 attrs));
 
         Element response = lc.createElement(
-                AdminService.CREATE_CALENDAR_RESOURCE_RESPONSE);
+                AdminConstants.CREATE_CALENDAR_RESOURCE_RESPONSE);
 
-        ToXML.encodeCalendarResource(response, resource, true);
+        ToXML.encodeCalendarResourceOld(response, resource, true);
 
         return response;
     }

@@ -31,21 +31,20 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.SearchFolder;
-import com.zimbra.cs.operation.CreateSearchFolderOperation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
  */
 public class CreateSearchFolder extends MailDocumentHandler  {
 
-    private static final String[] TARGET_FOLDER_PATH = new String[] { MailService.E_SEARCH, MailService.A_FOLDER };
+    private static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.E_SEARCH, MailConstants.A_FOLDER };
     private static final String[] RESPONSE_ITEM_PATH = new String[] { };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_FOLDER_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return true; }
@@ -55,23 +54,21 @@ public class CreateSearchFolder extends MailDocumentHandler  {
 		ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(lc);
         Mailbox.OperationContext octxt = lc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 
-        Element t = request.getElement(MailService.E_SEARCH);
-        String name      = t.getAttribute(MailService.A_NAME);
-        String query     = t.getAttribute(MailService.A_QUERY);
-        String types     = t.getAttribute(MailService.A_SEARCH_TYPES, null);
-        String sort      = t.getAttribute(MailService.A_SORTBY, null);
-        byte color       = (byte) t.getAttributeLong(MailService.A_COLOR, MailItem.DEFAULT_COLOR);
-        ItemId iidParent = new ItemId(t.getAttribute(MailService.A_FOLDER), lc);
+        Element t = request.getElement(MailConstants.E_SEARCH);
+        String name      = t.getAttribute(MailConstants.A_NAME);
+        String query     = t.getAttribute(MailConstants.A_QUERY);
+        String types     = t.getAttribute(MailConstants.A_SEARCH_TYPES, null);
+        String sort      = t.getAttribute(MailConstants.A_SORTBY, null);
+        byte color       = (byte) t.getAttributeLong(MailConstants.A_COLOR, MailItem.DEFAULT_COLOR);
+        ItemId iidParent = new ItemId(t.getAttribute(MailConstants.A_FOLDER), lc);
 
-        CreateSearchFolderOperation op = new CreateSearchFolderOperation(session, octxt, mbox, Requester.SOAP, iidParent, name, query, types, sort, color);
-        op.schedule();
-        SearchFolder search = op.getSearchFolder();
+        SearchFolder search = mbox.createSearchFolder(octxt, iidParent.getId(), name, query, types, sort, color);
 
-        Element response = lc.createElement(MailService.CREATE_SEARCH_FOLDER_RESPONSE);
+        Element response = lc.createElement(MailConstants.CREATE_SEARCH_FOLDER_RESPONSE);
         if (search != null)
-        	ToXML.encodeSearchFolder(response, lc, search);
+        	ToXML.encodeSearchFolder(response, ifmt, search);
         return response;
 	}
 }

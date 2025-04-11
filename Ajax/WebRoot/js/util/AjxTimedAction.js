@@ -15,10 +15,11 @@
  */
 
 
-function AjxTimedAction(obj, func, args) {
+AjxTimedAction = function(obj, func, args) {
 	AjxCallback.call(this, obj, func, args);
 	this._tid = -1;
 	this._id = -1;
+    this._runResult = null;
 }
 AjxTimedAction.prototype = new AjxCallback();
 AjxTimedAction.prototype.constructor = AjxTimedAction;
@@ -28,13 +29,18 @@ function() {
 	return "AjxTimedAction";
 };
 
+AjxTimedAction.prototype.getRunResult =
+function() {
+    return this._runResult;
+};
+
 AjxTimedAction._pendingActions = {};
 AjxTimedAction._nextActionId = 0;
 
 AjxTimedAction.scheduleAction =
 function(action, timeout){
 	// if tid already exists, cancel previous timeout before setting a new one
-	if (action._tid) {
+	if (action._tid && action._tid != -1) {
 		AjxTimedAction.cancelAction(action._id);
 	}
 
@@ -60,5 +66,6 @@ function(actionId) {
 	var action = AjxTimedAction._pendingActions[actionId];
 	delete AjxTimedAction._pendingActions[actionId];
 	delete action._tid;
-	action.run();
+    action._runResult = action.run();
 };
+

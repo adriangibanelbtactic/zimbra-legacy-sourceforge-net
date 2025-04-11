@@ -28,28 +28,24 @@
  */
 package com.zimbra.soap;
 
-import java.util.HashMap;
-import java.util.Map;
-import javax.servlet.http.HttpServletRequest;
-
-import org.dom4j.QName;
-
-import com.zimbra.cs.account.AccessManager;
-import com.zimbra.cs.account.Account;
-import com.zimbra.cs.account.AccountServiceException;
-import com.zimbra.cs.account.Domain;
-import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.account.Server;
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapFaultException;
+import com.zimbra.common.util.EmailUtil;
+import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.cs.account.*;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.account.Provisioning.ServerBy;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
 import com.zimbra.cs.session.Session;
 import com.zimbra.cs.session.SessionCache;
-import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.EmailUtil;
 import com.zimbra.cs.util.Zimbra;
-import com.zimbra.common.util.ZimbraLog;
+import org.dom4j.QName;
+
+import javax.servlet.http.HttpServletRequest;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author schemers
@@ -65,15 +61,36 @@ public abstract class DocumentHandler {
     }
 
     public static String LOCAL_HOST, LOCAL_HOST_ID;
-        static {
-            try {
-                Server localServer = Provisioning.getInstance().getLocalServer();
-                LOCAL_HOST = localServer.getAttr(Provisioning.A_zimbraServiceHostname);
-                LOCAL_HOST_ID = localServer.getId();
-            } catch (Exception e) {
-                Zimbra.halt("could not fetch local server name from LDAP for request proxying");
-            }
+    static {
+        try {
+            Server localServer = Provisioning.getInstance().getLocalServer();
+            LOCAL_HOST = localServer.getAttr(Provisioning.A_zimbraServiceHostname);
+            LOCAL_HOST_ID = localServer.getId();
+        } catch (Exception e) {
+            Zimbra.halt("could not fetch local server name from LDAP for request proxying");
         }
+    }
+    
+    
+    /**
+     * Guaranteed to be called by the engine before handle() is called.  If an exception is thrown,
+     * then the handler() is *not* called. 
+     * 
+     * If no exception is thrown, then the system guarantees that postHandle() will be called.
+     * 
+     * @param request
+     * @param context
+     * @return user-defined object which will be passed along to postHandle()
+     * 
+     */
+    public Object preHandle(Element request, Map<String, Object> context) throws ServiceException { return null; }
+    
+    /**
+     * Guaranteed to be called by the engine after handle() is called.  (Called from a finally{} block)
+     *  
+     * @param userObj
+     */
+    public void postHandle(Object userObj) { }
 
     public abstract Element handle(Element request, Map<String, Object> context) throws ServiceException;
 
@@ -113,11 +130,7 @@ public abstract class DocumentHandler {
         return AccessManager.getInstance().isDomainAdminOnly(zsc.getAuthToken());
     }
 
-    public static boolean canAccessAccount(ZimbraSoapContext zsc, Account target) throws ServiceException {
-        if (zsc.getAuthtokenAccountId() == null || target == null)
-            return false;
-        if ( target.getId().equals(zsc.getAuthtokenAccountId()))
-            return true;
+    public boolean canAccessAccount(ZimbraSoapContext zsc, Account target) throws ServiceException {
         return AccessManager.getInstance().canAccessAccount(zsc.getAuthToken(), target);
     }
 
@@ -142,6 +155,14 @@ public abstract class DocumentHandler {
         if (parts == null)
             throw ServiceException.INVALID_REQUEST("must be valid email address: "+email, null);
         return canAccessDomain(zsc, parts[1]);
+    }
+    
+    public boolean canModifyOptions(ZimbraSoapContext zsc, Account acct) throws ServiceException {
+        if (!acct.getBooleanAttr(Provisioning.A_zimbraFeatureOptionsEnabled, true)) {
+            if (!canAccessAccount(zsc, acct))
+                throw ServiceException.PERM_DENIED("can not modify options");
+        }
+        return true;
     }
 
     /**
@@ -179,7 +200,7 @@ public abstract class DocumentHandler {
      * @return A {@link com.zimbra.cs.session.SoapSession}, or
      *         <code>null</code>. */
     public Session getSession(Map<String, Object> context) {
-        return getSession(context, SessionCache.SESSION_SOAP);
+        return getSession(context, Session.Type.SOAP);
     }
 
     /** Fetches a {@link Session} object to persist and manage state between
@@ -194,7 +215,7 @@ public abstract class DocumentHandler {
      *         <code>null</code>.
      * @see SessionCache#SESSION_SOAP
      * @see SessionCache#SESSION_ADMIN */
-    protected Session getSession(Map<String, Object> context, int sessionType) {
+    protected Session getSession(Map<String, Object> context, Session.Type sessionType) {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         return (zsc == null ? null : zsc.getSession(sessionType));
     }

@@ -43,7 +43,7 @@ import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.SetUtil;
-import com.zimbra.soap.SoapProtocol;
+import com.zimbra.common.soap.SoapProtocol;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
@@ -64,10 +64,6 @@ class UnionQueryOperation extends QueryOperation
     private static Log mLog = LogFactory.getLog(UnionQueryOperation.class);
 
     private boolean atStart = true; // don't re-fill buffer twice if they call hasNext() then reset() w/o actually getting next
-
-    int getOpType() {
-        return OP_TYPE_UNION;
-    }
 
     QueryTargetSet getQueryTargets() {
         QueryTargetSet toRet = new QueryTargetSet();
@@ -227,7 +223,7 @@ class UnionQueryOperation extends QueryOperation
         }
     }
     
-    QueryOperation runRemoteSearches(SoapProtocol proto, Mailbox mbox, OperationContext octxt, MailboxIndex mbidx, byte[] types, SortBy searchOrder, int offset, int limit, Mailbox.SearchResultMode mode) 
+    QueryOperation runRemoteSearches(SoapProtocol proto, Mailbox mbox, OperationContext octxt, MailboxIndex mbidx, SearchParams params) 
     throws ServiceException, IOException {
 
         boolean hasRemoteOps = false;
@@ -276,6 +272,7 @@ class UnionQueryOperation extends QueryOperation
                 if (visibleFolders != null) {
                     if (visibleFolders.size() == 0) {
                         mQueryOperations.remove(i);
+                        ZimbraLog.index.debug("Query changed to NULL_QUERY_OPERATION, no visible folders");
                         mQueryOperations.add(i, new NullQueryOperation());
                     } else {
                         mQueryOperations.remove(i);
@@ -306,7 +303,7 @@ class UnionQueryOperation extends QueryOperation
                 if (toSetup instanceof RemoteQueryOperation) {
                     try {
                         RemoteQueryOperation remote = (RemoteQueryOperation) toSetup;
-                        remote.setup(proto, octxt.getAuthenticatedUser(), octxt.isUsingAdminPrivileges(), types, searchOrder, offset, limit, mode);
+                        remote.setup(proto, octxt.getAuthenticatedUser(), octxt.isUsingAdminPrivileges(), params);
                     } catch(Exception e) {
                         ZimbraLog.index.info("Ignoring "+e+" during RemoteQuery generation for "+this.toString());
                     }

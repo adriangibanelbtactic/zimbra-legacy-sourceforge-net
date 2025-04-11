@@ -29,33 +29,50 @@
 package com.zimbra.cs.service.mail;
 
 import java.io.IOException;
+import java.io.Reader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import javax.activation.DataHandler;
+import javax.activation.DataSource;
+import javax.mail.Address;
 import javax.mail.MessagingException;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.ZimbraLog;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.Pair;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.MailSender;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
+import com.zimbra.cs.mailbox.calendar.CalendarDataSource;
+import com.zimbra.cs.mailbox.calendar.ZCalendar.ICalTok;
+import com.zimbra.cs.mailbox.calendar.ZCalendar.ZCalendarBuilder;
+import com.zimbra.cs.mailbox.calendar.ZCalendar.ZComponent;
+import com.zimbra.cs.mailbox.calendar.ZCalendar.ZParameter;
+import com.zimbra.cs.mailbox.calendar.ZCalendar.ZProperty;
+import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.mime.Mime;
-import com.zimbra.cs.operation.SendMsgOperation;
-import com.zimbra.cs.operation.Operation.Requester;
+import com.zimbra.cs.mime.MimeVisitor;
 import com.zimbra.cs.service.FileUploadServlet;
 import com.zimbra.cs.service.FileUploadServlet.Upload;
 import com.zimbra.cs.service.mail.ParseMimeMessage.MimeMessageData;
-import com.zimbra.cs.session.Session;
+import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.util.JMSession;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -77,30 +94,30 @@ public class SendMsg extends MailDocumentHandler {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
         OperationContext octxt = zsc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
         sLog.info("<SendMsg> " + zsc.toString());
 
         // <m>
-        Element msgElem = request.getElement(MailService.E_MSG);
+        Element msgElem = request.getElement(MailConstants.E_MSG);
 
         // check to see whether the entire message has been uploaded under separate cover
-        String attachId = msgElem.getAttribute(MailService.A_ATTACHMENT_ID, null);
+        String attachId = msgElem.getAttribute(MailConstants.A_ATTACHMENT_ID, null);
 
-        boolean needCalendarSentByFixup = request.getAttributeBool(MailService.A_NEED_CALENDAR_SENTBY_FIXUP, false);
-        boolean noSaveToSent = request.getAttributeBool(MailService.A_NO_SAVE_TO_SENT, false);
+        boolean needCalendarSentByFixup = request.getAttributeBool(MailConstants.A_NEED_CALENDAR_SENTBY_FIXUP, false);
+        boolean noSaveToSent = request.getAttributeBool(MailConstants.A_NO_SAVE_TO_SENT, false);
 
-        int origId = (int) msgElem.getAttributeLong(MailService.A_ORIG_ID, 0);
-        String replyType = msgElem.getAttribute(MailService.A_REPLY_TYPE, MailSender.MSGTYPE_REPLY);
-        String identityId = msgElem.getAttribute(MailService.A_IDENTITY_ID, null);
+        int origId = (int) msgElem.getAttributeLong(MailConstants.A_ORIG_ID, 0);
+        String replyType = msgElem.getAttribute(MailConstants.A_REPLY_TYPE, MailSender.MSGTYPE_REPLY);
+        String identityId = msgElem.getAttribute(MailConstants.A_IDENTITY_ID, null);
 
 
         SendState state = SendState.NEW;
-        int savedMsgId = -1;
-        Pair<String, Integer> sendRecord = null;
+        ItemId savedMsgId = null;
+        Pair<String, ItemId> sendRecord = null;
 
         // get the "send uid" and check that this isn't a retry of a pending send
-        String sendUid = request.getAttribute(MailService.A_SEND_UID, null);
+        String sendUid = request.getAttribute(MailConstants.A_SEND_UID, null);
         if (sendUid != null) {
             long delay = MAX_IN_FLIGHT_DELAY_MSECS;
             do {
@@ -110,7 +127,7 @@ public class SendMsg extends MailDocumentHandler {
                     } catch (InterruptedException ie) { }
                 }
 
-                Pair<SendState, Pair<String, Integer>> result = findPendingSend(mbox.getId(), sendUid);
+                Pair<SendState, Pair<String, ItemId>> result = findPendingSend(mbox.getId(), sendUid);
                 state = result.getFirst();
                 sendRecord = result.getSecond();
             } while (state == SendState.PENDING && delay >= 0);
@@ -133,12 +150,8 @@ public class SendMsg extends MailDocumentHandler {
                     mm = ParseMimeMessage.parseMimeMsgSoap(zsc, mbox, msgElem, null, mimeData);
                 }
 
-                // send the message ...
-                SendMsgOperation op = new SendMsgOperation(session, octxt, mbox, Requester.SOAP,
-                        mm, mimeData.newContacts, mimeData.uploads, origId, replyType,
-                        identityId, noSaveToSent, false, needCalendarSentByFixup);
-                op.schedule();
-                savedMsgId = op.getMsgId();
+                savedMsgId = doSendMessage(octxt, mbox, mm, mimeData.newContacts, mimeData.uploads,origId,
+                    replyType, identityId, noSaveToSent, false, needCalendarSentByFixup);
 
                 // and record it in the table in case the client retries the send
                 if (sendRecord != null)
@@ -152,11 +165,28 @@ public class SendMsg extends MailDocumentHandler {
             }
         }
 
-        Element response = zsc.createElement(MailService.SEND_MSG_RESPONSE);
-        Element respElement = response.addElement(MailService.E_MSG);
-        if (savedMsgId > 0)
-            respElement.addAttribute(MailService.A_ID, zsc.formatItemId(savedMsgId));
+        Element response = zsc.createElement(MailConstants.SEND_MSG_RESPONSE);
+        Element respElement = response.addElement(MailConstants.E_MSG);
+        if (savedMsgId != null)
+            respElement.addAttribute(MailConstants.A_ID, ifmt.formatItemId(savedMsgId));
         return response;
+    }
+    
+    public static ItemId doSendMessage(OperationContext oc, Mailbox mbox,
+        MimeMessage mm, List<InternetAddress> newContacts,  List<Upload> uploads,
+        int origMsgId, String replyType, String identityId, boolean noSaveToSent,
+        boolean ignoreFailedAddresses, boolean needCalendarSentByFixup) throws ServiceException {
+        
+        if (needCalendarSentByFixup)
+            fixupICalendarFromOutlook(mbox, mm);
+
+        if (noSaveToSent)
+            return mbox.getMailSender().sendMimeMessage(oc, mbox, false, mm, newContacts, uploads,
+                                                          origMsgId, replyType, null,
+                                                          ignoreFailedAddresses, false);
+        else
+            return mbox.getMailSender().sendMimeMessage(oc, mbox, mm, newContacts, uploads,
+                origMsgId, replyType, identityId, ignoreFailedAddresses, false);
     }
 
     static MimeMessage parseUploadedMessage(ZimbraSoapContext zsc, String attachId, MimeMessageData mimeData)
@@ -175,19 +205,19 @@ public class SendMsg extends MailDocumentHandler {
     }
 
 
-    private static final Map<Integer, List<Pair<String, Integer>>> sSentTokens = new HashMap<Integer, List<Pair<String, Integer>>>(100);
+    private static final Map<Integer, List<Pair<String, ItemId>>> sSentTokens = new HashMap<Integer, List<Pair<String, ItemId>>>(100);
     private static final int MAX_SEND_UID_CACHE = 5;
 
-    private Pair<SendState, Pair<String, Integer>> findPendingSend(Integer mailboxId, String sendUid) {
+    private static Pair<SendState, Pair<String, ItemId>> findPendingSend(Integer mailboxId, String sendUid) {
         SendState state = SendState.NEW;
-        Pair<String, Integer> sendRecord = null;
+        Pair<String, ItemId> sendRecord = null;
 
         synchronized (sSentTokens) {
-            List<Pair<String, Integer>> sendData = sSentTokens.get(mailboxId);
+            List<Pair<String, ItemId>> sendData = sSentTokens.get(mailboxId);
             if (sendData == null)
-                sSentTokens.put(mailboxId, sendData = new ArrayList<Pair<String, Integer>>(MAX_SEND_UID_CACHE));
+                sSentTokens.put(mailboxId, sendData = new ArrayList<Pair<String, ItemId>>(MAX_SEND_UID_CACHE));
 
-            for (Pair<String, Integer> record : sendData) {
+            for (Pair<String, ItemId> record : sendData) {
                 if (record.getFirst().equals(sendUid)) {
                     if (record.getSecond() == null) {
                         state = SendState.PENDING;
@@ -202,19 +232,177 @@ public class SendMsg extends MailDocumentHandler {
             if (state == SendState.NEW) {
                 if (sendData.size() >= MAX_SEND_UID_CACHE)
                     sendData.remove(0);
-                sendRecord = new Pair<String, Integer>(sendUid, null);
+                sendRecord = new Pair<String, ItemId>(sendUid, null);
                 sendData.add(sendRecord);
             }
         }
 
-        return new Pair<SendState, Pair<String, Integer>>(state, sendRecord);
+        return new Pair<SendState, Pair<String, ItemId>>(state, sendRecord);
     }
 
-    private void clearPendingSend(Integer mailboxId, Pair<String, Integer> sendRecord) {
+    private static void clearPendingSend(Integer mailboxId, Pair<String, ItemId> sendRecord) {
         if (sendRecord != null) {
             synchronized (sSentTokens) {
                 sSentTokens.get(mailboxId).remove(sendRecord);
             }
+        }
+    }
+    
+    private static void fixupICalendarFromOutlook(Mailbox ownerMbox, MimeMessage mm)
+    throws ServiceException {
+        MimeVisitor mv = new OutlookICalendarFixupMimeVisitor();
+        try {
+            mv.accept(mm);
+        } catch (MessagingException e) {
+             throw ServiceException.PARSE_ERROR("Error while fixing up SendMsg for SENT-BY", e);
+        }
+    }
+
+    /**
+     * When Outlook/ZCO sends a calendar invitation or reply message on behalf
+     * of another user, the From and Sender message headers are set correctly
+     * but the iCalendar object doesn't set SENT-BY parameter on ORGANIZER or
+     * ATTENDEE property of VEVENT/VTODO components.  These need to be fixed
+     * up.
+     * 
+     * @author jhahm
+     *
+     */
+    private static class OutlookICalendarFixupMimeVisitor extends MimeVisitor {
+        private boolean mNeedFixup;
+        private int mMsgDepth;
+        private String[] mFromEmails;
+        private String mSentBy;
+
+        OutlookICalendarFixupMimeVisitor() {
+            mNeedFixup = false;
+            mMsgDepth = 0;
+        }
+
+        @Override
+        protected boolean visitMessage(MimeMessage mm, VisitPhase visitKind) throws MessagingException {
+            if (VisitPhase.VISIT_BEGIN.equals(visitKind)) {
+                mMsgDepth++;
+                if (mMsgDepth == 1) {
+                    Address[] fromAddrs = mm.getFrom();
+                    Address senderAddr = mm.getSender();
+                    if (senderAddr != null && fromAddrs != null) {
+                        // If one of the From's is same as Sender, there is nothing to fixup.
+                        for (Address from : fromAddrs) {
+                            if (from.equals(senderAddr))
+                                return false;
+                        }
+
+                        if (!(senderAddr instanceof InternetAddress))
+                            return false;
+                        String sender = ((InternetAddress) senderAddr).getAddress();
+                        if (sender == null)
+                            return false;
+
+                        String froms[] = new String[fromAddrs.length];
+                        for (int i = 0; i < fromAddrs.length; i++) {
+                            Address fromAddr = fromAddrs[i];
+                            if (fromAddr == null)
+                                return false;
+                            if (!(fromAddr instanceof InternetAddress))
+                                return false;
+                            String from = ((InternetAddress) fromAddr).getAddress();
+                            if (from == null)
+                                return false;
+                            froms[i] = "MAILTO:" + from;
+                        }
+
+                        mNeedFixup = true;
+                        mFromEmails = froms;
+                        mSentBy = "MAILTO:" + sender;
+                    }
+                }
+            } else if (VisitPhase.VISIT_END.equals(visitKind)) {
+                mMsgDepth--;
+            }
+
+            return false;
+        }
+
+        @Override
+        protected boolean visitMultipart(MimeMultipart mp, VisitPhase visitKind) {
+            return false;
+        }
+
+        @Override
+        protected boolean visitBodyPart(MimeBodyPart bp) throws MessagingException {
+            // Ignore any forwarded message parts.
+            if (mMsgDepth != 1 || !mNeedFixup)
+                return false;
+
+            boolean modified = false;
+
+            String ct = Mime.getContentType(bp);
+            if (Mime.CT_TEXT_CALENDAR.compareToIgnoreCase(ct) != 0)
+                return false;
+
+            ZVCalendar ical;
+            try {
+                DataSource ds = bp.getDataHandler().getDataSource();
+                Reader reader = Mime.getTextReader(ds.getInputStream(), ds.getContentType());
+                ical = ZCalendarBuilder.build(reader);
+            } catch (Exception e) {
+                throw new MessagingException("Unable to parse iCalendar part: " + e.getMessage(), e);
+            }
+
+            String uid = null;
+            for (Iterator<ZComponent> compIter = ical.getComponentIterator(); compIter.hasNext(); ) {
+                ZComponent comp = compIter.next();
+                ICalTok compType = comp.getTok();
+                if (!ICalTok.VEVENT.equals(compType) && !ICalTok.VTODO.equals(compType))
+                    continue;
+
+                for (Iterator<ZProperty> propIter = comp.getPropertyIterator(); propIter.hasNext(); ) {
+                    ZProperty prop = propIter.next();
+                    ICalTok token = prop.getToken();
+                    if (token == null)
+                        continue;
+                    switch (token) {
+                    case UID:
+                        uid = prop.getValue();
+                        break;
+                    case ORGANIZER:
+                    case ATTENDEE:
+                        String addr = prop.getValue();
+                        if (addressMatchesFrom(addr)) {
+                            ZParameter sentBy = prop.getParameter(ICalTok.SENT_BY);
+                            if (sentBy == null) {
+                                prop.addParameter(new ZParameter(ICalTok.SENT_BY, mSentBy));
+                                modified = true;
+                                ZimbraLog.calendar.info(
+                                        "Fixed up " + token + " (" + addr +
+                                        ") by adding SENT-BY=" + mSentBy);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (modified) {
+                String filename = bp.getFileName();
+                if (filename == null)
+                    filename = "meeting.ics";
+                String dsname = uid != null ? uid : "fixup";
+                bp.setDataHandler(new DataHandler(new CalendarDataSource(ical, dsname, filename)));
+            }
+
+            return modified;
+        }
+
+        private boolean addressMatchesFrom(String addr) {
+            if (addr == null)
+                return false;
+            for (String from : mFromEmails) {
+                if (from.compareToIgnoreCase(addr) == 0)
+                    return true;
+            }
+            return false;
         }
     }
 }

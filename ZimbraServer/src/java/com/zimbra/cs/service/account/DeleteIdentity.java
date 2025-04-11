@@ -27,13 +27,14 @@ package com.zimbra.cs.service.account;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Identity;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.IdentityBy;
 import com.zimbra.soap.DocumentHandler;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class DeleteIdentity extends DocumentHandler {
@@ -42,25 +43,24 @@ public class DeleteIdentity extends DocumentHandler {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Account account = getRequestedAccount(zsc);
         
-        if (!canAccessAccount(zsc, account))
-            throw ServiceException.PERM_DENIED("can not access account");
- 
+        canModifyOptions(zsc, account);
+        
         Provisioning prov = Provisioning.getInstance();
 
-        Element eIdentity = request.getElement(AccountService.E_IDENTITY);
+        Element eIdentity = request.getElement(AccountConstants.E_IDENTITY);
 
         // identity can be specified by name or by ID
         Identity ident = null;
-        String id = eIdentity.getAttribute(AccountService.A_ID, null);
+        String id = eIdentity.getAttribute(AccountConstants.A_ID, null);
         if (id != null)
             ident = prov.get(account, IdentityBy.id, id);
         else
-            ident = prov.get(account, IdentityBy.name, eIdentity.getAttribute(AccountService.A_NAME));
+            ident = prov.get(account, IdentityBy.name, eIdentity.getAttribute(AccountConstants.A_NAME));
 
         if (ident != null)
             Provisioning.getInstance().deleteIdentity(account, ident.getName());
 
-        Element response = zsc.createElement(AccountService.DELETE_IDENTITY_RESPONSE);
+        Element response = zsc.createElement(AccountConstants.DELETE_IDENTITY_RESPONSE);
         return response;
     }
 }

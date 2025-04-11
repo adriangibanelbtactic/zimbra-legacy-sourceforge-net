@@ -31,9 +31,11 @@ package com.zimbra.cs.service.admin;
 import java.util.Map;
 
 import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.account.Config;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -41,20 +43,20 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class ModifyConfig extends AdminDocumentHandler {
 
-	public Element handle(Element request, Map<String, Object> context) throws ServiceException {
+    public Element handle(Element request, Map<String, Object> context) throws ServiceException {
 
         ZimbraSoapContext lc = getZimbraSoapContext(context);
-	    Provisioning prov = Provisioning.getInstance();
+        Provisioning prov = Provisioning.getInstance();
 
-	    Map<String, Object> attrs = AdminService.getAttrs(request);
-	    
+        Map<String, Object> attrs = AdminService.getAttrs(request);
+        
         // pass in true to checkImmutable
-	    prov.modifyAttrs(prov.getConfig(), attrs, true);
+        prov.modifyAttrs(prov.getConfig(), attrs, true);
 
         ZimbraLog.security.info(ZimbraLog.encodeAttrs(
                 new String[] {"cmd", "ModifyConfig",}, attrs));
         
-	    Element response = lc.createElement(AdminService.MODIFY_CONFIG_RESPONSE);
-	    return response;
-	}
+        Element response = lc.createElement(AdminConstants.MODIFY_CONFIG_RESPONSE);
+        return response;
+    }
 }

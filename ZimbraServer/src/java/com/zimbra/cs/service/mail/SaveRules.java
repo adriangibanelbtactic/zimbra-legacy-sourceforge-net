@@ -31,9 +31,10 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.filter.RuleManager;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -51,10 +52,10 @@ public class SaveRules extends MailDocumentHandler {
         Account account = getRequestedAccount(lc);
         
         RuleManager mgr = RuleManager.getInstance();
-        Element rulesElem = document.getElement(MailService.E_RULES);
+        Element rulesElem = document.getElement(MailConstants.E_RULES);
         mgr.setXMLRules(account, rulesElem);
         
-        Element response = lc.createElement(MailService.SAVE_RULES_RESPONSE);
+        Element response = lc.createElement(MailConstants.SAVE_RULES_RESPONSE);
         return response;
     }
 

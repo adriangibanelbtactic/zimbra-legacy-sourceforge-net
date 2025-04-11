@@ -38,6 +38,8 @@ import javax.mail.internet.MimeMessage;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.mailbox.CalendarItem;
@@ -53,10 +55,11 @@ import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.mime.MPartInfo;
 import com.zimbra.cs.mime.Mime;
 import com.zimbra.cs.mime.ParsedMessage;
+import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.util.AccountUtil;
 import com.zimbra.cs.util.L10nUtil;
 import com.zimbra.cs.util.L10nUtil.MsgKey;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -101,9 +104,9 @@ public abstract class CalendarRequest extends MailDocumentHandler {
 
         // check to see if this message is a reply -- if so, then we'll want to note that so 
         // we can more-correctly match the conversations up
-        csd.mOrigId = (int) msgElem.getAttributeLong(MailService.A_ORIG_ID, 0);
-        csd.mReplyType = msgElem.getAttribute(MailService.A_REPLY_TYPE, MailSender.MSGTYPE_REPLY);
-        csd.mIdentityId = msgElem.getAttribute(MailService.A_IDENTITY_ID, null);
+        csd.mOrigId = (int) msgElem.getAttributeLong(MailConstants.A_ORIG_ID, 0);
+        csd.mReplyType = msgElem.getAttribute(MailConstants.A_REPLY_TYPE, MailSender.MSGTYPE_REPLY);
+        csd.mIdentityId = msgElem.getAttribute(MailConstants.A_IDENTITY_ID, null);
 
         // parse the data
         csd.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, mbox, msgElem, null, inviteParser, csd);
@@ -259,7 +262,7 @@ public abstract class CalendarRequest extends MailDocumentHandler {
     throws ServiceException {
         synchronized (mbox) {
             if (csd.mInvite.hasOrganizer()) {
-                boolean isOrganizer = csd.mInvite.isOrganizer();
+                boolean isOrganizer = csd.mInvite.thisAcctIsOrganizer(acct);
                 ICalTok method = ICalTok.lookup(csd.mInvite.getMethod());
                 switch (method) {
                 case REQUEST:
@@ -337,8 +340,8 @@ public abstract class CalendarRequest extends MailDocumentHandler {
             if (csd.mInvite.getFragment() == null || csd.mInvite.getFragment().equals("")) {
                 csd.mInvite.setFragment(pm.getFragment());
             }
-            
-            int msgId = 0;
+
+            ItemId msgId = null;
 
 //            String html = getOrigHtml(csd.mMm);
 //            if (html != null && html.indexOf("href=\"@@ACCEPT@@\"") >= 0) {
@@ -373,13 +376,14 @@ public abstract class CalendarRequest extends MailDocumentHandler {
                 int[] ids = mbox.addInvite(octxt, csd.mInvite, apptFolderId, false, pm);
     
                 if (response != null && ids != null) {
-                    String id = zsc.formatItemId(ids[0]);
-                    response.addAttribute(MailService.A_CAL_ID, id);
+                    ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
+                    String id = ifmt.formatItemId(ids[0]);
+                    response.addAttribute(MailConstants.A_CAL_ID, id);
                     if (csd.mInvite.isEvent())
-                        response.addAttribute(MailService.A_APPT_ID_DEPRECATE_ME, id);  // for backward compat
-                    response.addAttribute(MailService.A_CAL_INV_ID, zsc.formatItemId(ids[0], ids[1]));
-                    if (msgId > 0)
-                        response.addUniqueElement(MailService.E_MSG).addAttribute(MailService.A_ID, zsc.formatItemId(msgId));
+                        response.addAttribute(MailConstants.A_APPT_ID_DEPRECATE_ME, id);  // for backward compat
+                    response.addAttribute(MailConstants.A_CAL_INV_ID, ifmt.formatItemId(ids[0], ids[1]));
+                    if (msgId != null)
+                        response.addUniqueElement(MailConstants.E_MSG).addAttribute(MailConstants.A_ID, ifmt.formatItemId(msgId));
                 }
             }
         }
@@ -402,7 +406,7 @@ public abstract class CalendarRequest extends MailDocumentHandler {
             CalendarItem calItem, Invite inv,
             List<ZAttendee> toCancel)
     throws ServiceException {
-        if (!inv.isOrganizer()) {
+        if (!inv.thisAcctIsOrganizer(acct)) {
             // we ONLY should update the removed attendees if we are the organizer!
             return;
         }

@@ -27,10 +27,10 @@ package com.zimbra.cs.im;
 import java.util.Formatter;
 
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.cs.service.im.IMService;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.IMConstants;
+import com.zimbra.common.soap.Element;
 
-public class IMPresenceUpdateNotification implements IMNotification {
+public class IMPresenceUpdateNotification extends IMNotification {
 
     IMAddr mFromAddr;
     IMPresence mPresence;
@@ -42,15 +42,15 @@ public class IMPresenceUpdateNotification implements IMNotification {
     }
     
     public String toString() {
-        return new Formatter().format("IMPresenceUpdateEvent: From: %s  Presence: %s", 
+        return new Formatter().format("IMPresenceUpdateNotification: From: %s  Presence: %s", 
                 mFromAddr, mPresence.toString()).toString();
     }
     
     public Element toXml(Element parent) {
-        ZimbraLog.im.info(this.toString());
-        Element toRet = parent.addElement(IMService.E_PRESENCE); 
+        ZimbraLog.im.debug(this.toString());
+        Element toRet = create(parent, IMConstants.E_PRESENCE);
         mPresence.toXml(toRet);
-        toRet.addAttribute(IMService.A_FROM, mFromAddr.getAddr());
+        toRet.addAttribute(IMConstants.A_FROM, mFromAddr.getAddr());
         return toRet;
     }
     

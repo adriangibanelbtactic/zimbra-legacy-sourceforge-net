@@ -56,14 +56,17 @@ public class CalendarObject extends MailItemResource {
 	public static final String CAL_EXTENSION = ".ics";
 	
 	public CalendarObject(DavContext ctxt, CalendarItem calItem) throws ServiceException {
-		super(ctxt, getCalendarPath(calItem), calItem);
+		this(ctxt, getCalendarPath(calItem), calItem);
+	}
+	
+	protected CalendarObject(DavContext ctxt, String path, CalendarItem calItem) throws ServiceException {
+		super(ctxt, path, calItem);
 		mUid = calItem.getUid();
 		mInvites = calItem.getInvites();
 		mTzmap = calItem.getTimeZoneMap();
 		Invite defInv = calItem.getDefaultInviteOrNull();
 		if (defInv != null)
 			setProperty(DavElements.P_DISPLAYNAME, defInv.getName());
-		setProperty(DavElements.P_GETETAG, Long.toString(calItem.getDate()));
 		setProperty(DavElements.P_GETCONTENTTYPE, Mime.CT_TEXT_CALENDAR);
 		setProperty(DavElements.P_GETCONTENTLENGTH, Integer.toString(calItem.getSize()));
 		addProperty(CalDavProperty.getCalendarData(this));
@@ -96,7 +99,7 @@ public class CalendarObject extends MailItemResource {
 	/* Returns iCalendar representation of events that matches
 	 * the supplied filter.
 	 */
-	public String getVcalendar(Filter filter) throws IOException {
+	public String getVcalendar(DavContext ctxt, Filter filter) throws IOException {
 		StringBuilder buf = new StringBuilder();
 		
 		buf.append("BEGIN:VCALENDAR\r\n");
@@ -124,13 +127,23 @@ public class CalendarObject extends MailItemResource {
 			buf.append(wr.toCharArray());
 			wr.close();
 		}
+		if (ctxt.isIcalClient()) {
+			// XXX hack for early iCal release that puts HTTP url for organizer field.
+			int orgPos = buf.indexOf(DavElements.ORGANIZER);
+			int xorgPos = buf.indexOf(DavElements.ORGANIZER_HREF+":");
+			if (orgPos > 0 && xorgPos > 0) {
+				buf.replace(orgPos, orgPos + 9, DavElements.ORGANIZER_MAILTO);
+				xorgPos = buf.indexOf(DavElements.ORGANIZER_HREF+":");
+				buf.replace(xorgPos, xorgPos+16, DavElements.ORGANIZER);
+			}
+		}
 		buf.append("END:VCALENDAR\r\n");
 		return buf.toString();
 	}
 	
 	@Override
-	public InputStream getContent() throws IOException, DavException {
-		return new ByteArrayInputStream(getVcalendar(null).getBytes());
+	public InputStream getContent(DavContext ctxt) throws IOException, DavException {
+		return new ByteArrayInputStream(getVcalendar(ctxt, null).getBytes());
 	}
 
 	@Override

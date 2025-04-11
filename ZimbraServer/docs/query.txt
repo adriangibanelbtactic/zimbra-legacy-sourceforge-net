@@ -1,9 +1,10 @@
 Tim's short-short summary of the query grammar as of now (updated)
 --------------------------------------------------------
    content:{TEXT}
-   from:[>,<,>=,<=]{TEXT} OR {EMAIL_ADDR} OR {DOMAIN} 
    to:{TEXT|EMAIL_ADDR|DOMAIN}
+   from:[>,<,>=,<=]{TEXT} OR {EMAIL_ADDR} OR {DOMAIN} 
    cc:{TEXT|EMAIL|DOMAIN}
+   tofrom,tocc,fromcc,tofromcc -> equivalent to combinations like (to:X or from:X), etc
    envto:{TEXT|EMAIL_ADDR|DOMAIN} // x-envelope-to mime header
    envfrom:{TEXT|EMAIL|DOMAIN}    // x-envelope-from mime-header 
    subject:[>,<,>=,<=]{TEXT}
@@ -16,14 +17,20 @@ Tim's short-short summary of the query grammar as of now (updated)
          | [0-9]+  --> item ID
          |"{[0-9]+(,\s?[0-9]+)*}" -- ie {1,2,3} or {1} --> set of item_id's
    is:{"anywhere"|"unread"|"read"|"flagged"|"unflagged"|"sent"|"received"|"replied"|
-       "unreplied"|"forwarded"|"unforwarded"|"invite"}
-   date:[>,<,>=,<={DATE} 
+       "unreplied"|"forwarded"|"unforwarded"|"invite"|
+       "solo"|  // no other messages in conversation
+       "tome"|"fromme"|"ccme"|"tofromme"|"fromccme"|"tofromccme"  // to, from cc me, including my aliases
+       } 
+   date:[>,<,>=,<={DATE}
+   appt-start:[>,<,>=,<={DATE} 
+   appt-end:[>,<,>=,<={DATE} 
    after:{DATE}
    before:{DATE}
    size:{SIZE}
    larger:{SIZE}
    smaller:{SIZE}
-   tag:{TAG} // is this the same as folder label?
+   tag:{TAG}
+   modseq:[>,<,>=,<={CHANGE_ID}
    my:{MY_SAVED_SEARCH_NAME}   (UNIMPLEMENTED)
    message:{DB_MSG_ID}
    conv:{DB_CONV_ID}
@@ -137,6 +144,7 @@ flags
   is:sent
   is:received
   is:invite
+  is:solo --> true if the item has no conversation 
 
   The flag name can also be used in a search:
     tag:\{FlagName} where {FlagName} is one of the following values:
@@ -166,6 +174,18 @@ date-related fields
   this year:      after:0year
   last year:      (after:-2year AND before:0year)
   last year and older:  before:0year
+
+appointment search operators
+----------------------------
+  appt-start:  appt-end:
+     Search based on the start and end times of the appointment.
+     For non-recurring appointments, this is basically what you
+     expect.  For recurring appointments, the start and end times are
+     the *earliest possible* time (start of the first instance in the
+     recurrence) and *latest possible* time, or sometime in 2099 if
+     the recurrence has no end.
+     
+  
 
 size-releted fields
 

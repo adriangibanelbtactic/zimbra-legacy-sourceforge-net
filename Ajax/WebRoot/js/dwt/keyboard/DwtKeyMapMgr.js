@@ -29,7 +29,7 @@
  * @param keyMap [Object]		a keymap
  *
  */
-function DwtKeyMapMgr(keyMap) {
+DwtKeyMapMgr = function(keyMap) {
 	var map = this._map = keyMap.getMap();
 	this._args = keyMap._args;
 	
@@ -280,6 +280,7 @@ function(keyCode, element) {
 		case 32:
 			return true;
 
+		case 3:
 		case 13:
 			var tag = element.tagName.toUpperCase();
 			return (tag != "INPUT");

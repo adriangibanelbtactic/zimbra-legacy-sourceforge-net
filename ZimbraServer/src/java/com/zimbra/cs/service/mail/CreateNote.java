@@ -31,15 +31,14 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Note;
 import com.zimbra.cs.mailbox.Note.Rectangle;
-import com.zimbra.cs.operation.CreateNoteOperation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -47,7 +46,7 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class CreateNote extends MailDocumentHandler {
 
-    private static final String[] TARGET_FOLDER_PATH = new String[] { MailService.E_NOTE, MailService.A_FOLDER };
+    private static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.E_NOTE, MailConstants.A_FOLDER };
     private static final String[] RESPONSE_ITEM_PATH = new String[] { };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_FOLDER_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return true; }
@@ -57,23 +56,20 @@ public class CreateNote extends MailDocumentHandler {
 		ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(lc);
         Mailbox.OperationContext octxt = lc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 
-        Element t = request.getElement(MailService.E_NOTE);
-        ItemId iidFolder = new ItemId(t.getAttribute(MailService.A_FOLDER), lc);
-        String content = t.getAttribute(MailService.E_CONTENT);
-        byte color = (byte) t.getAttributeLong(MailService.A_COLOR, MailItem.DEFAULT_COLOR);
-        String strBounds = t.getAttribute(MailService.A_BOUNDS, null);
+        Element t = request.getElement(MailConstants.E_NOTE);
+        ItemId iidFolder = new ItemId(t.getAttribute(MailConstants.A_FOLDER), lc);
+        String content = t.getAttribute(MailConstants.E_CONTENT);
+        byte color = (byte) t.getAttributeLong(MailConstants.A_COLOR, MailItem.DEFAULT_COLOR);
+        String strBounds = t.getAttribute(MailConstants.A_BOUNDS, null);
         Rectangle bounds = new Rectangle(strBounds);
 
-        CreateNoteOperation op = new CreateNoteOperation(session, octxt, mbox, Requester.SOAP,
-        			content, bounds, color, iidFolder);
-        op.schedule();
-        Note note = op.getNote();
+        Note note = mbox.createNote(octxt, content, bounds, color, iidFolder.getId());
 
-        Element response = lc.createElement(MailService.CREATE_NOTE_RESPONSE);
+        Element response = lc.createElement(MailConstants.CREATE_NOTE_RESPONSE);
         if (note != null)
-        	ToXML.encodeNote(response, lc, note);
+        	ToXML.encodeNote(response, ifmt, note);
         return response;
 	}
 }

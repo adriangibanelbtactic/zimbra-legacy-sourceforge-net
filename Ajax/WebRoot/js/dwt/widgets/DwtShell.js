@@ -27,22 +27,18 @@
 * 
 * @param className			[string]*		CSS class name
 * @param docBodyScrollable	[boolean]*		if true, then the document body is set to be scrollable
-* @param confirmExitMethod	[function]*		method which is called when the user attempts to navigate away from 
-*											the application or close the browser window. If this method return a string that 
-*											is displayed as part of the alert that is presented to the user. If this method 
-*											returns null, then no alert is popped up this parameter may be null
-* @param  userShell			[Element]*		an HTML element that will be reparented into an absolutely
+* @param userShell			[Element]*		an HTML element that will be reparented into an absolutely
 *											postioned container in this shell. This is useful in the situation where you have an HTML 
 *											template and want to use this in context of Dwt.
 * @param useCurtain			[boolean]*		if true, a curtain overlay is created to be used between hidden and viewable elements 
 *											using z-index. See Dwt.js for various layering constants
 */
-function DwtShell(className, docBodyScrollable, confirmExitMethod, userShell, useCurtain) {
+DwtShell = function(params) {
 	if (window._dwtShell != null) {
 		throw new DwtException("DwtShell already exists for window", DwtException.INVALID_OP, "DwtShell");
 	}
 
-	className = className || "DwtShell";
+	var className = params.className || "DwtShell";
 	DwtComposite.call(this, null, className);
 
     // HACK! This is a hack to make sure that the control methods work 
@@ -51,13 +47,11 @@ function DwtShell(className, docBodyScrollable, confirmExitMethod, userShell, us
 
 	window._dwtShell = AjxCore.assignId(this);
 
-	if ((confirmExitMethod != null) && (document.domain != "localhost"))
-		window.onbeforeunload = confirmExitMethod;
-
 	document.body.style.margin = 0;
-	if (docBodyScrollable != null && !docBodyScrollable) {
-		if (AjxEnv.isIE)
+	if (params.docBodyScrollable === false) {
+		if (AjxEnv.isIE) {
 			document.body.onscroll = DwtShell.__onBodyScroll;
+		}
 		document.body.style.overflow = "hidden";
 	}
 
@@ -71,21 +65,21 @@ function DwtShell(className, docBodyScrollable, confirmExitMethod, userShell, us
 
 	htmlElement.className = className;
 	htmlElement.style.width = htmlElement.style.height = "100%";
-	if (htmlElement.style.overflow) 
+	if (htmlElement.style.overflow) {
 		htmlElement.style.overflow = null;
+	}
 
 	// if there is a user shell (body content), move it below this shell
 	// into a container that's absolutely positioned
 	try {
-		if (userShell)
-			document.body.removeChild(userShell);
-	} catch (ex)	 {
-		//
-	}
+		if (params.userShell) {
+			document.body.removeChild(params.userShell);
+		}
+	} catch (ex) {}
 	document.body.appendChild(htmlElement);
-	if (userShell) {
+	if (params.userShell) {
 		var userShellContainer = new DwtControl(this, null, Dwt.ABSOLUTE_STYLE);
-		userShellContainer.getHtmlElement().appendChild(userShell);
+		userShellContainer.getHtmlElement().appendChild(params.userShell);
 		userShellContainer.setSize("100%", "100%");
 		userShellContainer.zShow(true);
 	}
@@ -110,7 +104,7 @@ function DwtShell(className, docBodyScrollable, confirmExitMethod, userShell, us
 	htmlElement.appendChild(this._veilOverlay);
 
 	// Curtain overlay - used between hidden and viewable elements using z-index
-	if (useCurtain) {
+	if (params.useCurtain) {
 		this._curtainOverlay = document.createElement("div");
 		this._curtainOverlay.className = "CurtainOverlay";
 		this._curtainOverlay.style.position = "absolute";
@@ -127,7 +121,7 @@ function DwtShell(className, docBodyScrollable, confirmExitMethod, userShell, us
 	this._toolTip = new DwtToolTip(this);
 	this._hoverMgr = new DwtHoverMgr();
 	
-	this._keyboardMgr = new DwtKeyboardMgr();
+	this._keyboardMgr = new DwtKeyboardMgr(this);
 }
 
 DwtShell.prototype = new DwtComposite;
@@ -196,21 +190,13 @@ function(busy, id, showBusyDialog, busyDialogDelay, cancelBusyCallback) {
 		// transition from non-busy to busy state
 		Dwt.setCursor(this._busyOverlay, "wait");
     	Dwt.setVisible(this._busyOverlay, true);
-    	this._setBusy = true;
-    	if (this._keyboardMgr.isEnabled()) {
-    		this._keyboardMgr.enable(false);
-    		this._kbnavDisabled = true;
-    	}
+    	this._setBusy = this._blockInput = true;
     	DBG.println(AjxDebug.DBG2, "set busy overlay, id = " + id);
     } else if (this._setBusy && (this._setBusyCount <= 0)) {
 		// transition from busy to non-busy state
 	    Dwt.setCursor(this._busyOverlay, "default");
 	    Dwt.setVisible(this._busyOverlay, false);
-	    this._setBusy = false;
-	    if (this._kbnavDisabled) {
-	    	this._keyboardMgr.enable(true);
-	    	this._kbnavDisabled = false;
-	    }
+	    this._setBusy = this._blockInput = false;
     	DBG.println(AjxDebug.DBG2, "remove busy overlay, id = " + id);
 	}
 	
@@ -360,7 +346,7 @@ function(htmlElement) {
 	Dwt.setVisible(this._busyOverlay, false);
 
 	var cancelButton = new DwtDialog_ButtonDescriptor(DwtShell.CANCEL_BUTTON, AjxMsg.cancelRequest, DwtDialog.ALIGN_CENTER);
-    this._busyDialog = new DwtDialog(this, "DwtShellbusyDialog", AjxMsg.workInProgress, DwtDialog.NO_BUTTONS, [cancelButton], Dwt.BUSY + 10);
+    this._busyDialog = new DwtDialog(this, "DwtShellBusyDialog", AjxMsg.workInProgress, DwtDialog.NO_BUTTONS, [cancelButton], Dwt.BUSY + 10);
     this._busyDialog.registerCallback(DwtShell.CANCEL_BUTTON, this._busyCancelButtonListener, this);
     var txtId = Dwt.getNextId();
     var html = [

@@ -1,36 +1,26 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: ServerSocketReader.java,v $
+ * $Revision: 3174 $
+ * $Date: 2005-12-08 17:41:00 -0300 (Thu, 08 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.net;
 
+import org.apache.mina.common.IoSession;
 import org.dom4j.Element;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.util.Log;
 import org.jivesoftware.wildfire.PacketRouter;
 import org.jivesoftware.wildfire.RoutingTable;
+import org.jivesoftware.wildfire.XMPPServer;
 import org.jivesoftware.wildfire.auth.UnauthorizedException;
 import org.jivesoftware.wildfire.interceptor.PacketRejectedException;
+import org.jivesoftware.wildfire.server.DialbackCreatorSession;
 import org.jivesoftware.wildfire.server.IncomingServerSession;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmpp.packet.*;
@@ -63,19 +53,44 @@ public class ServerSocketReader extends SocketReader {
      */
     private ThreadPoolExecutor threadPool;
 
-    public ServerSocketReader(PacketRouter router, RoutingTable routingTable, String serverName,
-            Socket socket, SocketConnection connection, boolean useBlockingMode) {
-        super(router, routingTable, serverName, socket, connection, useBlockingMode);
+    public ServerSocketReader(PacketRouter router, RoutingTable routingTable, 
+                Socket socket, SocketConnection connection)
+    {
+        super(router, routingTable, socket, connection);
         // Create a pool of threads that will process received packets. If more threads are
         // required then the command will be executed on the SocketReader process
         int coreThreads = JiveGlobals.getIntProperty("xmpp.server.processing.core.threads", 2);
         int maxThreads = JiveGlobals.getIntProperty("xmpp.server.processing.max.threads", 50);
         int queueSize = JiveGlobals.getIntProperty("xmpp.server.processing.queue", 50);
         threadPool =
-                new ThreadPoolExecutor(coreThreads, maxThreads, 60, TimeUnit.SECONDS,
+            new ThreadPoolExecutor(coreThreads, maxThreads, 60, TimeUnit.SECONDS,
                         new LinkedBlockingQueue<Runnable>(queueSize),
                         new ThreadPoolExecutor.CallerRunsPolicy());
     }
+    
+    public ServerSocketReader(PacketRouter router, RoutingTable routingTable, 
+                IoSession nioSocket, SocketConnection connection) {
+        super(router, routingTable, nioSocket, connection);
+        // Create a pool of threads that will process received packets. If more threads are
+        // required then the command will be executed on the SocketReader process
+        int coreThreads = JiveGlobals.getIntProperty("xmpp.server.processing.core.threads", 2);
+        int maxThreads = JiveGlobals.getIntProperty("xmpp.server.processing.max.threads", 50);
+        int queueSize = JiveGlobals.getIntProperty("xmpp.server.processing.queue", 50);
+        threadPool =
+            new ThreadPoolExecutor(coreThreads, maxThreads, 60, TimeUnit.SECONDS,
+                        new LinkedBlockingQueue<Runnable>(queueSize),
+                        new ThreadPoolExecutor.CallerRunsPolicy());
+    }
+    
+    protected void process(Element doc) throws Exception {
+        if (doc != null && session != null && session instanceof DialbackCreatorSession) {
+            DialbackCreatorSession dbcs = (DialbackCreatorSession)session;
+            session = dbcs.processSecondElement(doc);
+        } else {
+            super.process(doc);
+        }
+    }
+    
 
     /**
      * Processes the packet in another thread if the packet has not been rejected.
@@ -217,11 +232,11 @@ public class ServerSocketReader extends SocketReader {
         threadPool.shutdown();
     }
 
-    boolean createSession(String namespace) throws UnauthorizedException, XmlPullParserException,
+    boolean createSession(String namespace, String host, Element streamElt) throws UnauthorizedException, XmlPullParserException,
             IOException {
         if ("jabber:server".equals(namespace)) {
             // The connected client is a server so create an IncomingServerSession
-            session = IncomingServerSession.createSession(serverName, reader, connection);
+            session = IncomingServerSession.createSession(host, connection, streamElt);
             return true;
         }
         return false;

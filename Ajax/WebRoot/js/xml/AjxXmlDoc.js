@@ -16,7 +16,7 @@
 
 
 // Don't directly instantiate AjxXmlDoc, use one of the create factory methods instead
-function AjxXmlDoc() {
+AjxXmlDoc = function() {
 	if (!AjxXmlDoc._inited)
 		AjxXmlDoc._init();
 }
@@ -145,9 +145,9 @@ function(url) {
  */
 AjxXmlDoc.prototype.toJSObject = 
 function(dropns, lowercase, withAttrs) {
-	function _node() { this.__msh_content = ''; };
+	_node = function() { this.__msh_content = ''; };
 	_node.prototype.toString = function() { return this.__msh_content; };
-	function rec(i, o) {
+	rec = function(i, o) {
 		var tags = {}, t, n;
 		for (i = i.firstChild; i; i = i.nextSibling) {
 			if (i.nodeType == 1) {
@@ -195,6 +195,12 @@ function(ns, tag) {
 AjxXmlDoc.prototype.getFirstElementByTagNameNS = 
 function(ns, tag) {
 	return this.getElementsByTagNameNS(ns, tag)[0];
+};
+
+AjxXmlDoc.prototype.getElementsByTagName = 
+function(tag) {
+	var doc = this.getDoc();
+	return doc.getElementsByTagName(tag);
 };
 
 AjxXmlDoc._init =
@@ -256,3 +262,63 @@ function() {
 
 	AjxXmlDoc._inited = true;
 };
+
+
+AjxXmlDoc.prototype.set =
+function(name, value, element) {
+   var p = this._doc.createElement(name);
+      if (value != null) {
+         var cdata = this._doc.createTextNode("");
+         p.appendChild(cdata);
+         cdata.nodeValue = value;
+      }
+      if (element == null) {
+         this.root.appendChild(p);
+      } else {
+         element.appendChild(p);
+      }
+   return p;
+};
+
+AjxXmlDoc.prototype.getDocXml =
+function() {
+   if (AjxEnv.isSafari)
+      return AjxXmlDoc.getXml(this.getDoc());
+   else
+      return this.getDoc().xml;
+};
+
+AjxXmlDoc.createRoot =
+function(rootName) {
+   var xmldoc = AjxXmlDoc.create();
+   var d = xmldoc.getDoc();
+   xmldoc.root = d.createElement(rootName);
+
+   d.appendChild(xmldoc.root);
+   return xmldoc;
+};
+
+AjxXmlDoc.createElement =
+function(name, value) {
+	
+   var xmldoc = AjxXmlDoc.create();
+   var d = xmldoc.getDoc();
+   xmldoc.root = d.createElement(name);
+   if (value != null) {
+   		//xmldoc.root.nodeValue = value;
+   	 	var cdata = d.createTextNode("");
+        xmldoc.root.appendChild(cdata);
+        cdata.nodeValue = value;
+   }
+   
+   d.appendChild(xmldoc.root);
+   return xmldoc;
+   
+};
+
+
+AjxXmlDoc.prototype.appendChild =
+function(xmldoc) {
+   this.root.appendChild(xmldoc.root);   
+};
+

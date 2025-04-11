@@ -30,13 +30,12 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Message;
-import com.zimbra.cs.operation.GetMsgOperation;
-import com.zimbra.cs.operation.Operation.Requester;
-import com.zimbra.cs.session.Session;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.session.PendingModifications.Change;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class GetMsgMetadata extends MailDocumentHandler {
@@ -50,14 +49,14 @@ public class GetMsgMetadata extends MailDocumentHandler {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
         Mailbox.OperationContext octxt = zsc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
-        String ids = request.getElement(MailService.E_MSG).getAttribute(MailService.A_IDS);
+        String ids = request.getElement(MailConstants.E_MSG).getAttribute(MailConstants.A_IDS);
         ArrayList<Integer> local = new ArrayList<Integer>();
         HashMap<String, StringBuffer> remote = new HashMap<String, StringBuffer>();
         ItemAction.partitionItems(zsc, ids, local, remote);
 
-        Element response = zsc.createElement(MailService.GET_MSG_METADATA_RESPONSE);
+        Element response = zsc.createElement(MailConstants.GET_MSG_METADATA_RESPONSE);
 
         if (remote.size() > 0) {
             List<Element> responses = proxyRemote(request, remote, context);
@@ -66,13 +65,10 @@ public class GetMsgMetadata extends MailDocumentHandler {
         }
         
         if (local.size() > 0) {
-            GetMsgOperation op = new GetMsgOperation(session, octxt, mbox, Requester.SOAP, local, false);
-            op.schedule();
-            List<Message> msgs = op.getMsgList();
-
+            List<Message> msgs = GetMsg.getMsgs(octxt, mbox, local, false);
             for (Message msg : msgs) {
                 if (msg != null)
-                    ToXML.encodeMessageSummary(response, zsc, msg, null, SUMMARY_FIELDS);
+                    ToXML.encodeMessageSummary(response, ifmt, octxt, msg, null, SUMMARY_FIELDS);
             }
         }
 
@@ -83,9 +79,9 @@ public class GetMsgMetadata extends MailDocumentHandler {
     throws ServiceException {
         List<Element> responses = new ArrayList<Element>();
 
-        Element eMsg = request.getElement(MailService.E_MSG);
+        Element eMsg = request.getElement(MailConstants.E_MSG);
         for (Map.Entry<String, StringBuffer> entry : remote.entrySet()) {
-            eMsg.addAttribute(MailService.A_IDS, entry.getValue().toString());
+            eMsg.addAttribute(MailConstants.A_IDS, entry.getValue().toString());
 
             Element response = proxyRequest(request, context, entry.getKey());
             for (Element e : response.listElements())

@@ -72,7 +72,25 @@ public abstract class CalendarUser {
     public boolean hasLanguage() { return !StringUtil.isNullOrEmpty(mLanguage); }
     public String getLanguage() { return mLanguage; }
     public void setLanguage(String lang) { mLanguage = lang; }
-
+    
+    private final String blankIfNullSpaceAfterIfNot(String str) {
+        if (str == null)
+            return "";
+        else
+            return str+" ";
+    }
+    
+    /**
+     * @return all the data in this concatenated, for easy indexing
+     */
+    public String getIndexString() {
+        StringBuilder s = new StringBuilder();
+        s.append(blankIfNullSpaceAfterIfNot(getCn()));
+        s.append(blankIfNullSpaceAfterIfNot(getAddress()));
+        s.append(blankIfNullSpaceAfterIfNot(getSentBy()));
+        s.append(blankIfNullSpaceAfterIfNot(getDir()));
+        return s.toString().trim();
+    }
     
     public CalendarUser(String address,
                            String cn,
@@ -171,7 +189,10 @@ public abstract class CalendarUser {
     }
 
     public ZProperty toProperty() throws ServiceException {
-        ZProperty prop = new ZProperty(getPropertyName(), "MAILTO:" + getAddress());
+    	String addr = getAddress();
+    	if (addr != null && addr.indexOf(':') < 0)
+    		addr = "MAILTO:" + addr;
+        ZProperty prop = new ZProperty(getPropertyName(), addr);
         setProperty(prop);
         return prop;
     }

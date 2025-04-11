@@ -41,6 +41,7 @@ import javax.naming.Context;
 import javax.naming.InvalidNameException;
 import javax.naming.Name;
 import javax.naming.NameAlreadyBoundException;
+import javax.naming.NameNotFoundException;
 import javax.naming.NameParser;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -305,9 +306,8 @@ public class LdapUtil {
         byte[] buff = Base64.decodeBase64(encodedBuff);
         if (buff.length <= SALT_LEN)
             return false;
-        int slen = (buff.length == 28) ? 8 : SALT_LEN;
-        byte[] salt = new byte[slen];
-        System.arraycopy(buff, buff.length-slen, salt, 0, slen);
+        byte[] salt = new byte[SALT_LEN];
+        System.arraycopy(buff, buff.length-SALT_LEN, salt, 0, SALT_LEN);
         String generated = generateSSHA(password, salt);
         return generated.equals(encodedPassword);
     }
@@ -319,7 +319,9 @@ public class LdapUtil {
                 salt = new byte[SALT_LEN];
                 SecureRandom sr = new SecureRandom();
                 sr.nextBytes(salt);
-            } 
+            } else if (salt.length != SALT_LEN) {
+                throw new RuntimeException("invalid salt length, must be 4 bytes: "+salt.length);
+            }
             md.update(password.getBytes());
             md.update(salt);
             byte[] digest = md.digest();
@@ -335,6 +337,15 @@ public class LdapUtil {
     
     public static String generateUUID() {
         return UUID.randomUUID().toString();
+    }
+    
+    /*
+     * we want to throw the IllegalArgumentException instead of catching it so the cause
+     * can be logged with the callers catcher.
+     */
+    public static boolean isValidUUID(String strRep) throws IllegalArgumentException {
+        UUID uuid = UUID.fromString(strRep);
+        return (uuid != null);   
     }
 
     public static String getAttrString(Attributes attrs, String name) throws NamingException {
@@ -724,6 +735,34 @@ public class LdapUtil {
         }
         return dns;
     }
+    
+    
+    /**
+     * given a dn like "uid=foo,ou=people,dc=widgets,dc=com", return the String[]
+     * [0] = uid=foo
+     * [1] = ou=people,dc=widgets,dc=com
+     * 
+     * if the dn cannot be split into rdn and dn:
+     * [0] = ""
+     * [1] = the input dn
+     * 
+     * @param dn
+     * @return
+     */
+    public static String[] dnToRdnAndBaseDn(String dn) {
+        String[] values = new String[2];
+        int baseDnIdx = dn.indexOf(",");
+        
+        if (baseDnIdx!=-1 && dn.length()>baseDnIdx+1) {
+            values[0] = dn.substring(0, baseDnIdx);
+            values[1] = dn.substring(baseDnIdx+1);
+        } else {
+            values[0] = "";
+            values[1] = dn;
+        }
+        
+        return values;
+    }
 
     static String[] removeMultiValue(String values[], String value) {
         List<String> list = new ArrayList<String>(Arrays.asList(values));
@@ -946,11 +985,7 @@ public class LdapUtil {
     
 
     public static void main(String args[]) throws NamingException, ServiceException {
-//        changeActiveDirectoryPassword(new String[] {"ldaps://host/"}, "email", "old", "new");
-
-        System.out.println(verifySSHA("{SSHA}igJikWhEzFPLvXp4TNY1NADGOQPNjjWJ","test123"));
-        System.out.println(verifySSHA("{SSHA}t14kg+LsEEtb6/3xj+PPYGHv+496XwslfHaxUQ==","welcome123!"));
-        
+        changeActiveDirectoryPassword(new String[] {"ldaps://host/"}, "email", "old", "new");
 /*
         Date now = new Date();
         String gts = generalizedTime(now);
@@ -1010,6 +1045,7 @@ public class LdapUtil {
     	}
     }
     
+   
     public static void createEntry(DirContext ctxt, String dn, Attributes attrs, String method)
     throws NameAlreadyBoundException, ServiceException {
         Context newCtxt = null;
@@ -1018,6 +1054,8 @@ public class LdapUtil {
             newCtxt = ctxt.createSubcontext(cpName, attrs);
         } catch (NameAlreadyBoundException e) {            
             throw e;
+        } catch (NameNotFoundException e){
+            throw ServiceException.INVALID_REQUEST(method+" dn not found: "+ dnToRdnAndBaseDn(dn)[1] +e.getMessage(), e);
         } catch (InvalidAttributeIdentifierException e) {
             throw AccountServiceException.INVALID_ATTR_NAME(method+" invalid attr name: "+e.getMessage(), e);
         } catch (InvalidAttributeValueException e) {
@@ -1027,7 +1065,7 @@ public class LdapUtil {
         } catch (InvalidNameException e) {
             throw ServiceException.INVALID_REQUEST(method+" invalid name: "+e.getMessage(), e);
         } catch (SchemaViolationException e) {
-            throw ServiceException.INVALID_REQUEST(method+" invalid schema change: "+e.getMessage(), e);            
+            throw ServiceException.INVALID_REQUEST(method+" invalid schema change: "+e.getMessage(), e); 
         } catch (NamingException e) {
             throw ServiceException.FAILURE(method, e);
         } finally {

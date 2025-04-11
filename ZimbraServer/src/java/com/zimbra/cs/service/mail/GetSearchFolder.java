@@ -32,14 +32,14 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.SearchFolder;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
-import com.zimbra.cs.operation.GetItemListOperation;
-import com.zimbra.cs.operation.Operation.Requester;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -51,17 +51,15 @@ public class GetSearchFolder extends MailDocumentHandler  {
 		ZimbraSoapContext lc = getZimbraSoapContext(context);
 		Mailbox mbox = getRequestedMailbox(lc);
 		OperationContext octxt = lc.getOperationContext();
-		Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 		
-		Element response = lc.createElement(MailService.GET_SEARCH_FOLDER_RESPONSE);
+		Element response = lc.createElement(MailConstants.GET_SEARCH_FOLDER_RESPONSE);
         
-		GetItemListOperation op = new GetItemListOperation(session, octxt, mbox, Requester.SOAP, MailItem.TYPE_SEARCHFOLDER);
-		op.schedule();
-		List<? extends MailItem> results = op.getResults();
+		List<? extends MailItem> results = mbox.getItemList(octxt, MailItem.TYPE_SEARCHFOLDER, -1, DbMailItem.SORT_NONE);
 		
 		if (results != null) {
-			for (MailItem mi : results) 
-				ToXML.encodeSearchFolder(response, lc, (SearchFolder) mi);
+			for (MailItem item : results) 
+				ToXML.encodeSearchFolder(response, ifmt, (SearchFolder) item);
         }
 
         return response;

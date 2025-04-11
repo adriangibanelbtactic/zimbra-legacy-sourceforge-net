@@ -66,6 +66,7 @@ public class DavElements {
 	public static final String P_CALENDAR_MULTIGET = "calendar-multiget";
 	public static final String P_CALENDAR_QUERY = "calendar-query";
 	public static final String P_CALENDAR_TIMEZONE = "calendar-timezone";
+	public static final String P_CALENDAR_USER_ADDRESS_SET = "calendar-user-address-set";
 	public static final String P_COLLECTION = "collection";
 	public static final String P_COMP = "comp";
 	public static final String P_COMP_FILTER = "comp-filter";
@@ -146,13 +147,21 @@ public class DavElements {
 	public static final String P_READ_ACL = "read-acl";
 	public static final String P_READ_CURRENT_USER_PRIVILEGE_SET = "read-current-user-privilege-set";
 	public static final String P_READ_FREE_BUSY = "read-free-busy";
+	public static final String P_RECIPIENT = "recipient";
 	public static final String P_REMOVE = "remove";
 	public static final String P_REPORT = "report";
+	public static final String P_REQUEST_STATUS = "request-status";
 	public static final String P_REQUIRED_PRINCIPAL = "required-principal";
 	public static final String P_RESOURCE = "resource";
 	public static final String P_RESOURCETYPE = "resourcetype";
 	public static final String P_RESPONSE = "response";
+	public static final String P_RESPONSEDESCRIPTION = "responsedescription";
 	
+	public static final String P_SCHEDULE_INBOX = "schedule-inbox";
+	public static final String P_SCHEDULE_INBOX_URL = "schedule-inbox-URL";
+	public static final String P_SCHEDULE_OUTBOX = "schedule-outbox";
+	public static final String P_SCHEDULE_OUTBOX_URL = "schedule-outbox-URL";
+	public static final String P_SCHEDULE_RESPONSE = "schedule-response";
 	public static final String P_SELF = "self";
 	public static final String P_SET = "set";
 	public static final String P_SHARED = "shared";
@@ -186,6 +195,10 @@ public class DavElements {
 	public static final String P_WRITE_CONTENT = "write-content";
 	public static final String P_WRITE_PROPERTIES = "write-properties";
 	
+	public static final String ORGANIZER        = "ORGANIZER";
+	public static final String ORGANIZER_HREF   = "X-ORGANIZER-HREF";
+	public static final String ORGANIZER_MAILTO = "X-ORGANIZER-MAILTO";
+	
 
 	// QNames
 	public static final QName E_ABSTRACT = QName.get(P_ABSTRACT, WEBDAV_NS);
@@ -199,7 +212,9 @@ public class DavElements {
 	public static final QName E_ALLPROP_CALDAV = QName.get(P_ALLPROP, CALDAV_NS);
 	public static final QName E_ALTERNATE_URI_SET = QName.get(P_ALTERNATE_URI_SET, WEBDAV_NS);
 	public static final QName E_AUTHENTICATED = QName.get(P_AUTHENTICATED, WEBDAV_NS);
-	
+
+	public static final QName E_BIND    = QName.get(P_BIND, WEBDAV_NS);
+
 	public static final QName E_CALENDAR = QName.get(P_CALENDAR, CALDAV_NS);
 	public static final QName E_CALENDAR_DATA = QName.get(P_CALENDAR_DATA, CALDAV_NS);
 	public static final QName E_CALENDAR_DESCRIPTION = QName.get(P_CALENDAR_DESCRIPTION, CALDAV_NS);
@@ -207,6 +222,7 @@ public class DavElements {
 	public static final QName E_CALENDAR_MULTIGET = QName.get(P_CALENDAR_MULTIGET, CALDAV_NS);
 	public static final QName E_CALENDAR_QUERY = QName.get(P_CALENDAR_QUERY, CALDAV_NS);
 	public static final QName E_CALENDAR_TIMEZONE = QName.get(P_CALENDAR_TIMEZONE, CALDAV_NS);
+	public static final QName E_CALENDAR_USER_ADDRESS_SET = QName.get(P_CALENDAR_USER_ADDRESS_SET, CALDAV_NS);
 	public static final QName E_COLLECTION = QName.get(P_COLLECTION, WEBDAV_NS);
 	public static final QName E_COMP = QName.get(P_COMP, CALDAV_NS);
 	public static final QName E_COMP_FILTER = QName.get(P_COMP_FILTER, CALDAV_NS);
@@ -264,13 +280,25 @@ public class DavElements {
 	public static final QName E_PROP_FILTER = QName.get(P_PROP_FILTER, CALDAV_NS);
 	public static final QName E_PROPSTAT = QName.get(P_PROPSTAT, WEBDAV_NS);
 	
-	public static final QName E_READ   = QName.get(P_READ, WEBDAV_NS);
+	public static final QName E_READ = QName.get(P_READ, WEBDAV_NS);
+	public static final QName E_READ_ACL = QName.get(P_READ_ACL, WEBDAV_NS);
+	public static final QName E_READ_CURRENT_USER_PRIVILEGE_SET = QName.get(P_READ_CURRENT_USER_PRIVILEGE_SET, WEBDAV_NS);
+	public static final QName E_READ_FREE_BUSY = QName.get(P_READ_FREE_BUSY, WEBDAV_NS);
+	public static final QName E_RECIPIENT = QName.get(P_RECIPIENT, CALDAV_NS);
 	public static final QName E_REPORT = QName.get(P_REPORT, WEBDAV_NS);
+	public static final QName E_REQUEST_STATUS = QName.get(P_REQUEST_STATUS, CALDAV_NS);
 	public static final QName E_REQUIRED_PRINCIPAL = QName.get(P_REQUIRED_PRINCIPAL, WEBDAV_NS);
 	public static final QName E_RESOURCE = QName.get(P_RESOURCE, WEBDAV_NS);
 	public static final QName E_RESOURCETYPE = QName.get(P_RESOURCETYPE, WEBDAV_NS);
 	public static final QName E_RESPONSE = QName.get(P_RESPONSE, WEBDAV_NS);
+	public static final QName E_RESPONSEDESCRIPTION = QName.get(P_RESPONSEDESCRIPTION, WEBDAV_NS);
+	public static final QName E_CALDAV_RESPONSE = QName.get(P_RESPONSE, CALDAV_NS);
 	
+	public static final QName E_SCHEDULE_INBOX = QName.get(P_SCHEDULE_INBOX, CALDAV_NS);
+	public static final QName E_SCHEDULE_INBOX_URL = QName.get(P_SCHEDULE_INBOX_URL, CALDAV_NS);
+	public static final QName E_SCHEDULE_OUTBOX = QName.get(P_SCHEDULE_OUTBOX, CALDAV_NS);
+	public static final QName E_SCHEDULE_OUTBOX_URL = QName.get(P_SCHEDULE_OUTBOX_URL, CALDAV_NS);
+	public static final QName E_SCHEDULE_RESPONSE = QName.get(P_SCHEDULE_RESPONSE, CALDAV_NS);
 	public static final QName E_SHARED = QName.get(P_SHARED, WEBDAV_NS);
 	public static final QName E_SOURCE = QName.get(P_SOURCE, WEBDAV_NS);
 	public static final QName E_STATUS = QName.get(P_STATUS, WEBDAV_NS);
@@ -290,7 +318,14 @@ public class DavElements {
 	public static final QName E_TIMEZONE = QName.get(P_TIMEZONE, CALDAV_NS);
 	
 	public static final QName E_UNAUTHENTICATED = QName.get(P_UNAUTHENTICATED, WEBDAV_NS);
+	public static final QName E_UNBIND = QName.get(P_UNBIND, WEBDAV_NS);
 	public static final QName E_UNLOCK = QName.get(P_UNLOCK, WEBDAV_NS);
 
-	public static final QName E_WRITE  = QName.get(P_WRITE, WEBDAV_NS);
+	public static final QName E_WRITE = QName.get(P_WRITE, WEBDAV_NS);
+	public static final QName E_WRITE_ACL = QName.get(P_WRITE_ACL, WEBDAV_NS);
+	public static final QName E_WRITE_CONTENT  = QName.get(P_WRITE_CONTENT, WEBDAV_NS);
+	public static final QName E_WRITE_PROPERTIES  = QName.get(P_WRITE_PROPERTIES, WEBDAV_NS);
+
+	// errors
+	public static final QName E_CANNOT_MODIFY_PROTECTED_PROPERTY = QName.get("cannot-modify-protected-property", WEBDAV_NS);
 }

@@ -223,7 +223,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>mail quota in bytes</desc>
 </attr>
 
-<attr id="17" name="zimbraPrefMailSignature" type="string" max="1024" cardinality="single" optionalIn="account,identity" flags="domainAdminModifiable">
+<attr id="17" name="zimbraPrefMailSignature" type="string" cardinality="single" optionalIn="account,identity" flags="domainAdminModifiable" callback="MailSignature">
   <desc>mail signature</desc>
 </attr>
 
@@ -252,7 +252,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>name to use in greeting and sign-off; if empty, uses hostname</desc>
 </attr>
 
-<attr id="24" name="zimbraLmtpBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="24" name="zimbraLmtpBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>7025</globalConfigValue>
   <desc>port number on which LMTP server should listen</desc>
 </attr>
@@ -270,7 +270,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>set to true for admin accounts</desc>
 </attr>
 
-<attr id="32" name="zimbraMailSieveScript" type="string" max="21504" cardinality="single" optionalIn="account">
+<attr id="32" name="zimbraMailSieveScript" type="string" cardinality="single" optionalIn="account">
   <desc>sieve script generated from user filter rules</desc>
 </attr>
 
@@ -450,7 +450,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>name to use in greeting and sign-off; if empty, uses hostname</desc>
 </attr>
 
-<attr id="94" name="zimbraPop3BindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="94" name="zimbraPop3BindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>7110</globalConfigValue>
   <desc>port number on which POP3 server should listen</desc>
 </attr>
@@ -460,7 +460,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
 </attr>
 
 <attr id="96" name="zimbraPop3NumThreads" type="integer" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
-  <globalConfigValue>100</globalConfigValue>
+  <globalConfigValue>20</globalConfigValue>
   <desc>number of handler threads</desc>
 </attr>
 
@@ -543,9 +543,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
 
 <attr id="114" name="zimbraLastLogonTimestampFrequency" type="duration" cardinality="single" optionalIn="globalConfig">
   <globalConfigValue>7d</globalConfigValue>
-  <desc>how often (nnnnn[hmsd]) the zimbraLastLogonTimestamp is updated.  
-        if set to 0, updating zimbraLastLogonTimestamp is completely disabled
-  </desc>
+  <desc>how often (nnnnn[hmsd]) the zimbraLastLogonTimestamp is updated</desc>
 </attr>
 
 <attr id="115" name="zimbraAttachmentsBlocked" type="boolean" cardinality="single" optionalIn="account,cos,globalConfig" flags="accountInherited,domainAdminModifiable">
@@ -712,12 +710,12 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>LDAP Gal attribute to contact attr mapping</desc>
 </attr>
 
-<attr id="154" name="zimbraMailPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="154" name="zimbraMailPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>80</globalConfigValue>
   <desc>HTTP port for end-user UI</desc>
 </attr>
 
-<attr id="155" name="zimbraAdminPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="155" name="zimbraAdminPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>7071</globalConfigValue>
   <desc>SSL port for admin UI</desc>
 </attr>
@@ -763,7 +761,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>config for this type</desc>
 </attr>
 
-<attr id="166" name="zimbraMailSSLPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="166" name="zimbraMailSSLPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>0</globalConfigValue>
   <desc>SSL port for end-user UI</desc>
 </attr>
@@ -830,7 +828,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>interface address(es) on which IMAP server should listen; if empty, binds to all interfaces</desc>
 </attr>
 
-<attr id="180" name="zimbraImapBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="180" name="zimbraImapBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>7143</globalConfigValue>
   <desc>port number on which IMAP server should listen</desc>
 </attr>
@@ -844,7 +842,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>interface address(es) on which IMAP server should listen; if empty, binds to all interfaces</desc>
 </attr>
 
-<attr id="183" name="zimbraImapSSLBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="183" name="zimbraImapSSLBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>7993</globalConfigValue>
   <desc>port number on which IMAP SSL server should listen on</desc>
 </attr>
@@ -863,7 +861,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>interface address(es) on which POP3 server should listen; if empty, binds to all interfaces</desc>
 </attr>
 
-<attr id="187" name="zimbraPop3SSLBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="187" name="zimbraPop3SSLBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>7995</globalConfigValue>
   <desc>port number on which POP3 server should listen</desc>
 </attr>
@@ -1529,7 +1527,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>Private key this server should use to access another server</desc>
 </attr>
 
-<attr id="339" name="zimbraRemoteManagementPort" type="integer" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="339" name="zimbraRemoteManagementPort" type="integer" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>22</globalConfigValue>
   <desc>Port on which remote management sshd listening on this server.</desc>
 </attr>
@@ -1570,22 +1568,22 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>whether to permit mobile sync</desc>
 </attr>
 
-<attr id="348" name="zimbraImapProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="348" name="zimbraImapProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>143</globalConfigValue>
   <desc>port number on which IMAP proxy server should listen</desc>
 </attr>
 
-<attr id="349" name="zimbraImapSSLProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="349" name="zimbraImapSSLProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>993</globalConfigValue>
   <desc>port number on which IMAPS proxy server should listen</desc>
 </attr>
 
-<attr id="350" name="zimbraPop3ProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="350" name="zimbraPop3ProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>110</globalConfigValue>
   <desc>port number on which POP3 proxy server should listen</desc>
 </attr>
 
-<attr id="351" name="zimbraPop3SSLProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+<attr id="351" name="zimbraPop3SSLProxyBindPort" type="port" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited" callback="CheckPortConflict">
   <globalConfigValue>995</globalConfigValue>
   <desc>port number on which POP3S proxy server should listen</desc>
 </attr>
@@ -1881,27 +1879,27 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>Whether or not the data source is enabled</desc>
 </attr>
 
-<attr id="420" name="zimbraDataSourceHost" type="string" max="128" cardinality="single" requiredIn="pop3DataSource" flags="domainAdminModifiable">
+<attr id="420" name="zimbraDataSourceHost" type="string" max="128" cardinality="single" requiredIn="pop3DataSource,imapDataSource" flags="domainAdminModifiable">
   <desc>Host name of server</desc>
 </attr>
 
-<attr id="421" name="zimbraDataSourcePort" type="port" cardinality="single" requiredIn="pop3DataSource" flags="domainAdminModifiable">
+<attr id="421" name="zimbraDataSourcePort" type="port" cardinality="single" requiredIn="pop3DataSource,imapDataSource" flags="domainAdminModifiable">
   <desc>Port number of server</desc>
 </attr>
 
-<attr id="422" name="zimbraDataSourceUsername" type="string" max="128" cardinality="single" requiredIn="pop3DataSource" flags="domainAdminModifiable">
+<attr id="422" name="zimbraDataSourceUsername" type="string" max="128" cardinality="single" requiredIn="pop3DataSource,imapDataSource" flags="domainAdminModifiable">
   <desc>Username on server</desc>
 </attr>
 
-<attr id="423" name="zimbraDataSourcePassword" type="string" max="128" cardinality="single" requiredIn="pop3DataSource" flags="domainAdminModifiable">
+<attr id="423" name="zimbraDataSourcePassword" type="string" max="128" cardinality="single" requiredIn="pop3DataSource,imapDataSource" flags="domainAdminModifiable">
   <desc>Password on server</desc>
 </attr>
 
-<attr id="424" name="zimbraDataSourceFolderId" type="string" max="128" cardinality="single" requiredIn="pop3DataSource" flags="domainAdminModifiable">
+<attr id="424" name="zimbraDataSourceFolderId" type="string" max="128" cardinality="single" requiredIn="pop3DataSource,imapDataSource" flags="domainAdminModifiable">
   <desc>Local folder id to store retreived data in</desc>
 </attr>
 
-<attr id="425" name="zimbraDataSourceConnectionType" type="enum" value="cleartext,ssl,starttls" cardinality="single" requiredIn="pop3DataSource" flags="domainAdminModifiable">
+<attr id="425" name="zimbraDataSourceConnectionType" type="enum" value="cleartext,ssl,starttls" cardinality="single" requiredIn="pop3DataSource,imapDataSource" flags="domainAdminModifiable">
   <desc>Which security layer to use for connection (cleartext, ssl, starttls)</desc>
 </attr>
 
@@ -1960,7 +1958,7 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
 </attr>
 
 <attr id="434" name="zimbraDataSourceLeaveOnServer" type="boolean" cardinality="single"
-  requiredIn="pop3DataSource" flags="domainAdminModifiable">
+  optionalIn="pop3DataSource" flags="domainAdminModifiable">
   <desc>Specifies whether imported POP3 messages should be left on the server or deleted.</desc>
 </attr>
 
@@ -1987,6 +1985,21 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   </desc>
 </attr>
 
+<attr id="439" name="zimbraPrefCalendarDayHourStart" type="integer" min="0" max="23" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>8</defaultCOSValue>
+  <desc>hour of day that the day view should start at (1=1 AM, 8=8 AM, etc)</desc>
+</attr>
+
+<attr id="440" name="zimbraPrefCalendarDayHourEnd" type="integer" min="0" max="24" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>18</defaultCOSValue>
+  <desc>hour of day that the day view should end at, non-inclusive (16=4pm, 24 = midnight, etc)</desc>
+</attr>
+
+<attr id="441" name="zimbraFeatureMailPollingIntervalPreferenceEnabled" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>TRUE</defaultCOSValue>
+  <desc>whether user is allowed to set mail polling interval</desc>
+</attr>
+
 <attr id="442" name="zimbraPrefLocale" type="string" max="64" cardinality="single" optionalIn="account,cos," flags="accountInherited,domainAdminModifiable">
   <desc>
     user locale preference, e.g. en_US
@@ -2003,6 +2016,70 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
 
 <attr id="444" name="zimbraImapSSLDisabledCapability" type="string" max="256" cardinality="multi" optionalIn="globalConfig,server" flags="serverInherited">
   <desc>disabled IMAP SSL capabilities.  Capabilities are listed on the CAPABILITY line, also known in RFCs as extensions</desc>
+</attr>
+
+<attr id="445" name="zimbraFeatureVoiceEnabled" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>FALSE</defaultCOSValue>
+  <desc>Voicemail features enabled</desc>
+</attr>
+
+<attr id="446" name="zimbraAdminSavedSearches" type="string" max="512" cardinality="multi" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <desc>admin saved searches</desc>
+</attr>
+
+<attr id="447" name="zimbraFeaturePortalEnabled" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>FALSE</defaultCOSValue>
+  <desc>portal features</desc>
+</attr>
+
+<attr id="448" name="zimbraPortalName" type="string" max="256" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>example</defaultCOSValue>
+  <desc>portal name</desc>
+</attr>
+
+<attr id="449" name="zimbraChildAccount" type="id" cardinality="multi" optionalIn="account" flags="domainAdminModifiable">
+  <desc>zimbraId of child accounts</desc>
+</attr>
+
+<attr id="450" name="zimbraChildVisibleAccount" type="id" cardinality="multi" optionalIn="account" flags="domainAdminModifiable">
+  <desc>zimbraId of visible child accounts</desc>
+</attr>
+
+<attr id="451" name="zimbraFeatureOptionsEnabled" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>TRUE</defaultCOSValue>
+  <desc>whether an account can modify its zimbraPref* attributes</desc>
+</attr>
+
+<attr id="452" name="zimbraFeatureShortcutAliasesEnabled" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>FALSE</defaultCOSValue>
+  <desc>keyboard shortcuts aliases features</desc>
+</attr>
+
+<attr id="453" name="zimbraPrefClientType" type="enum" value="basic,advanced" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>advanced</defaultCOSValue>
+  <desc>user preference of client type</desc>
+</attr>
+
+<attr id="454" name="zimbraMailSignatureMaxLength" type="long" min="0" cardinality="single" optionalIn="account,cos" flags="accountInfo,accountInherited,domainAdminModifiable">
+  <defaultCOSValue>1024</defaultCOSValue>
+  <desc>maximum length of mail signature, 0 means unlimited. If not set, default is 1024</desc>
+</attr>
+
+<attr id="455" name="zimbraDataSourcePollingInterval" type="duration" cardinality="single" optionalIn="dataSource">
+  <desc>
+    The time interval between automated data imports for this data source.  If unset or 0,
+    the data source will not be scheduled for automated polling.
+  </desc>
+</attr>
+
+<attr id="456" name="zimbraPrefWarnOnExit" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>TRUE</defaultCOSValue>
+  <desc>whether to display a warning when users try to navigate away from ZCS</desc>
+</attr>
+
+<attr id="457" name="zimbraDataSourceNumThreads" type="integer" min="1" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
+  <globalConfigValue>10</globalConfigValue>
+  <desc>Number of threads that can simultaneously process data source imports.</desc>
 </attr>
 
 <attr id="458" name="zimbraBackupTarget" type="string" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
@@ -2023,36 +2100,44 @@ TODO - add support for multi-line values in globalConfigValue and defaultCOSValu
   <desc>Backup report email subject prefix</desc>
 </attr>
 
-<attr id="501" name="zimbraExcludeFromCMBSearch" type="boolean" cardinality="single" optionalIn="account">
-  <desc>Indicates the account should be excluded from Crossmailbox searchers.</desc>
+<attr id="462" name="zimbraPrefIMFlashIcon" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>TRUE</defaultCOSValue>
+  <desc>Flash IM icon on new messages</desc>
 </attr>
 
-<attr id="502" name="zimbraAutoSubmittedNullReturnPath" type="boolean" cardinality="single" optionalIn="globalConfig">
-  <globalConfigValue>TRUE</globalConfigValue>
-  <desc>Use null return path for envelope MAIL FROM when sending out of office and new mail notifications.  If false, use account address for envelope</desc>
+<attr id="463" name="zimbraPrefIMNotifyPresence" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>TRUE</defaultCOSValue>
+  <desc>Notify for presence modifications</desc>
 </attr>
 
-<attr id="509" name="zimbraMtaMyHostname" type="astring" max="256" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
-  <desc>value of postfix myhostname</desc>
+<attr id="464" name="zimbraPrefIMNotifyStatus" type="boolean" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable">
+  <defaultCOSValue>TRUE</defaultCOSValue>
+  <desc>Notify for status change</desc>
+</attr>
+    
+<attr id="465" name="zimbraSpamReportSenderHeader" type="string" cardinality="single" optionalIn="globalConfig">
+  <globalConfigValue>X-Zimbra-Spam-Report-Sender</globalConfigValue>
+  <desc>mail header name for sender in spam report</desc>
 </attr>
 
-<attr id="510" name="zimbraMtaMyOrigin" type="astring" max="256" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
-  <desc>value of postfix myorigin</desc>
+<attr id="466" name="zimbraSpamReportTypeHeader" type="string" cardinality="single" optionalIn="globalConfig">
+  <globalConfigValue>X-Zimbra-Spam-Report-Type</globalConfigValue>
+  <desc>mail header name for report type in spam report</desc>
 </attr>
 
-<attr id="518" name="zimbraHttpNumThreads" type="integer" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
-  <globalConfigValue>100</globalConfigValue>
-  <desc>number of http handler threads</desc>
+<attr id="467" name="zimbraSpamReportTypeSpam" type="string" cardinality="single" optionalIn="globalConfig">
+  <globalConfigValue>spam</globalConfigValue>
+  <desc>spam report type value for spam</desc>
 </attr>
 
-<attr id="519" name="zimbraHttpSSLNumThreads" type="integer" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
-  <globalConfigValue>50</globalConfigValue>
-  <desc>number of https handler threads</desc>
+<attr id="468" name="zimbraSpamReportTypeHam" type="string" cardinality="single" optionalIn="globalConfig">
+  <globalConfigValue>ham</globalConfigValue>
+  <desc>spam report type value for ham</desc>
 </attr>
-
-<attr id="524" name="zimbraMtaMyDestination" type="astring" max="256" cardinality="single" optionalIn="globalConfig,server" flags="serverInherited">
-  <globalConfigValue>localhost</globalConfigValue>
-  <desc>value of postfix mydestination</desc>
-</attr>
+    
+<attr id="469" name="zimbraPrefMailDefaultCharset" type="string" max="64" cardinality="single" optionalIn="account,cos" flags="accountInherited,domainAdminModifiable" callback="MailCharset">
+  <defaultCOSValue>UTF-8</defaultCOSValue>
+  <desc>Default Charset for mail composing and parsing text</desc>
+</attr>  
 
 </attrs>

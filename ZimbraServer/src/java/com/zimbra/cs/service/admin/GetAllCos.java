@@ -33,9 +33,10 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Cos;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -52,7 +53,7 @@ public class GetAllCos extends AdminDocumentHandler {
 	    Provisioning prov = Provisioning.getInstance();
         List cos = prov.getAllCos();
         
-        Element response = lc.createElement(AdminService.GET_ALL_COS_RESPONSE);        
+        Element response = lc.createElement(AdminConstants.GET_ALL_COS_RESPONSE);
         for (Iterator it = cos.iterator(); it.hasNext(); )
             GetCos.doCos(response, (Cos) it.next());
 	    return response;

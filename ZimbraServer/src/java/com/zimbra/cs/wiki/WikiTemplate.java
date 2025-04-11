@@ -495,16 +495,11 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
         		buf.append(">");
         	}
 	    	Mailbox mbox = ctxt.item.getMailbox();
-            for (Document doc : mbox.getWikiList(ctxt.wctxt.octxt, folder.getId(), (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING))) {
+            for (Document doc : mbox.getDocumentList(ctxt.wctxt.octxt, folder.getId(), (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING))) {
             	buf.append("<");
         		buf.append(sTAGS[sINNER][style]);
             	buf.append(" class='zmwiki-pageLink'>");
-            	String name;
-            	if (doc instanceof WikiItem)
-            		name = ((WikiItem)doc).getWikiWord();
-            	else
-            		name = doc.getName();
-            	buf.append(createLink(name));
+            	buf.append(createLink(doc.getName()));
         		buf.append("</");
         		buf.append(sTAGS[sINNER][style]);
         		buf.append(">");
@@ -678,16 +673,22 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 			return "Creator";
 		}
 		public String getPattern() {
-			return "Creator";
+			return "CREATOR";
 		}
 		public WikiTemplate findInclusion(Context ctxt) {
 			return null;
 		}
 		public String apply(Context ctxt) throws ServiceException {
-			if (!(ctxt.item instanceof Document)) 
-				return "";
-			Document doc = (Document) ctxt.item;
-			return doc.getRevision(1).getCreator();
+		   if (ctxt.item instanceof Folder) {
+               //notebook folder
+			   return ctxt.item.getMailbox().getAccount().getName();        
+           }
+           else if (ctxt.item instanceof Document) {
+        	   Document doc = (Document) ctxt.item;
+        	   return doc.getRevision(1).getCreator();        	   
+           }
+
+           return "";
 		}
 	}
 	public static class ModifierWiklet extends Wiklet {
@@ -907,7 +908,9 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 				if (title == null)
 					title = link;
 			}
-			WikiUrl wurl = new WikiUrl(link, ctxt.item.getFolderId());
+			WikiUrl wurl = (ctxt.item instanceof Folder) ?
+					new WikiUrl(link, ctxt.item.getId()) :
+					new WikiUrl(link, ctxt.item.getFolderId());
 			try {
 				StringBuffer buf = new StringBuffer();
 				buf.append("<a href='");

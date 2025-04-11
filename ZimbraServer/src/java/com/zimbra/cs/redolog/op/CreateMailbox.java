@@ -36,7 +36,6 @@ import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
-import com.zimbra.cs.redolog.MailboxIdConflictException;
 import com.zimbra.cs.redolog.RedoException;
 import com.zimbra.cs.redolog.RedoLogInput;
 import com.zimbra.cs.redolog.RedoLogOutput;
@@ -96,9 +95,11 @@ public class CreateMailbox extends RedoableOp {
 			if (opMboxId == mboxId) {
 				mLog.info("Mailbox " + opMboxId + " for account " + mAccountId + " already exists");
 				return;
-			} else {
-			    throw new MailboxIdConflictException(mAccountId, opMboxId, mboxId, this);
-			}
+			} else
+				throw new RedoException(
+						"Mailbox for account " + mAccountId +
+						" already exists, but with wrong mailbox id value of " + mboxId +
+						"; was expecting mailbox id of " + opMboxId, this);
 		} catch (MailServiceException e) {
 			if (e.getCode() != MailServiceException.NO_SUCH_MBOX)
 				throw e;

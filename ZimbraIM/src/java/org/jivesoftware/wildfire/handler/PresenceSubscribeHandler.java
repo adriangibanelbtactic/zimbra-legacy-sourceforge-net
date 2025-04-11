@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: PresenceSubscribeHandler.java,v $
+ * $Revision: 3136 $
+ * $Date: 2005-12-01 02:06:16 -0300 (Thu, 01 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.handler;
 
 import org.jivesoftware.util.LocaleUtils;
@@ -91,7 +78,6 @@ public class PresenceSubscribeHandler extends BasicModule implements ChannelHand
 
     private RoutingTable routingTable;
     private XMPPServer localServer;
-    private String serverName;
     private PacketDeliverer deliverer;
     private PresenceManager presenceManager;
     private RosterManager rosterManager;
@@ -109,7 +95,7 @@ public class PresenceSubscribeHandler extends BasicModule implements ChannelHand
             Presence.Type type = presence.getType();
 
             // Reject presence subscription requests sent to the local server itself.
-            if (recipientJID == null || recipientJID.toString().equals(serverName)) {
+            if (recipientJID == null || XMPPServer.getInstance().getServerNames().contains(recipientJID.toString())) {
                 if (type == Presence.Type.subscribe) {
                     Presence reply = new Presence();
                     reply.setTo(senderJID);
@@ -215,8 +201,8 @@ public class PresenceSubscribeHandler extends BasicModule implements ChannelHand
     private Roster getRoster(JID address) {
         String username;
         Roster roster = null;
-        if (localServer.isLocal(address) && userManager.isRegisteredUser(address.getNode())) {
-            username = address.getNode();
+        if (localServer.isLocal(address) && userManager.isRegisteredUser(address.toBareJID())) {
+            username = address.toBareJID();
             try {
                 roster = rosterManager.getRoster(username);
             }
@@ -485,7 +471,6 @@ public class PresenceSubscribeHandler extends BasicModule implements ChannelHand
     public void initialize(XMPPServer server) {
         super.initialize(server);
         localServer = server;
-        serverName = server.getServerInfo().getName();
         routingTable = server.getRoutingTable();
         deliverer = server.getPacketDeliverer();
         presenceManager = server.getPresenceManager();

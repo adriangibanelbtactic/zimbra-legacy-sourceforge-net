@@ -41,7 +41,7 @@
 * @param id			[int]			unique ID
 * @param list		[ZmList]		list that contains this item
 */
-function ZmItem(appCtxt, type, id, list) {
+ZmItem = function(appCtxt, type, id, list) {
 
 	if (arguments.length == 0) return;
 	ZmModel.call(this, type);
@@ -63,82 +63,60 @@ ZmItem.prototype = new ZmModel;
 ZmItem.prototype.constructor = ZmItem;
 
 // Item types
-ZmItem.CONV			= ZmEvent.S_CONV;
-ZmItem.MSG			= ZmEvent.S_MSG;
-ZmItem.ATT			= ZmEvent.S_ATT;
-ZmItem.CONTACT		= ZmEvent.S_CONTACT;
-ZmItem.GROUP		= ZmEvent.S_GROUP;
-ZmItem.APPT			= ZmEvent.S_APPT;
-ZmItem.NOTE			= ZmEvent.S_NOTE;
-ZmItem.PAGE			= ZmEvent.S_PAGE;
-ZmItem.DOCUMENT		= ZmEvent.S_DOCUMENT;
-ZmItem.CHAT			= ZmEvent.S_CHAT;
-ZmItem.ROSTER_ITEM	= ZmEvent.S_ROSTER_ITEM;
-ZmItem.RESOURCE		= ZmEvent.S_RESOURCE;		// calendar resource
-ZmItem.MAX			= ZmEvent.S_MAX;
-ZmItem.DATA_SOURCE  = ZmEvent.S_DATA_SOURCE;
+ZmItem.NOTE = ZmEvent.S_NOTE;
+
+// App responsible for item
+ZmItem.APP = {};
 
 // Type names
 ZmItem.MSG_KEY = {};
-ZmItem.MSG_KEY[ZmItem.CONV]		= "conversation";
-ZmItem.MSG_KEY[ZmItem.MSG]		= "message";
-ZmItem.MSG_KEY[ZmItem.ATT]		= "attachment";
-ZmItem.MSG_KEY[ZmItem.CONTACT]	= "contact";
-ZmItem.MSG_KEY[ZmItem.GROUP]	= "group";
-ZmItem.MSG_KEY[ZmItem.APPT]		= "appointment";
-ZmItem.MSG_KEY[ZmItem.NOTE]		= "note";
-ZmItem.MSG_KEY[ZmItem.PAGE]		= "page";
-ZmItem.MSG_KEY[ZmItem.DOCUMENT]	= "document";
-ZmItem.MSG_KEY[ZmItem.CHAT]		= "chat";
+ZmItem.MSG_KEY[ZmItem.NOTE]	= "note";
 
 // Representative icons
 ZmItem.ICON = {};
-ZmItem.ICON[ZmItem.CONV]	= "Conversation";
-ZmItem.ICON[ZmItem.MSG]		= "Message";
-ZmItem.ICON[ZmItem.ATT]		= "Attachment";
-ZmItem.ICON[ZmItem.CONTACT]	= "Contact";
-ZmItem.ICON[ZmItem.GROUP]	= "Group";
-ZmItem.ICON[ZmItem.APPT]	= "Appointment";
-ZmItem.ICON[ZmItem.NOTE]	= "Note";
-ZmItem.ICON[ZmItem.PAGE]	= "Page";
-ZmItem.ICON[ZmItem.DOCUMENT]= "GenericDoc";
-ZmItem.ICON[ZmItem.CHAT]	= "ImStartChat";
+ZmItem.ICON[ZmItem.NOTE] = "Note";
 
-// fields that can be part of a displayed item
-var i = 1;
-ZmItem.F_ID				= i++;
-ZmItem.F_ITEM_ROW		= i++;
-ZmItem.F_ICON			= i++;
-ZmItem.F_FLAG			= i++;
-ZmItem.F_ATTACHMENT		= i++;
-ZmItem.F_TAG			= i++;
-ZmItem.F_PARTICIPANT	= i++;
-ZmItem.F_FROM			= i++;
-ZmItem.F_FRAGMENT		= i++;
-ZmItem.F_SUBJECT		= i++;
-ZmItem.F_COUNT			= i++;
-ZmItem.F_DATE			= i++;
-ZmItem.F_STATUS			= i++;
-ZmItem.F_FOLDER			= i++;
-ZmItem.F_COMPANY		= i++;
-ZmItem.F_EMAIL			= i++;
-ZmItem.F_PHONE_BUS		= i++;
-ZmItem.F_PHONE_MOBILE 	= i++;
-ZmItem.F_FREE_BUSY		= i++;
-ZmItem.F_ITEM_TYPE		= i++;
-ZmItem.F_TAG_CELL		= i++;
-ZmItem.F_SIZE			= i++;
-ZmItem.F_INDEX			= i++;
+// Function for creating search results list
+ZmItem.RESULTS_LIST = {};
+
+// fields that can be part of a displayed item (need to be short because
+// they are used in many DOM IDs)
+// XXX: define these in appropriate apps
+ZmItem.F_ID				= "id";
+ZmItem.F_ITEM_ROW		= "rw";
+ZmItem.F_FLAG			= "fg";
+ZmItem.F_ATTACHMENT		= "at";
+ZmItem.F_TAG			= "tg";
+ZmItem.F_PARTICIPANT	= "pa";
+ZmItem.F_NAME			= "na";
+ZmItem.F_FROM			= "fr";
+ZmItem.F_FRAGMENT		= "fm";
+ZmItem.F_SUBJECT		= "su";
+ZmItem.F_DATE			= "dt";
+ZmItem.F_STATUS			= "st";
+ZmItem.F_FOLDER			= "fo";
+ZmItem.F_COMPANY		= "co";
+ZmItem.F_EMAIL			= "em";
+ZmItem.F_TYPE			= "ty";
+ZmItem.F_TAG_CELL		= "tc";
+ZmItem.F_SIZE			= "sz";
+ZmItem.F_INDEX			= "ix";
+ZmItem.F_EXPAND			= "ex";	// conv list view
+ZmItem.F_FILE_TYPE		= "ft";	// notebook
+// task specific
+ZmItem.F_PRIORITY		= "pr";
+ZmItem.F_PCOMPLETE		= "pc";
+ZmItem.F_COMPLETED		= "cp";
+
+ZmItem.F_WORK_PHONE		= "wp";
+ZmItem.F_HOME_PHONE		= "hp";
+ZmItem.F_LOCATION		= "lo";
+ZmItem.F_CAPACITY		= "cp";
+ZmItem.F_NOTES			= "no";
 
 // Action requests for different items
 ZmItem.SOAP_CMD = {};
-ZmItem.SOAP_CMD[ZmItem.CONV]	= "ConvAction";
-ZmItem.SOAP_CMD[ZmItem.MSG]		= "MsgAction";
-ZmItem.SOAP_CMD[ZmItem.ATT]		= "unsupported";
-ZmItem.SOAP_CMD[ZmItem.CONTACT]	= "ContactAction";
-ZmItem.SOAP_CMD[ZmItem.GROUP]	= "ContactAction";
-ZmItem.SOAP_CMD[ZmItem.PAGE]	= "ItemAction";
-ZmItem.SOAP_CMD[ZmItem.DOCUMENT]= "ItemAction";
+ZmItem.SOAP_CMD[ZmItem.TASK]	= "ItemAction";
 
 // Item fields (for modify events)
 ZmItem.TAGS_FIELD = 1;
@@ -170,6 +148,38 @@ ZmItem.DND_ACTION_COPY = 1 << 1;
 ZmItem.DND_ACTION_BOTH = ZmItem.DND_ACTION_MOVE | ZmItem.DND_ACTION_COPY;
 
 /**
+ * Stores information about the given item type.
+ * 
+ * @param item			[constant]	item type
+ * @param app			[constant]	app that handles this item type
+ * @param nameKey		[string]	msg key for item name
+ * @param icon			[string]	name of item's icon class
+ * @param soapCmd		[string]	SOAP command for acting on this item
+ * @param itemClass		[string]	name of class that represents this item
+ * @param node			[string]	SOAP response node for this item
+ * @param organizer		[constant]	associated organizer
+ * @param searchType	[string]	associated type in SearchRequest
+ * @param resultsList	[function]	function that returns a ZmList for
+ * 									holding search results of this type
+ */
+ZmItem.registerItem =
+function(item, params) {
+	if (params.app)				{ ZmItem.APP[item]					= params.app; }
+	if (params.nameKey)			{ ZmItem.MSG_KEY[item]				= params.nameKey; }
+	if (params.icon)			{ ZmItem.ICON[item]					= params.icon; }
+	if (params.soapCmd)			{ ZmItem.SOAP_CMD[item]				= params.soapCmd; }
+	if (params.itemClass)		{ ZmList.ITEM_CLASS[item]			= params.itemClass; }
+	if (params.node)			{ ZmList.NODE[item]					= params.node; }
+	if (params.organizer)		{ ZmOrganizer.ITEM_ORGANIZER[item]	= params.organizer; }
+	if (params.searchType)		{ ZmSearch.TYPE[item]				= params.searchType; }
+	if (params.resultsList)		{ ZmItem.RESULTS_LIST[item]			= params.resultsList; }
+	
+	if (params.node) {
+		ZmList.ITEM_TYPE[params.node] = item;
+	}
+};
+
+/**
 * Takes a normalized id or an item id, and returns the item id.
 */
 ZmItem.getItemId =
@@ -186,8 +196,9 @@ function(id) {
 };
 
 // abstract methods
-ZmItem.prototype.create = function(args) {}
-ZmItem.prototype.modify = function(mods) {}
+ZmItem.prototype.create = function(args) {};
+ZmItem.prototype.modify = function(mods) {};
+ZmItem.prototype.getPrintHtml = function(preferHtml, callback) {};
 
 /**
 * Returns this item if it has the given ID. Used by the app controller for
@@ -251,8 +262,7 @@ ZmItem.prototype.getRestUrl = function() {
 
 	// if server doesn't tell us what URL to use, do our best to generate
 	var organizerType = ZmOrganizer.ITEM_ORGANIZER[this.type];
-	var tree = this._appCtxt.getTree(organizerType);
-	var organizer = tree.getById(this.folderId);
+	var organizer = this._appCtxt.getById(this.folderId);
 	var url = [
 		organizer.getRestUrl(), "/", AjxStringUtil.urlComponentEncode(this.name)
 	].join("");
@@ -267,15 +277,12 @@ ZmItem.prototype.getRestUrl = function() {
 */
 ZmItem.prototype.getTagImageInfo =
 function() {
-	var tagList = this._appCtxt.getTree(ZmOrganizer.TAG);
-	if (!tagList) return ZmTag.COLOR_MINI_ICON[ZmTag.DEFAULT_COLOR];
-	
 	var tagImageInfo;
 	if (!this.tags.length) {
 		tagImageInfo = "Blank_16";
 	} else if (this.tags.length == 1) {
-		var tag = tagList.getById(this.tags[0]);
-		var color = tag ? tag.color : ZmTag.DEFAULT_COLOR;
+		var tag = this._appCtxt.getById(this.tags[0]);
+		var color = tag ? tag.color : ZmOrganizer.DEFAULT_COLOR[ZmOrganizer.TAG];
 		tagImageInfo = ZmTag.COLOR_MINI_ICON[color];
 	} else {
 		tagImageInfo = "MiniTagStack";
@@ -289,7 +296,9 @@ function() {
 */
 ZmItem.prototype.getDefaultDndAction =
 function() {
-	return ZmItem.DND_ACTION_MOVE;
+	return (this.isShared() || this.isReadOnly())
+		? ZmItem.DND_ACTION_COPY
+		: ZmItem.DND_ACTION_MOVE;
 };
 
 /**
@@ -350,13 +359,12 @@ function(obj) {
 		}
 		this._notify(ZmEvent.E_FLAGS, {flags: changedFlags});
 	}
-	if (obj.l != null) {
+	if (obj.l != null && obj.l != this.folderId) {
 		this.moveLocal(obj.l);
-		if (this.list)
+		if (this.list) {
 			this.list.moveLocal([this], obj.l);
-		// if this was the last item in a list of items that moved,
-		// it's safe to do replenishment now
-		this._notify(ZmEvent.E_MOVE, {replenish: obj.lastModify});
+		}
+		this._notify(ZmEvent.E_MOVE);
 	}
 };
 
@@ -457,10 +465,12 @@ ZmItem.prototype._notify =
 function(event, details) {
 	ZmModel.prototype._notify.call(this, event, details);
 	if (this.list) {
-		if (details)
+		if (details) {
 			details.items = [this];
-		else
+		} else {
 			details = {items: [this]};
+		}
+		this.list._evt.item = this;
 		this.list._notify(event, details);
 	}
 };

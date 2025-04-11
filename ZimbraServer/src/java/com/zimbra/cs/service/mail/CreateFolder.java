@@ -31,16 +31,17 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.cs.mailbox.ACL;
+import com.zimbra.cs.mailbox.Flag;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.cs.operation.CreateFolderOperation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -48,7 +49,7 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class CreateFolder extends MailDocumentHandler {
 
-    private static final String[] TARGET_FOLDER_PATH = new String[] { MailService.E_FOLDER, MailService.A_FOLDER };
+    private static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.E_FOLDER, MailConstants.A_FOLDER };
     private static final String[] RESPONSE_ITEM_PATH = new String[] { };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_FOLDER_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return true; }
@@ -58,24 +59,52 @@ public class CreateFolder extends MailDocumentHandler {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(lc);
         Mailbox.OperationContext octxt = lc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 
-        Element t = request.getElement(MailService.E_FOLDER);
-        String name      = t.getAttribute(MailService.A_NAME);
-        String view      = t.getAttribute(MailService.A_DEFAULT_VIEW, null);
-        String flags     = t.getAttribute(MailService.A_FLAGS, null);
-        byte color       = (byte) t.getAttributeLong(MailService.A_COLOR, MailItem.DEFAULT_COLOR);
-        String url       = t.getAttribute(MailService.A_URL, null);
-        ItemId iidParent = new ItemId(t.getAttribute(MailService.A_FOLDER), lc);
-        boolean fetchIfExists = t.getAttributeBool(MailService.A_FETCH_IF_EXISTS, false);
-        ACL acl          = FolderAction.parseACL(t.getOptionalElement(MailService.E_ACL));
+        Element t = request.getElement(MailConstants.E_FOLDER);
+        String name      = t.getAttribute(MailConstants.A_NAME);
+        String view      = t.getAttribute(MailConstants.A_DEFAULT_VIEW, null);
+        String flags     = t.getAttribute(MailConstants.A_FLAGS, null);
+        byte color       = (byte) t.getAttributeLong(MailConstants.A_COLOR, MailItem.DEFAULT_COLOR);
+        String url       = t.getAttribute(MailConstants.A_URL, null);
+        String folderId  = t.getAttribute(MailConstants.A_FOLDER, null);
+        ItemId iidParent = folderId != null ? new ItemId(folderId, lc) : null;
+        boolean fetchIfExists = t.getAttributeBool(MailConstants.A_FETCH_IF_EXISTS, false);
+        ACL acl          = FolderAction.parseACL(t.getOptionalElement(MailConstants.E_ACL));
 
-        CreateFolderOperation op = new CreateFolderOperation(session, octxt, mbox, Requester.SOAP, name, iidParent, view, flags, color, url, fetchIfExists);
-        op.schedule();
-        Folder folder = op.getFolder();
+        Folder folder;
+        boolean alreadyExisted = false;
+        
+        try {
+            if (iidParent != null)
+                folder = mbox.createFolder(octxt, name, iidParent.getId(), MailItem.getTypeForName(view), Flag.flagsToBitmask(flags), color, url);
+            else 
+                folder = mbox.createFolder(octxt, name, (byte) 0, MailItem.getTypeForName(view));
+
+            if (!folder.getUrl().equals("")) {
+                try {
+                    mbox.synchronizeFolder(octxt, folder.getId());
+                } catch (ServiceException e) {
+                    // if the synchronization fails, roll back the folder create
+                    rollbackFolder(folder);
+                    throw e;
+                } catch (RuntimeException e) {
+                    // if the synchronization fails, roll back the folder create
+                    rollbackFolder(folder);
+                    throw ServiceException.FAILURE("could not synchronize with remote feed", e);
+                }
+            }
+        } catch (ServiceException se) {
+            if (se.getCode() == MailServiceException.ALREADY_EXISTS && fetchIfExists) {
+                folder = mbox.getFolderByName(octxt, iidParent.getId(), name);
+                alreadyExisted = true;
+            } else {
+                throw se;
+            }
+        }
 
         // set the folder ACL as a separate operation, when appropriate
-        if (acl != null && !op.alreadyExisted()) {
+        if (acl != null && !alreadyExisted) {
             try {
                 mbox.setPermissions(octxt, folder.getId(), acl);
             } catch (ServiceException e) {
@@ -89,9 +118,18 @@ public class CreateFolder extends MailDocumentHandler {
             }
         }
 
-        Element response = lc.createElement(MailService.CREATE_FOLDER_RESPONSE);
+        Element response = lc.createElement(MailConstants.CREATE_FOLDER_RESPONSE);
         if (folder != null)
-            ToXML.encodeFolder(response, lc, folder);
+            ToXML.encodeFolder(response, ifmt, octxt, folder);
         return response;
     }
+    
+    private void rollbackFolder(Folder folder) {
+        try {
+            folder.getMailbox().delete(null, folder.getId(), MailItem.TYPE_FOLDER);
+        } catch (ServiceException nse) {
+            ZimbraLog.mailbox.warn("error ignored while rolling back folder create", nse);
+        }
+    }
+    
 }

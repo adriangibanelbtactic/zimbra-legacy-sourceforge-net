@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 2814 $
+ * $Date: 2005-09-13 16:41:10 -0300 (Tue, 13 Sep 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.auth;
 
 import org.jivesoftware.util.*;
@@ -64,7 +51,6 @@ public class AuthFactory {
         }
         catch (Exception e) {
             Log.error("Error loading auth provider: " + className, e);
-            authProvider = new DefaultAuthProvider();
         }
         // Create a message digest instance.
         try {
@@ -120,6 +106,7 @@ public class AuthFactory {
      */
     public static String getPassword(String username) throws UserNotFoundException,
             UnsupportedOperationException {
+        assert(username.indexOf('@') > 0);
         return authProvider.getPassword(username.toLowerCase());
     }
 
@@ -136,6 +123,7 @@ public class AuthFactory {
     public static AuthToken authenticate(String username, String password)
             throws UnauthorizedException
     {
+        assert(username.indexOf('@') > 0);
         authProvider.authenticate(username, password);
         return new AuthToken(username);
     }
@@ -157,6 +145,7 @@ public class AuthFactory {
     public static AuthToken authenticate(String username, String token, String digest)
             throws UnauthorizedException
     {
+        assert(username.indexOf('@') > 0);
         authProvider.authenticate(username, token, digest);
         return new AuthToken(username);
     }

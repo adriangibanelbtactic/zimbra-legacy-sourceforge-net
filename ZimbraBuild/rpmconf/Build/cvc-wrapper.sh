@@ -68,12 +68,10 @@ class ZimbraBuildRecipe(PackageRecipe):
         del r.EnforceSonameBuildRequirements
         del r.EnforcePerlBuildRequirements
         del r.DanglingSymlinks
-        del r.BadInterpreterPaths
         r.RemoveNonPackageFiles(exceptions='.*')
         r.InitialContents('/opt/zimbra/conf/localconfig.xml');
         # don't delete specific empty directories
         if r.name == 'zimbra-core':
-	  r.Provides('file', '/opt/zimbra/zimbramon/rrdtool-1.0.49/bin/rrdcgi')
           r.MakeDirs('/etc/conary/entitlements')
           r.Symlink ('/opt/zimbra/libexec/zmgenentitlement', '/etc/conary/entitlements/products.rpath.com')
           r.Symlink ('/opt/zimbra/libexec/zmgenentitlement', '/etc/conary/entitlements/conary.rpath.com')
@@ -103,7 +101,7 @@ class ZimbraBuildRecipe(PackageRecipe):
         r.Environment('PERL5LIB', '/opt/zimbra/zimbramon/lib:/opt/zimbra/zimbramon/lib/i386-linux-thread-multi')
         # glob not supported until conary 1.0.15
         #r.SharedLibrary(subtrees='/opt/zimbra/cyrus-sasl.*/%(lib)s')
-        r.SharedLibrary(subtrees='/opt/zimbra/cyrus-sasl-2.1.22.3/%(lib)s')
+        r.SharedLibrary(subtrees='/opt/zimbra/cyrus-sasl-2.1.21.ZIMBRA/%(lib)s')
         # add a runtime requirements on sudo
         for x in ('postfix', 'qshape', 'postconf', 'tomcat', 'ldap'):
             r.Requires('sudo:runtime', '/opt/zimbra/bin/' + x)
@@ -183,7 +181,7 @@ else
     new=$((ls | grep -v CONARY; cat CONARY | tail +5 | awk '{print $2}') |
            sort | uniq -u)
     if [ -n "$new" ]; then
-        cvc add $new
+        cvc add $new --text
     fi
     cvc commit -m 'automated update from ZimbraBuild'
     cd -

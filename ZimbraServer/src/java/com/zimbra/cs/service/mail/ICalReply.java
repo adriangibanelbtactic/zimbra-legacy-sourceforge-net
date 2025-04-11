@@ -29,14 +29,15 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mailbox.calendar.Invite;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ICalTok;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZCalendarBuilder;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class ICalReply extends MailDocumentHandler {
@@ -48,7 +49,7 @@ public class ICalReply extends MailDocumentHandler {
         Mailbox mbox = getRequestedMailbox(lc);
         OperationContext octxt = lc.getOperationContext();
 
-        Element icalElem = request.getElement(MailService.E_CAL_ICAL);
+        Element icalElem = request.getElement(MailConstants.E_CAL_ICAL);
         String icalStr = icalElem.getText();
         ZVCalendar cal;
         StringReader sr = null;

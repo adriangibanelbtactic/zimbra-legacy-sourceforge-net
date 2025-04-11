@@ -102,15 +102,6 @@ public class MimeCompoundHeader {
         }
     }
 
-    /** Printable ASCII characters that must be quoted in parameter values and avoided in parameter names. */
-    private static final boolean[] TSPECIALS = new boolean[128];
-        static {
-            TSPECIALS['('] = TSPECIALS[')'] = TSPECIALS['<'] = TSPECIALS['>']  = true;
-            TSPECIALS[','] = TSPECIALS[';'] = TSPECIALS[':'] = TSPECIALS['\\'] = true;
-            TSPECIALS['/'] = TSPECIALS['['] = TSPECIALS[']'] = TSPECIALS['?']  = true;
-            TSPECIALS['@'] = TSPECIALS['"'] = TSPECIALS['='] = TSPECIALS[' ']  = true;
-        }
-
     private String mValue;
     private Map<String, String> mParams = new LinkedHashMap<String, String>();
     private boolean use2231Encoding;
@@ -118,9 +109,8 @@ public class MimeCompoundHeader {
     public MimeCompoundHeader(String header) { this(header, false); }
     public MimeCompoundHeader(String header, boolean use2231) {
         use2231Encoding = use2231;
-        if (header == null) {
-            normalizeValue();  return;
-        }
+        if (header == null)
+            return;
         header = header.trim();
 
         RFC2231Data rfc2231 = new RFC2231Data();
@@ -161,7 +151,7 @@ public class MimeCompoundHeader {
                 } else if (c == ';') {
                     rfc2231.saveParameter(mParams);
                     rfc2231.setState(RFC2231State.PARAM);
-                } else if (c > 0x20 && c < 0xFF && !TSPECIALS[c]) {
+                } else if (c != ' ' && c != '\t') {
                     rfc2231.addKeyChar(c);
                 }
             } else if (rfc2231.state == RFC2231State.VALUE) {
@@ -175,7 +165,7 @@ public class MimeCompoundHeader {
                 if (c == ';') {
                     rfc2231.saveParameter(mParams);
                     rfc2231.setState(RFC2231State.PARAM);
-                } else if (c == '"') {
+                } if (c == '"') {
                     escaped = false;
                     rfc2231.setState(RFC2231State.QVALUE);
                 } else {
@@ -220,27 +210,14 @@ public class MimeCompoundHeader {
 
         rfc2231.saveParameter(mParams);
         mValue = mParams.remove(null);
-        normalizeValue();
     }
 
-    void normalizeValue()  {}
-
     public String getValue()                          { return mValue; }
-    public MimeCompoundHeader setValue(String value)  { mValue = value;  normalizeValue();  return this; }
+    public MimeCompoundHeader setValue(String value)  { mValue = value;  return this; }
 
     public boolean containsParameter(String name)  { return mParams.containsKey(name); }
     public String getParameter(String name)        { return mParams.get(name); }
     public MimeCompoundHeader setParameter(String name, String value) {
-        // massage the parameter name intil it's valid
-        if (name != null) {
-            name = name.trim();
-            for (int i = 0; i < name.length(); i++) {
-                char c = name.charAt(i);
-                if (c <= 0x20 || c >= 0xFF || TSPECIALS[c])
-                    name = name.substring(0, i) + name.substring(i-- + 1);
-            }
-        }
-
         if (value == null)
             mParams.remove(name);
         else
@@ -250,6 +227,14 @@ public class MimeCompoundHeader {
 
     public Iterator<Map.Entry<String, String>> getParameterIterator()  { return mParams.entrySet().iterator(); }
 
+    private static final int LINE_WRAP_LENGTH = 76;
+    private static final boolean[] TSPECIALS = new boolean[128];
+        static {
+            TSPECIALS['('] = TSPECIALS[')'] = TSPECIALS['<'] = TSPECIALS['>']  = true;
+            TSPECIALS[','] = TSPECIALS[';'] = TSPECIALS[':'] = TSPECIALS['\\'] = true;
+            TSPECIALS['/'] = TSPECIALS['['] = TSPECIALS[']'] = TSPECIALS['?']  = true;
+            TSPECIALS['@'] = TSPECIALS['"'] = TSPECIALS['='] = TSPECIALS[' ']  = true;
+        }
     // special subclass of URLCodec that replaces ' ' with "%20" rather than with "+"
     private static class URLEncoder extends URLCodec {
         private static final BitSet WWW_URL = (BitSet) WWW_FORM_URL.clone();
@@ -259,8 +244,6 @@ public class MimeCompoundHeader {
     private static class QEncoder extends QCodec {
         private QEncoder()  { super();  setEncodeBlanks(true); }
     }
-
-    private static final int LINE_WRAP_LENGTH = 76;
 
     public String toString()                   { return toString(null, 0); }
     public String toString(String hdrName)     { return toString(hdrName, 0); }
@@ -325,11 +308,13 @@ public class MimeCompoundHeader {
 
     public static class ContentType extends MimeCompoundHeader {
         private String mPrimaryType, mSubType;
+        private final String mDefault;
 
-        public ContentType(String header)                   { super(header); }
-        public ContentType(String header, boolean use2231)  { super(header, use2231); }
+        public ContentType(String header)                   { super(header);  mDefault = Mime.CT_DEFAULT;  normalizeValue(); }
+        public ContentType(String header, String def)       { super(header);  mDefault = def;  normalizeValue(); }
+        public ContentType(String header, boolean use2231)  { super(header, use2231);  mDefault = Mime.CT_DEFAULT;  normalizeValue(); }
 
-        public ContentType setValue(String value)                   { super.setValue(value);  return this; }
+        public ContentType setValue(String value)                   { super.setValue(value);  normalizeValue();  return this; }
         public ContentType setParameter(String name, String value)  { super.setParameter(name, value);  return this; }
 
         public String getPrimaryType()  { return mPrimaryType; }
@@ -339,7 +324,7 @@ public class MimeCompoundHeader {
             String value = getValue();
             if (value == null || value.trim().equals("")) {
                 // default to "text/plain" if no content-type specified
-                setValue(Mime.CT_DEFAULT);
+                setValue(mDefault);
             } else {
                 if (!value.equals(value.trim().toLowerCase())) {
                     // downcase the content-type if necessary
@@ -353,7 +338,7 @@ public class MimeCompoundHeader {
                         mPrimaryType = value.substring(0, slash).trim();
                         mSubType = value.substring(slash + 1).trim();
                         if (mPrimaryType.equals("") || mSubType.equals(""))
-                            setValue(mPrimaryType.equals("text") ? Mime.CT_DEFAULT : Mime.CT_APPLICATION_OCTET_STREAM);
+                            setValue(mPrimaryType.equals("text") ? Mime.CT_TEXT_PLAIN : Mime.CT_APPLICATION_OCTET_STREAM);
                     }
                 }
             }
@@ -364,10 +349,10 @@ public class MimeCompoundHeader {
 
 
     public static class ContentDisposition extends MimeCompoundHeader {
-        public ContentDisposition(String header)                   { super(header); }
-        public ContentDisposition(String header, boolean use2231)  { super(header, use2231); }
+        public ContentDisposition(String header)                   { super(header);  normalizeValue(); }
+        public ContentDisposition(String header, boolean use2231)  { super(header, use2231);  normalizeValue(); }
 
-        public ContentDisposition setValue(String value)                   { super.setValue(value);  return this; }
+        public ContentDisposition setValue(String value)                   { super.setValue(value);  normalizeValue();  return this; }
         public ContentDisposition setParameter(String name, String value)  { super.setParameter(name, value);  return this; }
 
         void normalizeValue() {
@@ -396,10 +381,6 @@ public class MimeCompoundHeader {
         mch = new ContentDisposition("   \n  gropp;\n filename*=UTF-8''%E3%82%BD%E3%83%AB%E3%83%86%E3%82%A3%E3%83%AC%E3%82%A4.rtf\n  \n ", true);
         System.out.println(mch.toString("Content-Disposition"));
         mch = new ContentDisposition(mch.toString());
-        System.out.println(mch.toString("Content-Disposition"));
-
-        mch = new ContentDisposition("attachment; filename=\"Ramkumar Venkatesan (resume\n  #21730).DOC\";\\nbroken=true\n");
-        mch.setParameter(null, "foo").setParameter("", "foo").setParameter("   ", "foo").setParameter(" [bar \n baz@\n{whop}\t\r", "foo");
         System.out.println(mch.toString("Content-Disposition"));
 
         mch = new ContentType("application/x-stuff; title*0*=us-ascii'en'This%20is%20even%20more%20; title*1*=%2A%2A%2Afun%2A%2A%2A%20; title*2=\"isn't it!\"\n");

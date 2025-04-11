@@ -23,8 +23,15 @@
  * ***** END LICENSE BLOCK *****
  */
 
-function ZmPageEditController(appCtxt, container, app) {
+ZmPageEditController = function(appCtxt, container, app) {
 	ZmListController.call(this, appCtxt, container, app);
+
+	ZmPageEditController.RADIO_GROUP = {};
+	ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_HTML_SOURCE]	= 1;
+	ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_MEDIA_WIKI]		= 1;
+	ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_RICH_TEXT]		= 1;
+	ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_TWIKI]			= 1;
+
 	this._listeners[ZmOperation.SAVE] = new AjxListener(this, this._saveListener);
 	this._listeners[ZmOperation.CLOSE] = new AjxListener(this, this._closeListener);
 	//this._listeners[ZmOperation.ATTACHMENT] = new AjxListener(this, this._addDocsListener);
@@ -38,14 +45,6 @@ ZmPageEditController.prototype.toString =
 function() {
 	return "ZmPageEditController";
 };
-
-// Constants
-
-ZmPageEditController.RADIO_GROUP = {};
-ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_HTML_SOURCE]	= 1;
-ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_MEDIA_WIKI]		= 1;
-ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_RICH_TEXT]		= 1;
-ZmPageEditController.RADIO_GROUP[ZmOperation.FORMAT_TWIKI]			= 1;
 
 // Data
 
@@ -117,6 +116,7 @@ function() {
 
 	return list;
 };
+
 ZmPageEditController.prototype._initializeToolBar =
 function(view) {
 	if (this._toolbar[view]) return;
@@ -136,6 +136,7 @@ function(view) {
 		spellCheckButton.setText("");
 	}
 
+	// NOTE: probably cleaner to use ZmActionMenu, which knows about operations
 	if (this._appCtxt.get(ZmSetting.HTML_COMPOSE_ENABLED)) {
 		var button = toolbar.getButton(ZmOperation.COMPOSE_FORMAT);
 		var menu = new ZmPopupMenu(button);
@@ -157,7 +158,7 @@ function(view) {
 			var style = DwtMenuItem.RADIO_STYLE;
 			var group = ZmPageEditController.RADIO_GROUP[op];
 
-			var menuItem = menu.createMenuItem(op, icon, text, null, true, style, group);
+			var menuItem = menu.createMenuItem(op, {image:icon, text:text, style:style, radioGroupId:group});
 			menuItem.setData(ZmOperation.KEY_ID, op);
 			menuItem.setData(ZmPageEditor.KEY_FORMAT, item.format);
 			menuItem.addSelectionListener(this._listeners[ZmOperation.COMPOSE_FORMAT]);
@@ -214,6 +215,9 @@ function(ev) {
 	this._doSave(false);
 };
 
+ZmPageEditController.INVALID_DOC_NAME_CHARS = "[\\|]";
+ZmPageEditController.INVALID_DOC_NAME_RE = new RegExp(ZmPageEditController.INVALID_DOC_NAME_CHARS);
+
 ZmPageEditController.prototype._doSave =
 function(popViewWhenSaved) {
 	var name = this._pageEditView.getPageName();
@@ -221,13 +225,12 @@ function(popViewWhenSaved) {
 	var message;
 	if (name == "") {
 		message = ZmMsg.errorSavingPageNameRequired;
-	} else if (!ZmOrganizer.VALID_NAME_RE.test(name)) {
+	} else if (!ZmOrganizer.VALID_NAME_RE.test(name) || ZmPageEditController.INVALID_DOC_NAME_RE.test(name)) {
 		message = AjxMessageFormat.format(ZmMsg.errorInvalidName, name);
 	}
 
 	// bug: 9406 (short term fix, waiting for backend support)
-	var tree = this._appCtxt.getTree(ZmOrganizer.NOTEBOOK);
-	var notebook = tree.getById(this._page.folderId || ZmOrganizer.ID_NOTEBOOK);
+	var notebook = this._appCtxt.getById(this._page.folderId || ZmOrganizer.ID_NOTEBOOK);
 	if (notebook && notebook.getChild(name)) {
 		message = AjxMessageFormat.format(ZmMsg.errorInvalidPageOrSectionName, name);
 	}
@@ -326,7 +329,7 @@ ZmPageEditController.prototype._saveResponseHandler = function(content, response
 ZmPageEditController.prototype._saveResponseHandlerShowNote =
 function(id) {
 	this._showPage(id);
-	this._app.getAppViewMgr().showPendingView(true);
+	this._appCtxt.getAppViewMgr().showPendingView(true);
 };
 
 ZmPageEditController.prototype._saveErrorResponseHandler =
@@ -376,8 +379,7 @@ function(ev) {
 /***
 ZmPageEditController.prototype._addDocsListener =
 function(ev) {
-	var tree = this._appCtxt.getTree(ZmOrganizer.NOTEBOOK);
-	var notebook = tree.getById(this._page.folderId || ZmNotebookItem.DEFAULT_FOLDER);
+	var notebook = this._appCtxt.getById(this._page.folderId || ZmNotebookItem.DEFAULT_FOLDER);
 	var callback = null;
 
 	var dialog = this._appCtxt.getUploadDialog();
@@ -437,7 +439,12 @@ function(view, force) {
 	}
 
 	if (!this._pageEditView.isDirty()) {
-		this._showCurrentPage();
+		var notebookController = this._app.getNotebookController();
+		if (notebookController.isIframeEnabled()) {
+			notebookController.refreshCurrentPage();
+		}else{
+			this._showCurrentPage();
+		}
 		return true;
 	}
 
@@ -455,8 +462,6 @@ ZmPageEditController.prototype._popShieldYesCallback =
 function() {
 	this._popShield.popdown();
 	this._doSave(true);
-	this._app.popView(true);
-	this._app.getAppViewMgr().showPendingView(true);
 };
 
 ZmPageEditController.prototype._popShieldNoCallback =
@@ -464,11 +469,11 @@ function() {
 	this._popShield.popdown();
 	this._app.popView(true);
 	this._showCurrentPage();
-	this._app.getAppViewMgr().showPendingView(true);
+	this._appCtxt.getAppViewMgr().showPendingView(true);
 };
 
 ZmPageEditController.prototype._popShieldDismissCallback =
 function() {
 	this._popShield.popdown();
-	this._app.getAppViewMgr().showPendingView(false);
+	this._appCtxt.getAppViewMgr().showPendingView(false);
 };

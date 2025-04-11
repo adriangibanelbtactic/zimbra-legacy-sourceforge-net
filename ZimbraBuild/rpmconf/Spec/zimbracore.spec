@@ -16,8 +16,6 @@ AutoReqProv: no
 %description
 Best email money can buy
 
-%define __spec_install_post /usr/lib/rpm/brp-compress /usr/lib/rpm/brp-strip-comment-note %{nil}
-
 %prep
 
 %build

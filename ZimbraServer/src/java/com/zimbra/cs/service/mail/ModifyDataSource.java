@@ -28,15 +28,17 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.DataSource;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.DataSourceBy;
 import com.zimbra.cs.account.ldap.LdapUtil;
+import com.zimbra.cs.datasource.DataSourceManager;
 import com.zimbra.cs.db.DbPop3Message;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -49,58 +51,75 @@ public class ModifyDataSource extends MailDocumentHandler {
         Provisioning prov = Provisioning.getInstance();
         Account account = getRequestedAccount(zsc);
         
-        if (!canAccessAccount(zsc, account))
-            throw ServiceException.PERM_DENIED("can not access account");
-
+        canModifyOptions(zsc, account);
+        
         boolean wipeOutOldData = false;
         
-        Element ePop3 = request.getElement(MailService.E_DS_POP3);
-        String id = ePop3.getAttribute(MailService.A_ID);
+        Element eDataSource = CreateDataSource.getDataSourceElement(request);
+        DataSource.Type type = DataSource.Type.fromString(eDataSource.getName());
+        
+        String id = eDataSource.getAttribute(MailConstants.A_ID);
         DataSource ds = prov.get(account, DataSourceBy.id, id);
+        if (ds == null) {
+            throw ServiceException.INVALID_REQUEST("Unable to find data source with id=" + id, null);
+        }
 
         Map<String, Object> dsAttrs = new HashMap<String, Object>();
-        String value = ePop3.getAttribute(MailService.A_NAME, null);
+        String value = eDataSource.getAttribute(MailConstants.A_NAME, null);
         if (value != null)
             dsAttrs.put(Provisioning.A_zimbraDataSourceName, value);
-        value = ePop3.getAttribute(MailService.A_DS_IS_ENABLED, null); 
+        value = eDataSource.getAttribute(MailConstants.A_DS_IS_ENABLED, null);
         if (value != null)
             dsAttrs.put(Provisioning.A_zimbraDataSourceEnabled,
-                LdapUtil.getBooleanString(ePop3.getAttributeBool(MailService.A_DS_IS_ENABLED)));
-        value = ePop3.getAttribute(MailService.A_FOLDER, null);
-        if (value != null)
+                LdapUtil.getBooleanString(eDataSource.getAttributeBool(MailConstants.A_DS_IS_ENABLED)));
+        value = eDataSource.getAttribute(MailConstants.A_FOLDER, null);
+        if (value != null) {
+            Mailbox mbox = getRequestedMailbox(zsc);
+            CreateDataSource.validateFolderId(mbox, eDataSource);
         	dsAttrs.put(Provisioning.A_zimbraDataSourceFolderId, value);
+        }
         
-        value = ePop3.getAttribute(MailService.A_DS_HOST, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_HOST, null);
         if (value != null && !value.equals(ds.getHost())) {
             dsAttrs.put(Provisioning.A_zimbraDataSourceHost, value);
             wipeOutOldData = true;
         }
         
-        value = ePop3.getAttribute(MailService.A_DS_PORT, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_PORT, null);
         if (value != null)
         	dsAttrs.put(Provisioning.A_zimbraDataSourcePort, value);
-        value = ePop3.getAttribute(MailService.A_DS_CONNECTION_TYPE, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_CONNECTION_TYPE, null);
         if (value != null)
             dsAttrs.put(Provisioning.A_zimbraDataSourceConnectionType, value);
         
-        value = ePop3.getAttribute(MailService.A_DS_USERNAME, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_USERNAME, null);
         if (value != null && !value.equals(ds.getUsername())) {
         	dsAttrs.put(Provisioning.A_zimbraDataSourceUsername, value);
         	wipeOutOldData = true;
         }
     
-        value = ePop3.getAttribute(MailService.A_DS_PASSWORD, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_PASSWORD, null);
         if (value != null)
         	dsAttrs.put(Provisioning.A_zimbraDataSourcePassword, value);
 
-        value = ePop3.getAttribute(MailService.A_DS_LEAVE_ON_SERVER, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_LEAVE_ON_SERVER, null);
         if (value != null) {
-            boolean newValue = ePop3.getAttributeBool(MailService.A_DS_LEAVE_ON_SERVER);
+            if (type != DataSource.Type.pop3) {
+                String msg = String.format("%s only allowed for %s data sources",
+                    MailConstants.A_DS_LEAVE_ON_SERVER, MailConstants.E_DS_POP3);
+                throw ServiceException.INVALID_REQUEST(msg, null);
+            }
+            boolean newValue = eDataSource.getAttributeBool(MailConstants.A_DS_LEAVE_ON_SERVER);
             if (newValue != ds.leaveOnServer()) {
                 dsAttrs.put(Provisioning.A_zimbraDataSourceLeaveOnServer,
                     LdapUtil.getBooleanString(newValue));
                 wipeOutOldData = true;
             }
+        }
+        
+        value = eDataSource.getAttribute(MailConstants.A_DS_POLLING_INTERVAL, null);
+        if (value != null) {
+            dsAttrs.put(Provisioning.A_zimbraDataSourcePollingInterval, value);
         }
         
         prov.modifyDataSource(account, id, dsAttrs);
@@ -111,8 +130,10 @@ public class ModifyDataSource extends MailDocumentHandler {
             Mailbox mbox = getRequestedMailbox(zsc);
             DbPop3Message.deleteUids(mbox, ds.getId());
         }
+        
+        DataSourceManager.updateSchedule(account.getId(), id);
 
-        Element response = zsc.createElement(MailService.MODIFY_DATA_SOURCE_RESPONSE);
+        Element response = zsc.createElement(MailConstants.MODIFY_DATA_SOURCE_RESPONSE);
 
         return response;
     }

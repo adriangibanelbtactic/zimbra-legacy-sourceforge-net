@@ -33,14 +33,19 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.httpclient.HttpState;
+
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavException;
 import com.zimbra.cs.dav.DavProtocol;
+import com.zimbra.cs.dav.resource.DavResource;
+import com.zimbra.cs.dav.resource.MailItemResource;
 import com.zimbra.cs.dav.service.method.*;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.servlet.ZimbraServlet;
@@ -70,6 +75,7 @@ public class DavServlet extends ZimbraServlet {
 		addMethod(new Unlock());
 		addMethod(new MkCalendar());
 		addMethod(new Report());
+		addMethod(new Acl());
 	}
 
 	private void addMethod(DavMethod method) {
@@ -88,8 +94,7 @@ public class DavServlet extends ZimbraServlet {
 	}
 	
 	public void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		ZimbraLog.clearContext();
-        
+		
 		if (!isRequestOnAllowedPort(req)) {
 			resp.sendError(HttpServletResponse.SC_NOT_ACCEPTABLE);
 			return;
@@ -114,6 +119,21 @@ public class DavServlet extends ZimbraServlet {
 			return;
 		}
 		
+		/*
+		try {
+			DavResource rs = ctxt.getRequestedResource();
+			if (rs instanceof MailItemResource) {
+				MailItemResource mir = (MailItemResource) rs;
+				if (!mir.isLocal()) {
+					sendProxyRequest(ctxt, method, mir);
+					return;
+				}
+			}
+		} catch (DavException de) {
+		} catch (ServiceException se) {
+		}
+		*/
+		
 		try {
 			long t0 = System.currentTimeMillis();
 			//ZimbraLog.dav.info("DavServlet dispatch: "+method);
@@ -127,20 +147,30 @@ public class DavServlet extends ZimbraServlet {
 		} catch (DavException e) {
 			if (e.getCause() instanceof MailServiceException.NoSuchItemException ||
 					e.getStatus() == HttpServletResponse.SC_NOT_FOUND)
-				ZimbraLog.dav.debug(ctxt.getUri()+" not found");
+				ZimbraLog.dav.info(ctxt.getUri()+" not found");
 			else if (e.getStatus() == HttpServletResponse.SC_MOVED_TEMPORARILY ||
 					 e.getStatus() == HttpServletResponse.SC_MOVED_PERMANENTLY) 
-				ZimbraLog.dav.debug("sending redirect");
+				ZimbraLog.dav.info("sending redirect");
 			else
 				ZimbraLog.dav.error("error handling method "+method.getName(), e);
 			
 			try {
-				if (e.isStatusSet())
-					resp.sendError(e.getStatus());
-				else
+				if (e.isStatusSet()) {
+					resp.setStatus(e.getStatus());
+					if (e.hasErrorMessage())
+						e.writeErrorMsg(resp.getOutputStream());
+				} else
 					resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 			} catch (IllegalStateException ise) {
 			}
+		} catch (ServiceException e) {
+			if (e instanceof MailServiceException.NoSuchItemException) {
+				ZimbraLog.dav.info(ctxt.getUri()+" not found");
+				resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+				return;
+			}
+			ZimbraLog.dav.error("error handling method "+method.getName(), e);
+			resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 		} catch (Exception e) {
 			ZimbraLog.dav.error("error handling method "+method.getName(), e);
 			try {
@@ -155,5 +185,21 @@ public class DavServlet extends ZimbraServlet {
         if (account == null)
 			throw new DavException("unknown user "+user, HttpServletResponse.SC_NOT_FOUND, null);
         return getServiceUrl(account, DAV_PATH);
+	}
+	
+	private void sendProxyRequest(DavContext ctxt, DavMethod m, MailItemResource rs) throws IOException, DavException, ServiceException {
+		Provisioning prov = Provisioning.getInstance();
+		Account acct = prov.get(AccountBy.id, rs.getRemoteOwnerId());
+		if (acct == null)
+			throw new DavException("account not found: "+rs.getRemoteOwnerId(), HttpServletResponse.SC_BAD_REQUEST);
+		Server server = prov.getServer(acct);
+		if (server == null)
+			throw new DavException("server not found for account: "+acct.getName(), HttpServletResponse.SC_BAD_REQUEST);
+		String url = getServiceUrl(acct, DAV_PATH) + "/?id=" + rs.getRemoteId();
+		proxyServletRequest(
+				ctxt.getRequest(), 
+				ctxt.getResponse(), 
+				m.toHttpMethod(ctxt, url), 
+				new HttpState());
 	}
 }

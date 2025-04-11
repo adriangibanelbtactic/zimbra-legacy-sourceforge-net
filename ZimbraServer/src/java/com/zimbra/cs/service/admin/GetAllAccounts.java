@@ -35,6 +35,8 @@ import java.util.Map;
 import org.dom4j.QName;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.Domain;
@@ -42,7 +44,6 @@ import com.zimbra.cs.account.NamedEntry;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.DomainBy;
 import com.zimbra.cs.service.account.ToXML;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -67,10 +68,10 @@ public class GetAllAccounts extends AdminDocumentHandler {
 	    
         Element response = null;
 
-        Element d = request.getOptionalElement(AdminService.E_DOMAIN);
+        Element d = request.getOptionalElement(AdminConstants.E_DOMAIN);
         if (d != null || isDomainAdminOnly(lc)) {
             
-            String key = d == null ? BY_NAME : d.getAttribute(AdminService.A_BY);
+            String key = d == null ? BY_NAME : d.getAttribute(AdminConstants.A_BY);
             String value = d == null ? getAuthTokenAccountDomain(lc).getName() : d.getText();
 	    
             Domain domain = null;
@@ -95,22 +96,26 @@ public class GetAllAccounts extends AdminDocumentHandler {
         } else {
             response = lc.createElement(getResponseQName());
             List domains = prov.getAllDomains();
-            for (Iterator dit=domains.iterator(); dit.hasNext(); ) {
-                Domain domain = (Domain) dit.next();
-                doDomain(response, domain);                
+            if (domains != null) {
+	            for (Iterator dit=domains.iterator(); dit.hasNext(); ) {
+	                Domain domain = (Domain) dit.next();
+	                doDomain(response, domain);                
+	            }
+            } else { //domains not supported, for now only offline
+            	doDomain(response, null);
             }
         }
         return response;        
 	}
 
     protected QName getResponseQName() {
-        return AdminService.GET_ALL_ACCOUNTS_RESPONSE;
+        return AdminConstants.GET_ALL_ACCOUNTS_RESPONSE;
     }
 
     protected void doDomain(final Element e, Domain d) throws ServiceException {
         NamedEntry.Visitor visitor = new NamedEntry.Visitor() {
-            public void visit(com.zimbra.cs.account.NamedEntry entry) throws ServiceException {
-                ToXML.encodeAccount(e, (Account) entry);
+            public void visit(com.zimbra.cs.account.NamedEntry entry) {
+                ToXML.encodeAccountOld(e, (Account) entry);
             }
         };
         Provisioning.getInstance().getAllAccounts(d, visitor);

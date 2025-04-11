@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: IQRouter.java,v $
+ * $Revision: 3135 $
+ * $Date: 2005-12-01 02:03:04 -0300 (Thu, 01 Dec 2005) $
+ *
+ * Copyright (C) 2005 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
 import org.dom4j.Element;
@@ -38,6 +25,7 @@ import org.xmpp.packet.JID;
 import org.xmpp.packet.PacketError;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +42,6 @@ public class IQRouter extends BasicModule {
 
     private RoutingTable routingTable;
     private MulticastRouter multicastRouter;
-    private String serverName;
     private List<IQHandler> iqHandlers = new ArrayList<IQHandler>();
     private Map<String, IQHandler> namespace2Handlers = new ConcurrentHashMap<String, IQHandler>();
     private Map<String, IQResultListener> resultListeners =
@@ -67,6 +54,10 @@ public class IQRouter extends BasicModule {
      */
     public IQRouter() {
         super("XMPP IQ Router");
+    }
+    
+    private Collection<String> getServerNames() {
+        return XMPPServer.getInstance().getServerNames();
     }
 
     /**
@@ -89,7 +80,7 @@ public class IQRouter extends BasicModule {
         Session session = sessionManager.getSession(packet.getFrom());
         JID to = packet.getTo();
         if (session != null && to != null && session.getStatus() == Session.STATUS_CONNECTED &&
-                !serverName.equals(to.toString())) {
+                    !getServerNames().contains(to.toString())) {
             // User is requesting this server to authenticate for another server. Return
             // a bad-request error
             IQ reply = IQ.createResultIQ(packet);
@@ -176,7 +167,6 @@ public class IQRouter extends BasicModule {
 
     public void initialize(XMPPServer server) {
         super.initialize(server);
-        serverName = server.getServerInfo().getName();
         routingTable = server.getRoutingTable();
         multicastRouter = server.getMulticastRouter();
         iqHandlers.addAll(server.getIQHandlers());
@@ -199,8 +189,8 @@ public class IQRouter extends BasicModule {
     private void handle(IQ packet) {
         JID recipientJID = packet.getTo();
         // Check if the packet was sent to the server hostname
-        if (recipientJID != null && recipientJID.getNode() == null &&
-                recipientJID.getResource() == null && serverName.equals(recipientJID.getDomain())) {
+        if (recipientJID != null && recipientJID.toBareJID() == null &&
+                    recipientJID.getResource() == null && getServerNames().contains(recipientJID.getDomain())) {
             Element childElement = packet.getChildElement();
             if (childElement != null && childElement.element("addresses") != null) {
                 // Packet includes multicast processing instructions. Ask the multicastRouter
@@ -225,7 +215,7 @@ public class IQRouter extends BasicModule {
         try {
             // Check for registered components, services or remote servers
             if (recipientJID != null) {
-                RoutableChannelHandler serviceRoute = routingTable.getRoute(recipientJID);
+                ChannelHandler serviceRoute = routingTable.getRoute(recipientJID);
                 if (serviceRoute != null && !(serviceRoute instanceof ClientSession)) {
                     // A component/service/remote server was found that can handle the Packet
                     serviceRoute.process(packet);
@@ -248,9 +238,9 @@ public class IQRouter extends BasicModule {
                 else {
                     // Check if communication to local users is allowed
                     if (recipientJID != null &&
-                            userManager.isRegisteredUser(recipientJID.getNode())) {
+                            userManager.isRegisteredUser(recipientJID.toBareJID())) {
                         PrivacyList list = PrivacyListManager.getInstance()
-                                .getDefaultPrivacyList(recipientJID.getNode());
+                                .getDefaultPrivacyList(recipientJID.toBareJID());
                         if (list != null && list.shouldBlockPacket(packet)) {
                             // Communication is blocked
                             if (IQ.Type.set == packet.getType() || IQ.Type.get == packet.getType()) {
@@ -266,8 +256,8 @@ public class IQRouter extends BasicModule {
                             // Answer an error since the server can't handle the requested namespace
                             sendErrorPacket(packet, PacketError.Condition.service_unavailable);
                         }
-                        else if (recipientJID.getNode() == null ||
-                                "".equals(recipientJID.getNode())) {
+                        else if (recipientJID.toBareJID() == null ||
+                                "".equals(recipientJID.toBareJID())) {
                             // Answer an error if JID is of the form <domain>
                             sendErrorPacket(packet, PacketError.Condition.feature_not_implemented);
                         }
@@ -336,7 +326,7 @@ public class IQRouter extends BasicModule {
         reply.setChildElement(originalPacket.getChildElement().createCopy());
         reply.setError(condition);
         // Check if the server was the sender of the IQ
-        if (serverName.equals(originalPacket.getFrom().toString())) {
+        if (getServerNames().contains(originalPacket.getFrom().toString())) {
             // Just let the IQ router process the IQ error reply
             handle(reply);
             return;

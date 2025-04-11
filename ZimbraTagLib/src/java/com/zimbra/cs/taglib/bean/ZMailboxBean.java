@@ -26,12 +26,12 @@ package com.zimbra.cs.taglib.bean;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.zclient.ZFeatures;
-import com.zimbra.cs.zclient.ZFolder;
-import com.zimbra.cs.zclient.ZMailbox;
-import com.zimbra.cs.zclient.ZGetInfoResult;
-import com.zimbra.cs.zclient.ZPrefs;
-import com.zimbra.cs.zclient.ZIdentity;
 import com.zimbra.cs.zclient.ZFilterRule;
+import com.zimbra.cs.zclient.ZFolder;
+import com.zimbra.cs.zclient.ZGetInfoResult;
+import com.zimbra.cs.zclient.ZIdentity;
+import com.zimbra.cs.zclient.ZMailbox;
+import com.zimbra.cs.zclient.ZPrefs;
 
 import java.util.List;
 import java.util.Map;
@@ -52,9 +52,13 @@ public class ZMailboxBean {
         ZFolder folder = mMbox.getFolderById(id);
         return folder == null ? null : new ZFolderBean(folder);
     }
+
+    public ZMailbox getMailbox() { return mMbox; }
     
     public ZFolderBean getInbox() throws ServiceException { return getFolderBeanById(ZFolder.ID_INBOX); }
-    
+
+    public ZFolderBean getChats() throws ServiceException { return getFolderBeanById(ZFolder.ID_CHATS); }
+
     public ZFolderBean getTrash() throws ServiceException { return getFolderBeanById(ZFolder.ID_TRASH); }
     
     public ZFolderBean getSpam() throws ServiceException { return getFolderBeanById(ZFolder.ID_SPAM); }

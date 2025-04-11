@@ -25,9 +25,9 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.util.StringUtil;
-import com.zimbra.soap.Element;
-import com.zimbra.cs.service.mail.MailService;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -180,27 +180,27 @@ public abstract class ZFilterCondition {
     }
 
     private static String getK0(Element e) throws ServiceException {
-        return getAttrK(e, MailService.A_LHS, false);
+        return getAttrK(e, MailConstants.A_LHS, false);
     }
 
     private static String getK1(Element e) throws ServiceException {
-        return getAttrK(e, MailService.A_RHS, false);
+        return getAttrK(e, MailConstants.A_RHS, false);
     }
 
     private static String getK0(Element e, boolean defaultValue) throws ServiceException {
-        return getAttrK(e, MailService.A_LHS, defaultValue);
+        return getAttrK(e, MailConstants.A_LHS, defaultValue);
     }
 
     private static String getK1(Element e, boolean defaultValue) throws ServiceException {
-        return getAttrK(e, MailService.A_RHS, defaultValue);
+        return getAttrK(e, MailConstants.A_RHS, defaultValue);
     }
 
     public static ZFilterCondition getCondition(Element condEl) throws ServiceException {
-        String n = condEl.getAttribute(MailService.A_NAME);
+        String n = condEl.getAttribute(MailConstants.A_NAME);
         if (n.equals(C_HEADER)) {
             return new ZHeaderCondition(
                     getK0(condEl, true),
-                    HeaderOp.fromProtoString(condEl.getAttribute(MailService.A_OPERATION, ":is")),
+                    HeaderOp.fromProtoString(condEl.getAttribute(MailConstants.A_OPERATION, ":is")),
                     getK1(condEl, true));
         } else if (n.equals(C_EXISTS)) {
             return new ZHeaderExistsCondition(
@@ -213,24 +213,24 @@ public abstract class ZFilterCondition {
         } if (n.equals(C_DATE)) {
             try {
                 return new ZDateCondition(
-                        DateOp.fromProtoString(condEl.getAttribute(MailService.A_OPERATION)),
+                        DateOp.fromProtoString(condEl.getAttribute(MailConstants.A_OPERATION)),
                         new SimpleDateFormat("yyyyMMdd").parse(getK1(condEl)));
             } catch (ParseException e) {
                 throw ZClientException.CLIENT_ERROR("unable to parse filter date: "+e, null);
             }
         } else if (n.equals(C_SIZE)) {
             return new ZSizeCondition(
-                    SizeOp.fromProtoString(condEl.getAttribute(MailService.A_OPERATION)),
-                    condEl.getAttribute(MailService.A_RHS, ""));
+                    SizeOp.fromProtoString(condEl.getAttribute(MailConstants.A_OPERATION)),
+                    condEl.getAttribute(MailConstants.A_RHS, ""));
         } else if (n.equals(C_BODY)) {
-            return new ZBodyCondition(BodyOp.fromProtoString(condEl.getAttribute(MailService.A_OPERATION)),getK1(condEl, true));
+            return new ZBodyCondition(BodyOp.fromProtoString(condEl.getAttribute(MailConstants.A_OPERATION)),getK1(condEl, true));
         } else if (n.equals(C_ATTACHMENT)) {
             return new ZAttachmentExistsCondition(true);
         } else if (n.equals(C_NOT_ATTACHMENT)) {
             return new ZAttachmentExistsCondition(false);
         } else if (n.equals(C_ADDRESSBOOK)) {
             return new ZAddressBookCondition(
-                    AddressBookOp.fromProtoString(condEl.getAttribute(MailService.A_OPERATION)),
+                    AddressBookOp.fromProtoString(condEl.getAttribute(MailConstants.A_OPERATION)),
                     getK0(condEl, true));
         } else {
              throw ZClientException.CLIENT_ERROR("unknown filter condition: "+n, null);
@@ -238,11 +238,11 @@ public abstract class ZFilterCondition {
     }
 
     Element toElement(Element parent) {
-        Element c = parent.addElement(MailService.E_CONDITION);
-        c.addAttribute(MailService.A_NAME, mName);
-        if (mOp != null) c.addAttribute(MailService.A_OPERATION, mOp);
-        if (mK0 != null) c.addAttribute(MailService.A_LHS, mK0);
-        if (mK1 != null) c.addAttribute(MailService.A_RHS, mK1);
+        Element c = parent.addElement(MailConstants.E_CONDITION);
+        c.addAttribute(MailConstants.A_NAME, mName);
+        if (mOp != null) c.addAttribute(MailConstants.A_OPERATION, mOp);
+        if (mK0 != null) c.addAttribute(MailConstants.A_LHS, mK0);
+        if (mK1 != null) c.addAttribute(MailConstants.A_RHS, mK1);
         return c;
     }
 

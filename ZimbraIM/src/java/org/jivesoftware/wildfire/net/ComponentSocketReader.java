@@ -1,33 +1,22 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: ComponentSocketReader.java,v $
+ * $Revision: 3174 $
+ * $Date: 2005-12-08 17:41:00 -0300 (Thu, 08 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.net;
 
+import org.apache.mina.common.IoSession;
 import org.dom4j.Element;
 import org.jivesoftware.util.Log;
 import org.jivesoftware.wildfire.PacketRouter;
 import org.jivesoftware.wildfire.RoutingTable;
+import org.jivesoftware.wildfire.XMPPServer;
 import org.jivesoftware.wildfire.auth.UnauthorizedException;
 import org.jivesoftware.wildfire.component.ComponentSession;
 import org.jivesoftware.wildfire.component.InternalComponentManager;
@@ -46,10 +35,16 @@ import java.net.Socket;
  */
 public class ComponentSocketReader extends SocketReader {
 
-    public ComponentSocketReader(PacketRouter router, RoutingTable routingTable, String serverName,
-            Socket socket, SocketConnection connection, boolean useBlockingMode) {
-        super(router, routingTable, serverName, socket, connection, useBlockingMode);
+    public ComponentSocketReader(PacketRouter router, RoutingTable routingTable,
+                Socket socket, SocketConnection connection) {
+        super(router, routingTable, socket, connection);
     }
+    
+    public ComponentSocketReader(PacketRouter router, RoutingTable routingTable,
+                IoSession nioSocket, SocketConnection connection) {
+        super(router, routingTable, nioSocket, connection);
+        }
+    
 
     /**
      * Only <tt>bind<tt> packets will be processed by this class to bind more domains
@@ -90,7 +85,12 @@ public class ComponentSocketReader extends SocketReader {
                     try {
                         // Get the requested subdomain
                         String subdomain = extraDomain;
-                        int index = extraDomain.indexOf(serverName);
+                        int index = -1;
+                        for (String serverName : XMPPServer.getInstance().getServerNames()) {
+                            index = extraDomain.indexOf(serverName);
+                            if (index > -1)
+                                break;
+                        }
                         if (index > -1) {
                             subdomain = extraDomain.substring(0, index -1);
                         }
@@ -122,11 +122,11 @@ public class ComponentSocketReader extends SocketReader {
         return false;
     }
 
-    boolean createSession(String namespace) throws UnauthorizedException, XmlPullParserException,
+    boolean createSession(String namespace, String host, Element streamElt) throws UnauthorizedException, XmlPullParserException,
             IOException {
         if ("jabber:component:accept".equals(namespace)) {
             // The connected client is a component so create a ComponentSession
-            session = ComponentSession.createSession(serverName, reader, connection);
+            session = ComponentSession.createSession(host, connection, streamElt);
             return true;
         }
         return false;

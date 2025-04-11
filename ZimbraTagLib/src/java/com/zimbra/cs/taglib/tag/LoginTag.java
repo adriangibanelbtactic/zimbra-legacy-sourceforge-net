@@ -37,6 +37,7 @@ import javax.servlet.jsp.JspException;
 import javax.servlet.jsp.JspTagException;
 import javax.servlet.jsp.PageContext;
 import java.io.IOException;
+import java.util.Arrays;
 
 public class LoginTag extends ZimbraSimpleTag {
     
@@ -50,6 +51,8 @@ public class LoginTag extends ZimbraSimpleTag {
     private String mPath = null;
     private String mVarRedirectUrl = null;
     private String mVarAuthResult = null;
+    private String mAttrs;
+    private String mPrefs;
 
     public void setVarRedirectUrl(String varRedirectUrl) { this.mVarRedirectUrl = varRedirectUrl; }
 
@@ -69,16 +72,17 @@ public class LoginTag extends ZimbraSimpleTag {
     
     public void setUrl(String url) { this.mUrl = url; }
 
+    public void setPrefs(String prefs) { this.mPrefs = prefs; }
+
+    public void setAttrs(String attrs) { this.mAttrs = attrs; }
+
     private String getVirtualHost(HttpServletRequest request) {
-        return request.getServerName();
-        /*
         String virtualHost = request.getHeader("Host");
         if (virtualHost != null) {
             int i = virtualHost.indexOf(':');
             if (i != -1) virtualHost = virtualHost.substring(0, i);
         }
         return virtualHost;
-        */
     }
 
     public void doTag() throws JspException, IOException {
@@ -87,9 +91,13 @@ public class LoginTag extends ZimbraSimpleTag {
             PageContext pageContext = (PageContext) jctxt;
             HttpServletRequest request = (HttpServletRequest) pageContext.getRequest();
 
-            String serverName = request.getServerName();
-
             ZMailbox.Options options = new ZMailbox.Options();
+
+            if (mPrefs != null && mPrefs.length() >0)
+                options.setPrefs(Arrays.asList(mPrefs.split(",")));
+
+            if (mAttrs != null && mAttrs.length() > 0)
+                options.setAttrs(Arrays.asList(mAttrs.split(",")));
 
             if (mAuthToken != null) {
                 options.setAuthToken(mAuthToken);
@@ -112,10 +120,7 @@ public class LoginTag extends ZimbraSimpleTag {
             ZMailbox mbox = ZMailbox.getMailbox(options);
             HttpServletResponse response = (HttpServletResponse) pageContext.getResponse();
 
-            String refer = mbox.getAuthResult().getRefer();
-            boolean needRefer = (refer != null && !refer.equalsIgnoreCase(serverName));
-
-            if ((mAuthToken == null || mAuthTokenInUrl) && !needRefer) {
+            if ((mAuthToken == null || mAuthTokenInUrl) && mbox.getAuthResult().getRefer() == null) {
                 Cookie authTokenCookie = new Cookie(ZJspSession.COOKIE_NAME, mbox.getAuthToken());
                 if (mRememberMe) {
                     ZGetInfoResult info = mbox.getAccountInfo(false);
@@ -132,12 +137,12 @@ public class LoginTag extends ZimbraSimpleTag {
 
             }
 
-            if (!needRefer)
+            if (mbox.getAuthResult().getRefer() == null)
                 ZJspSession.setSession((PageContext)jctxt, mbox);
 
             if (mVarRedirectUrl != null)
                 jctxt.setAttribute(mVarRedirectUrl,
-                        ZJspSession.getPostLoginRedirectUrl(pageContext, mPath, mbox.getAuthResult(), mRememberMe, needRefer),  PageContext.REQUEST_SCOPE);
+                        ZJspSession.getPostLoginRedirectUrl(pageContext, mPath, mbox.getAuthResult(), mRememberMe),  PageContext.REQUEST_SCOPE);
 
             if (mVarAuthResult != null)
                 jctxt.setAttribute(mVarAuthResult, mbox.getAuthResult(), PageContext.REQUEST_SCOPE);

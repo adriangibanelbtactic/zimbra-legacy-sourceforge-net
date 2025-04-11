@@ -27,14 +27,13 @@ package com.zimbra.cs.zimlet;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Iterator;
 
 import org.dom4j.DocumentException;
 
 import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 /**
  * Parses the Zimlet description files, <zimlet>.xml and config.xml.
@@ -159,7 +158,7 @@ public abstract class ZimletMeta {
 	 * returns JSON representation of the parsed DOM tree.
 	 */
 	public String toJSONString() {
-		return toString(Element.JavaScriptElement.mFactory);
+		return toString(Element.JSONElement.mFactory);
 	}
 
 	/*

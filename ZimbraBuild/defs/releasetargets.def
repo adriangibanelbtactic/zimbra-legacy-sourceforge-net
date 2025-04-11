@@ -4,8 +4,6 @@ zcs-$(RELEASE).dmg: $(ARCH)/zcs.mpkg packages
 	cp -f $(WEBAPP_DIR)/zimbra/downloads/* $(ARCH)
 	cp -f $(PACKAGE_CONF_DIR)/Install/install-mac.sh $(ARCH)/tmp/scripts/installZCS.sh
 	cp -f $(CONSOLE_DIR)/WebRoot/adminhelp/pdf/* $(ARCH)/tmp/docs/
-	cp -f $(SERVICE_DIR)/src/db/migrateLargeMetadata.pl $(ARCH)/tmp/scripts/migrateLargeMetadata.pl
-	chmod 755 $(ARCH)/tmp/scripts/migrateLargeMetadata.pl
 	cp -R $(ARCH)/zcs.mpkg $(ARCH)/tmp
 	hdiutil create -srcfolder $(ARCH)/tmp -volname zcs-$(VERSION_TAG) $(ARCH)/zcs-$(VERSION_TAG).dmg
 	rm -rf $(ARCH)/tmp
@@ -16,6 +14,9 @@ $(ARCH)/zcs.mpkg: $(ARCH)/zcs.mpkg/Contents
 
 $(ARCH)/zcs.mpkg/Contents: $(ARCH)/zcs.mpkg/Contents/.Packages $(ARCH)/zcs.mpkg/Contents/Resources $(ARCH)/zcs.mpkg/Contents/distribution.dist
 	mkdir -p $@
+
+zcs-$(RELEASE).iso: packages zcs-$(RELEASE).tgz
+	$(BUILD_ROOT)/rpmconf/Build/genRpathRelease.sh $(PACKAGING_OPTIONS) $(BUILD_ROOT) $(PRODUCT)-$(VERSION_TAG)
 
 $(ARCH)/zcs.mpkg/Contents/.Packages:
 	mkdir -p $@
@@ -64,10 +65,7 @@ zcs_stage:
 	cp -f $(PACKAGE_CONF_DIR)/Install/Util/*sh zcs/util
 	cp -f $(PACKAGE_CONF_DIR)/Install/Util/modules/*sh zcs/util/modules
 	cp -f $(BUILD_ROOT)/RE/README.txt zcs
-	cp -f $(SERVICE_DIR)/src/db/migrateLargeMetadata.pl zcs/bin
-	chmod 755 zcs/bin/migrateLargeMetadata.pl
 	cp -f $(BUILD_ROOT)/rpmconf/Build/get_plat_tag.sh zcs/bin
-	cp -f $(SERVICE_DIR)/build/dist/libexec/zmdbintegrityreport zcs/bin
 	chmod 755 zcs/install.sh
 	cp $(PACKAGE_DIR)/*$(PACKAGE_EXT) zcs/packages
 	tar czf zcs-$(VERSION_TAG).tgz zcs

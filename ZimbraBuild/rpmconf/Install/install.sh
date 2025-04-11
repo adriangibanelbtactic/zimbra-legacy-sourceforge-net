@@ -56,6 +56,8 @@ while [ $# -ne 0 ]; do
 		;;
 		-c) CLUSTERUPGRADE="yes"
 		;;
+		-x) SKIPSPACECHECK="yes"
+		;;
 		*) DEFAULTFILE=$1
 		;;
 	esac
@@ -67,21 +69,13 @@ done
 getPlatformVars
 
 mkdir -p $SAVEDIR
-chown zimbra:zimbra $SAVEDIR
-chmod 750 $SAVEDIR
+chmod 777 $SAVEDIR
 
 echo ""
 echo "Operations logged to $LOGFILE"
 
 if [ x$DEFAULTFILE != "x" ]; then
 	AUTOINSTALL="yes"
-fi
-
-if [ x"$LICENSE" != "x" ] && [ -e $LICENSE ]; then
-  if [ ! -d "/opt/zimbra/conf" ]; then
-    mkdir -p /opt/zimbra/conf
-  fi
-  cp $LICENSE /opt/zimbra/conf/ZCSLicense.xml
 fi
 
 checkExistingInstall
@@ -182,9 +176,8 @@ if [ "x$LICENSE" != "x" ] && [ -f "$LICENSE" ]; then
     mkdir -p /opt/zimbra/conf
   fi
   cp -f $LICENSE /opt/zimbra/conf/ZCSLicense.xml
-  chown zimbra:zimbra /opt/zimbra/conf/ZCSLicense.xml
-  chmod 644 /opt/zimbra/conf/ZCSLicense.xml
 fi
+
 
 if [ $SOFTWAREONLY = "yes" ]; then
 	
@@ -202,10 +195,8 @@ fi
 #
 # Installation complete, now configure
 #
-
-
-if [ x$DEFAULTFILE != "x" ]; then
-	/opt/zimbra/libexec/zmsetup.pl -c $DEFAULTFILE
+if [ "x$DEFAULTFILE" != "x" ]; then
+	/opt/zimbra/libexec/zmsetup.pl $DEFAULTFILE
 else
 	/opt/zimbra/libexec/zmsetup.pl
 fi

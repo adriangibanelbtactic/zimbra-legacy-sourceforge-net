@@ -26,10 +26,10 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.service.mail.MailService;
-import com.zimbra.cs.service.account.AccountService;
-import com.zimbra.soap.Element;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,7 +40,7 @@ import java.util.Set;
 
 public class ZGetInfoResult {
 
-
+    private String mVersion;
     private String mId;
     private String mName;
     private long mLifetime;
@@ -55,12 +55,12 @@ public class ZGetInfoResult {
     private List<String> mMailURLs;
     private Set<String> mEmailAddresses;
     
-    private static Map<String, List<String>> getMap(Element e, String root, String child) throws ServiceException {
+    static Map<String, List<String>> getMap(Element e, String root, String child) throws ServiceException {
         Map<String, List<String>> result = new HashMap<String, List<String>>();
         Element attrsEl = e.getOptionalElement(root);
         if (attrsEl != null) {
             for (Element attrEl : attrsEl.listElements(child)) {
-                String name = attrEl.getAttribute(AccountService.A_NAME);
+                String name = attrEl.getAttribute(AccountConstants.A_NAME);
                 List<String> list = result.get(name);
                 if (list == null) {
                     list = new ArrayList<String>();
@@ -73,32 +73,33 @@ public class ZGetInfoResult {
     }
     
     public ZGetInfoResult(Element e) throws ServiceException {
-        mId = e.getAttribute(AccountService.E_ID, null); // TODO: ID was just added to GetInfo, remove ,null shortly...        
-        mName = e.getAttribute(AccountService.E_NAME);
-        mLifetime = e.getAttributeLong(AccountService.E_LIFETIME);
-        mMailboxQuotaUsed = e.getAttributeLong(AccountService.E_QUOTA_USED, -1);        
+    	mVersion = e.getAttribute(AccountConstants.E_VERSION, "unknown");
+        mId = e.getAttribute(AccountConstants.E_ID, null); // TODO: ID was just added to GetInfo, remove ,null shortly...
+        mName = e.getAttribute(AccountConstants.E_NAME);
+        mLifetime = e.getAttributeLong(AccountConstants.E_LIFETIME);
+        mMailboxQuotaUsed = e.getAttributeLong(AccountConstants.E_QUOTA_USED, -1);
         mExpiration  = mLifetime + System.currentTimeMillis();
-        mAttrs = getMap(e, AccountService.E_ATTRS, AccountService.E_ATTR);
-        mPrefAttrs = getMap(e, AccountService.E_PREFS, AccountService.E_PREF);
+        mAttrs = getMap(e, AccountConstants.E_ATTRS, AccountConstants.E_ATTR);
+        mPrefAttrs = getMap(e, AccountConstants.E_PREFS, AccountConstants.E_PREF);
         mPrefs = new ZPrefs(mPrefAttrs);
         mFeatures = new ZFeatures(mAttrs);
         
         mMailURLs = new ArrayList<String>();
-        for (Element urlEl: e.listElements(AccountService.E_SOAP_URL)) {
+        for (Element urlEl: e.listElements(AccountConstants.E_SOAP_URL)) {
             mMailURLs.add(urlEl.getText());
         }
         mIdentities = new ArrayList<ZIdentity>();
-        Element identities = e.getOptionalElement(AccountService.E_IDENTITIES);
+        Element identities = e.getOptionalElement(AccountConstants.E_IDENTITIES);
         if (identities != null) {
-            for (Element identity: identities.listElements(AccountService.E_IDENTITY)) {
+            for (Element identity: identities.listElements(AccountConstants.E_IDENTITY)) {
                 mIdentities.add(new ZIdentity(identity));
             }
         }
         mDataSources = new ArrayList<ZDataSource>();
-        Element sources = e.getOptionalElement(AccountService.E_DATA_SOURCES);
+        Element sources = e.getOptionalElement(AccountConstants.E_DATA_SOURCES);
         if (sources != null) {
             for (Element source: sources.listElements()) {
-                if (source.getName().equals(MailService.E_DS_POP3))
+                if (source.getName().equals(MailConstants.E_DS_POP3))
                     mDataSources.add(new ZPop3DataSource(source));
             }
         }
@@ -181,6 +182,10 @@ public class ZGetInfoResult {
 
     public String getId() {
         return mId;
+    }
+    
+    public String getVersion() {
+    	return mVersion;
     }
 }
 

@@ -33,10 +33,7 @@ import com.zimbra.cs.account.Domain;
 import com.zimbra.cs.account.EntrySearchFilter;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.ldap.LdapEntrySearchFilter;
-import com.zimbra.cs.im.IMNotification;
 
-import java.io.IOException;
-import java.io.Writer;
 import java.util.HashMap;
 import java.util.List;
 
@@ -48,31 +45,31 @@ public class AdminSession extends Session {
     private AccountSearchParams mSearchParams;
     private HashMap<String,Object> mData = new HashMap<String,Object>();
 
-    AdminSession(String accountId, String sessionId) throws ServiceException {
-        super(accountId, sessionId, SessionCache.SESSION_ADMIN);
+    public AdminSession(String accountId) {
+        super(accountId, Session.Type.ADMIN);
     }
 
+    @Override
+    protected boolean isMailboxListener() {
+        return false;
+    }
+
+    @Override
+    protected boolean isRegisteredInCache() {
+        return true;
+    }
+
+    @Override
     protected long getSessionIdleLifetime() {
         return ADMIN_SESSION_TIMEOUT_MSEC;
     }
     
-    public void dumpState(Writer w) {
-    	try {
-    		w.write("AdminSession - ");
-    	} catch(IOException e) { e.printStackTrace(); }
-    	super.dumpState(w);
-    }
-
     public Object getData(String key) { return mData.get(key); }
     public void setData(String key, Object data) { mData.put(key, data); }
-    
-    public void notifyPendingChanges(PendingModifications pns) { }
-    
-    public void notifyIM(IMNotification imn) { }
-    protected boolean shouldRegisterWithIM() { return false; }
 
-    protected void cleanup() {
-    }
+    @Override public void notifyPendingChanges(int changeId, PendingModifications pns) { }
+
+    @Override protected void cleanup() { }
 
     public List searchAccounts(Domain d, String query, String[] attrs, String sortBy,
             boolean sortAscending, int flags, int offset, int maxResults) throws ServiceException {

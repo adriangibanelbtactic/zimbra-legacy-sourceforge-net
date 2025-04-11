@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 4143 $
+ * $Date: 2006-06-28 20:07:19 +0000 (Wed, 28 Jun 2006) $
+ *
+ * Copyright (C) 2004-2005 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.util;
 
 import org.jivesoftware.wildfire.XMPPServer;
@@ -50,6 +37,8 @@ public class LocaleUtils {
     // TODO - extract this out into a test that grabs the resource name from JiveGlobals
     // TODO and defaults to wildfire_i18n if nothing set.
     private static final String resourceBaseName = "wildfire_i18n";
+    
+    public static ClassLoader sMsgsClassLoader; 
 
     private LocaleUtils() {
     }
@@ -347,7 +336,7 @@ public class LocaleUtils {
      */
     public static ResourceBundle getResourceBundle(String baseName,
                                                    Locale locale) {
-        return ResourceBundle.getBundle(baseName, locale);
+        return ResourceBundle.getBundle(baseName, locale, sMsgsClassLoader);
     }
 
     /**
@@ -361,7 +350,7 @@ public class LocaleUtils {
     public static String getLocalizedString(String key) {
         Locale locale = JiveGlobals.getLocale();
 
-        ResourceBundle bundle = ResourceBundle.getBundle(resourceBaseName, locale);
+        ResourceBundle bundle = ResourceBundle.getBundle(resourceBaseName, locale, sMsgsClassLoader);
 
         return getLocalizedString(key, locale, null, bundle);
     }
@@ -377,7 +366,7 @@ public class LocaleUtils {
      * @return the localized string.
      */
     public static String getLocalizedString(String key, Locale locale) {
-        ResourceBundle bundle = ResourceBundle.getBundle(resourceBaseName, locale);
+        ResourceBundle bundle = ResourceBundle.getBundle(resourceBaseName, locale, sMsgsClassLoader);
 
         return getLocalizedString(key, locale, null, bundle);
     }
@@ -397,7 +386,7 @@ public class LocaleUtils {
     public static String getLocalizedString(String key, List arguments) {
         Locale locale = JiveGlobals.getLocale();
 
-        ResourceBundle bundle = ResourceBundle.getBundle(resourceBaseName, locale);
+        ResourceBundle bundle = ResourceBundle.getBundle(resourceBaseName, locale, sMsgsClassLoader);
         return getLocalizedString(key, locale, arguments, bundle);
     }
 

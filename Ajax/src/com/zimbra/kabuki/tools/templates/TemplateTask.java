@@ -19,10 +19,15 @@ extends Task {
     private static final String S_ALL = S_PARAM + "|" + S_INLINE + "|" + S_CODE;
     private static final String S_TEMPLATE = "<template(.*?)>(.*?)</template>";
     private static final String S_ATTR = "\\s*(\\S+)\\s*=\\s*('[^']*'|\"[^\"]*\")";
+    private static final String S_WS_LINESEP = "\\s*\\n+\\s*";
+    private static final String S_GT_LINESEP_LT = ">" + S_WS_LINESEP + "<";
 
     private static final Pattern RE_REPLACE = Pattern.compile(S_ALL, Pattern.DOTALL);
     private static final Pattern RE_TEMPLATE = Pattern.compile(S_TEMPLATE, Pattern.DOTALL);
     private static final Pattern RE_ATTR = Pattern.compile(S_ATTR, Pattern.DOTALL);
+
+    private static final String A_XML_SPACE = "xml:space";
+    private static final String V_XML_SPACE_PRESERVE = "preserve";
 
     //
     // Data
@@ -30,6 +35,8 @@ extends Task {
 
     private File destDir;
     private String prefix = "";
+    private boolean define = false;
+    private boolean authoritative = false;
     private List<FileSet> fileSets = new LinkedList<FileSet>();
 
     //
@@ -45,6 +52,14 @@ extends Task {
             prefix = prefix + ".";
         }
         this.prefix = prefix;
+    }
+
+    public void setDefine(boolean define) {
+        this.define = define;
+    }
+
+    public void setAuthoritative(boolean authoritative) {
+        this.authoritative = authoritative;
     }
 
     public void addFileSet(FileSet fileSet) {
@@ -89,10 +104,10 @@ extends Task {
     }
 
     //
-    // Private functions
+    // Private methods
     //
 
-    private static void convert(File ifile, File ofile, String pkg) throws IOException {
+    private void convert(File ifile, File ofile, String pkg) throws IOException {
         BufferedReader in = null;
         PrintWriter out = null;
         try {
@@ -105,19 +120,42 @@ extends Task {
                 boolean first = true;
                 do {
                     Map<String,String> attrs = parseAttrs(matcher.group(1));
-                    String id = attrs.get("id");
                     String body = matcher.group(2);
-                    convertLines(out, pkg+"#"+id, body, attrs);
+                    String stripWsAttr = attrs.get(A_XML_SPACE);
+                    if (stripWsAttr == null || !stripWsAttr.equals(V_XML_SPACE_PRESERVE)) {
+                        body = body.replaceAll(S_GT_LINESEP_LT, "><").trim();
+                    }
+                    String packageId = pkg;
+                    String templateId = attrs.get("id");
+                    // NOTE: Template ids can be specified absolutely (i.e.
+                    //       overriding the default package) if the id starts
+                    //       with a forward slash (/), or if the id contains
+                    //       a hash mark (#). This allows a template file to
+                    //       override both types of template files (i.e. a
+                    //       single template per file or multiple templates
+                    //       per file).
+                    if (templateId != null && (templateId.indexOf('#') != -1 || templateId.startsWith("/"))) {
+                        if (templateId.indexOf('#') == -1) templateId += "#";
+                        packageId = templateId.replaceAll("#.*$", "").replaceAll("^/","").replace('/','.');
+                        templateId = templateId.replaceAll("^.*#", "");
+                    }
+                    String id = templateId != null && !templateId.equals("") ? packageId+"#"+templateId : packageId;
+                    if (first && this.define) {
+                        out.print("AjxPackage.define(\"");
+                        out.print(packageId);
+                        out.println("\");");
+                    }
+                    convertLines(out, id, body, attrs);
                     if (first) {
                         first = false;
                         out.print("AjxTemplate.register(\"");
-                        out.print(pkg);
+                        out.print(packageId);
                         out.print("\", ");
                         out.print("AjxTemplate.getTemplate(\"");
-                        out.print(pkg+"#"+id);
+                        out.print(id);
                         out.print("\"), ");
                         out.print("AjxTemplate.getParams(\"");
-                        out.print(pkg+"#"+id);
+                        out.print(id);
                         out.println("\"));");
                     }
                     out.println();
@@ -142,18 +180,7 @@ extends Task {
         }
     }
 
-    private static Map<String,String> parseAttrs(String s) {
-        Map<String,String> attrs = new HashMap<String,String>();
-        Matcher matcher = RE_ATTR.matcher(s);
-        while (matcher.find()) {
-            String aname = matcher.group(1);
-            String avalue = matcher.group(2).replaceAll("^['\"]|['\"]$", "");
-            attrs.put(aname, avalue);
-        }
-        return attrs;
-    }
-
-    private static void convertLines(PrintWriter out, String pkg, String lines, Map<String,String> attrs) {
+    private void convertLines(PrintWriter out, String pkg, String lines, Map<String,String> attrs) {
         out.print("AjxTemplate.register(\"");
         out.print(pkg);
         out.println("\", ");
@@ -195,9 +222,8 @@ extends Task {
         out.println();
 
         out.println("\treturn _hasBuffer ? buffer.length : buffer.join(\"\");");
-        out.print("}");
+        out.println("},");
         if (attrs != null && attrs.size() > 0) {
-            out.println(", ");
             out.println("{");
             Iterator<String> iter = attrs.keySet().iterator();
             while (iter.hasNext()) {
@@ -215,7 +241,27 @@ extends Task {
             }
             out.print("}");
         }
+        else {
+            out.print("null");
+        }
+        out.print(", ");
+        out.print(this.authoritative);
         out.println(");");
+    }
+
+    //
+    // Private functions
+    //
+
+    private static Map<String,String> parseAttrs(String s) {
+        Map<String,String> attrs = new HashMap<String,String>();
+        Matcher matcher = RE_ATTR.matcher(s);
+        while (matcher.find()) {
+            String aname = matcher.group(1);
+            String avalue = matcher.group(2).replaceAll("^['\"]|['\"]$", "");
+            attrs.put(aname, avalue);
+        }
+        return attrs;
     }
 
     private static String readLines(BufferedReader in) throws IOException {

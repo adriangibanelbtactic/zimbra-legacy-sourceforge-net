@@ -28,15 +28,15 @@ import java.io.IOException;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.Document;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
-import com.zimbra.cs.service.mail.MailService;
 import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.wiki.Wiki;
 import com.zimbra.cs.wiki.WikiPage;
 import com.zimbra.cs.wiki.Wiki.WikiContext;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class SaveWiki extends WikiDocumentHandler {
@@ -47,15 +47,14 @@ public class SaveWiki extends WikiDocumentHandler {
     }
     
 	@Override
-	public Element handle(Element request, Map<String, Object> context)
-			throws ServiceException, SoapFaultException {
+	public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         OperationContext octxt = lc.getOperationContext();
 
-        Element msgElem = request.getElement(MailService.E_WIKIWORD);
-        String subject = msgElem.getAttribute(MailService.A_NAME, null);
-        String id = msgElem.getAttribute(MailService.A_ID, null);
-        int ver = (int)msgElem.getAttributeLong(MailService.A_VERSION, 0);
+        Element msgElem = request.getElement(MailConstants.E_WIKIWORD);
+        String subject = msgElem.getAttribute(MailConstants.A_NAME, null);
+        String id = msgElem.getAttribute(MailConstants.A_ID, null);
+        int ver = (int)msgElem.getAttributeLong(MailConstants.A_VERSION, 0);
         int itemId;
         if (id == null) {
         	itemId = 0;
@@ -75,10 +74,10 @@ public class SaveWiki extends WikiDocumentHandler {
         Wiki.addPage(ctxt, page, itemId, ver, getRequestedFolder(request, lc));
         Document wikiItem = page.getWikiItem(ctxt);
         
-        Element response = lc.createElement(MailService.SAVE_WIKI_RESPONSE);
-        Element m = response.addElement(MailService.E_WIKIWORD);
-        m.addAttribute(MailService.A_ID, lc.formatItemId(wikiItem));
-        m.addAttribute(MailService.A_VERSION, wikiItem.getVersion());
+        Element response = lc.createElement(MailConstants.SAVE_WIKI_RESPONSE);
+        Element m = response.addElement(MailConstants.E_WIKIWORD);
+        m.addAttribute(MailConstants.A_ID, new ItemIdFormatter(lc).formatItemId(wikiItem));
+        m.addAttribute(MailConstants.A_VERSION, wikiItem.getVersion());
         return response;
 	}
 }

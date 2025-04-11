@@ -28,15 +28,17 @@
  */
 package com.zimbra.soap;
 
-import java.io.IOException;
-
-import javax.servlet.http.HttpServletRequest;
-
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapHttpTransport;
+import com.zimbra.common.soap.SoapProtocol;
 import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Provisioning.ServerBy;
+import com.zimbra.cs.account.Server;
+
+import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
 
 /**
  * @author jhahm
@@ -98,7 +100,7 @@ public class ProxyTarget {
         SoapHttpTransport transport = new SoapHttpTransport(mURL);
         try {
             transport.setAuthToken(mAuthToken);
-            transport.setSoapProtocol(request instanceof Element.JavaScriptElement ? SoapProtocol.SoapJS : SoapProtocol.Soap12);
+            transport.setSoapProtocol(request instanceof Element.JSONElement ? SoapProtocol.SoapJS : SoapProtocol.Soap12);
             return transport.invokeWithoutSession(request);
         } catch (IOException e) {
             throw ServiceException.PROXY_ERROR(e, mURL);

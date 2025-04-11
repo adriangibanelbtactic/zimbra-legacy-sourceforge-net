@@ -79,11 +79,7 @@ public final class MessagePartHit extends ZimbraHit {
 
     public String getSubject() throws ServiceException {
     	if (mCachedSubj == null) {
-    		if (mDoc != null) {
-    			mCachedSubj = mDoc.get(LuceneFields.L_SORT_SUBJECT);
-    		} else {
-    			mCachedSubj = getMessageResult().getSubject();
-    		}
+    	    mCachedSubj = getMessageResult().getSubject();
     	}
         return mCachedSubj; 
     }
@@ -177,14 +173,15 @@ public final class MessagePartHit extends ZimbraHit {
      */
     public MessageHit getMessageResult(MailItem.UnderlyingData ud) throws ServiceException {
         if (mMessage == null) {
-            mMessage = 
-                getResults().getMessageHit(getMailbox(), new Integer(getItemId()), mDoc, getScore(), ud);
+            mMessage = getResults().getMessageHit(getMailbox(), new Integer(getItemId()), mDoc, getScore(), ud);
             mMessage.addPart(this);
+            mMessage.cacheImapMessage(mCachedImapMessage);
+            mMessage.cacheModifiedSequence(mCachedModseq);
         }
         return mMessage;
     }
     
-    public MailItem getMailItem() throws ServiceException { return  null; }
+    public MailItem getMailItem()  { return null; }
     
 
 }

@@ -36,7 +36,8 @@ import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -44,7 +45,7 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class RemoveAccountAlias extends AdminDocumentHandler {
 
-    private static final String[] TARGET_ACCOUNT_PATH = new String[] { AdminService.E_ID };
+    private static final String[] TARGET_ACCOUNT_PATH = new String[] { AdminConstants.E_ID };
     protected String[] getProxiedAccountPath()  { return TARGET_ACCOUNT_PATH; }
 
     /**
@@ -59,22 +60,27 @@ public class RemoveAccountAlias extends AdminDocumentHandler {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
 	    Provisioning prov = Provisioning.getInstance();
 
-	    String id = request.getAttribute(AdminService.E_ID);
-        String alias = request.getAttribute(AdminService.E_ALIAS);
+	    String id = request.getAttribute(AdminConstants.E_ID);
+        String alias = request.getAttribute(AdminConstants.E_ALIAS);
 
 	    Account account = prov.get(AccountBy.id, id);
-        if (account == null)
-            throw AccountServiceException.NO_SUCH_ACCOUNT(id);
-
-        if (!canAccessAccount(lc, account))
-            throw ServiceException.PERM_DENIED("can not access account");
-   
+        
+        String acctName = "";
+        if (account != null) {
+            if (!canAccessAccount(lc, account))
+                throw ServiceException.PERM_DENIED("can not access account");
+            acctName = account.getName();
+        }
+        
+        if (!canAccessEmail(lc, alias)) // sanity check
+            throw ServiceException.PERM_DENIED("can not access email: "+alias);
+        
         prov.removeAlias(account, alias);
         
         ZimbraLog.security.info(ZimbraLog.encodeAttrs(
-                new String[] {"cmd", "RemoveAccountAlias","name", account.getName(), "alias", alias})); 
+                new String[] {"cmd", "RemoveAccountAlias","name", acctName, "alias", alias})); 
         
-	    Element response = lc.createElement(AdminService.REMOVE_ACCOUNT_ALIAS_RESPONSE);
+	    Element response = lc.createElement(AdminConstants.REMOVE_ACCOUNT_ALIAS_RESPONSE);
 	    return response;
 	}
 }

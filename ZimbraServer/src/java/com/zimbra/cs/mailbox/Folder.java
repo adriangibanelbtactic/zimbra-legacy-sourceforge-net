@@ -40,7 +40,7 @@ import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.filter.RuleManager;
 import com.zimbra.cs.session.PendingModifications.Change;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.util.ArrayUtil;
 import com.zimbra.common.util.ZimbraLog;
 
 /**
@@ -67,10 +67,12 @@ public class Folder extends MailItem {
     protected byte    mAttributes;
     protected byte    mDefaultView;
     private List<Folder> mSubfolders;
+    private long      mTotalSize;
     private Folder    mParent;
     private ACL       mRights;
     private SyncData  mSyncData;
     private int       mImapUIDNEXT;
+    private int       mImapMODSEQ;
 
     Folder(Mailbox mbox, UnderlyingData ud) throws ServiceException {
         super(mbox, ud);
@@ -78,12 +80,15 @@ public class Folder extends MailItem {
             throw new IllegalArgumentException();
     }
 
+    @Override
+    public String getSender() {
+        return "";
+    }
 
     /** Returns the folder's absolute path.  Paths are UNIX-style with 
-     *  <code>'/'</code> as the path delimiter.  Paths are relative to
-     *  the user root folder ({@link Mailbox#ID_FOLDER_USER_ROOT}),
-     *  which has the path <code>"/"</code>.  So the Inbox's path is
-     *  <code>"/Inbox"</code>, etc. */
+     *  <tt>'/'</tt> as the path delimiter.  Paths are relative to the user
+     *  root folder ({@link Mailbox#ID_FOLDER_USER_ROOT}), which has the path
+     *  <tt>"/"</tt>.  So the Inbox's path is <tt>"/Inbox"</tt>, etc. */
     public String getPath() {
         if (mId == Mailbox.ID_FOLDER_ROOT || mId == Mailbox.ID_FOLDER_USER_ROOT)
             return "/";
@@ -107,15 +112,20 @@ public class Folder extends MailItem {
         return mAttributes;
     }
 
-    /** Returns the URL the folder syncs to, or <code>""</code> if there
-     *  is no such association.
+    /** Returns the sum of the sizes of all items in the folder. */
+    public long getTotalSize() {
+        return mTotalSize;
+    }
+
+    /** Returns the URL the folder syncs to, or <tt>""</tt> if there is no
+     *  such association.
      * @see #setUrl(String) */
     public String getUrl() {
         return (mSyncData == null || mSyncData.url == null ? "" : mSyncData.url);
     }
 
-    /** Returns the URL the folder syncs to, or <code>""</code> if there
-     *  is no such association.
+    /** Returns the URL the folder syncs to, or <tt>""</tt> if there is no
+     *  such association.
      * @see #setUrl(String) */
     public SyncData getSyncData() {
         return mSyncData;
@@ -123,6 +133,10 @@ public class Folder extends MailItem {
 
     public int getImapUIDNEXT() {
         return mImapUIDNEXT;
+    }
+
+    public int getImapMODSEQ() {
+        return mImapMODSEQ;
     }
 
     /** Returns whether the folder is the Trash folder or any of its
@@ -160,10 +174,12 @@ public class Folder extends MailItem {
      *  All other users must be explicitly granted access.<p>
      * 
      *  The set of rights that apply to a given folder is derived by starting
-     *  at that folder and going up the folder hierarchy, considering the first
-     *  folder with explicitly set rights (whether or not they are inherited by
-     *  the folder in question) and then stopping.  In other words, take the
-     *  *first* (and only the first) of the following that exists:<ul>
+     *  at that folder and going up the folder hierarchy.  If we hit a folder
+     *  that has a set of rights explicitly set on it, we stop and use those.
+     *  If we hit a folder that doesn't inherit priviliges from its parent, we
+     *  stop and treat it as if no rights are granted on the target folder.
+     *  In other words, take the *first* (and only the first) of the following
+     *  that exists, stopping at "do not inherit" folders:<ul>
      *    <li>the set of rights granted on the folder directly
      *    <li>the set of inherited rights granted on the folder's parent
      *    <li>the set of inherited rights granted on the folder's grandparent
@@ -172,13 +188,14 @@ public class Folder extends MailItem {
      *    <li>no rights at all</ul><p>
      * 
      *  So if the folder hierarchy looks like this:<pre>
-     *           root  <- inherited "read+write" granted to user A
-     *           /  \
-     *          V    W  <- "read" granted to users A and B
-     *         /    / \
-     *        X    Y   Z</pre>
+     *                   root  <- "read+write" granted to user A
+     *                   /  \
+     *                  V    W  <- "do not inherit" flag set
+     *                 /    / \
+     *                X    Y   Z  <- "read" granted to users A and B</pre>
      *  then user A has "write" rights on folders V and X, but not W, Y, and Z,
-     *  and user B has "read" rights on folder W but not V, X, Y, or Z.
+     *  user A has "read" rights on folders V, X, and Z but not W or Y, and
+     *  user B has "read" rights on folder Z but not V, X, W, or Y.
      * 
      * @param rightsNeeded  A set of rights (e.g. {@link ACL#RIGHT_READ}
      *                      and {@link ACL#RIGHT_DELETE}).
@@ -186,10 +203,6 @@ public class Folder extends MailItem {
      * @see ACL */
     @Override
     short checkRights(short rightsNeeded, Account authuser, boolean asAdmin) throws ServiceException {
-        return checkRights(rightsNeeded, authuser, asAdmin, false);
-    }
-
-    private short checkRights(short rightsNeeded, Account authuser, boolean asAdmin, boolean inheritedOnly) throws ServiceException {
         if (rightsNeeded == 0)
             return rightsNeeded;
         // XXX: in Mailbox, authuser is set to null if authuser == owner.
@@ -197,14 +210,16 @@ public class Folder extends MailItem {
         if (authuser == null || authuser.getId().equals(mMailbox.getAccountId()))
             return rightsNeeded;
         // admin users (and the appropriate domain admins) can also do anything they want
-        if (asAdmin && AccessManager.getInstance().canAccessAccount(authuser, getAccount()))
+        if (AccessManager.getInstance().canAccessAccount(authuser, getAccount(), asAdmin))
             return rightsNeeded;
         // check the ACLs to see if access has been explicitly granted
-        Short granted = mRights != null ? mRights.getGrantedRights(authuser, inheritedOnly) : null;
+        Short granted = mRights != null ? mRights.getGrantedRights(authuser) : null;
         if (granted != null)
             return (short) (granted.shortValue() & rightsNeeded);
-        // no ACLs apply; check parent folder for inherited rights
-        return mId == Mailbox.ID_FOLDER_ROOT ? 0 : mParent.checkRights(rightsNeeded, authuser, asAdmin, true);
+        // no ACLs apply; can we check parent folder for inherited rights?
+        if (mId == Mailbox.ID_FOLDER_ROOT || isTagged(mMailbox.mNoInheritFlag))
+            return 0;
+        return mParent.checkRights(rightsNeeded, authuser, asAdmin);
     }
 
     /** Grants the specified set of rights to the target and persists them
@@ -213,19 +228,24 @@ public class Folder extends MailItem {
      * @param zimbraId  The zimbraId of the entry being granted rights.
      * @param type      The type of principal the grantee's ID refers to.
      * @param rights    A bitmask of the rights being granted.
-     * @param inherit   Whether subfolders inherit these same rights.
      * @perms {@link ACL#RIGHT_ADMIN} on the folder
      * @throws ServiceException The following error codes are possible:<ul>
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul> */
-    void grantAccess(String zimbraId, byte type, short rights, boolean inherit, String args) throws ServiceException {
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul> */
+    void grantAccess(String zimbraId, byte type, short rights, String args) throws ServiceException {
         if (!canAccess(ACL.RIGHT_ADMIN))
             throw ServiceException.PERM_DENIED("you do not have admin rights to folder " + getPath());
+        if (type == ACL.GRANTEE_USER && zimbraId.equalsIgnoreCase(getMailbox().getAccountId()))
+            throw ServiceException.PERM_DENIED("cannot grant access to the owner of the folder");
+        
+        // if there's an ACL on the folder, the folder does not inherit from its parent
+        alterTag(mMailbox.mNoInheritFlag, true);
+
         markItemModified(Change.MODIFIED_ACL);
         if (mRights == null)
             mRights = new ACL();
-        mRights.grantAccess(zimbraId, type, rights, inherit, args);
+        mRights.grantAccess(zimbraId, type, rights, args);
         saveMetadata();
     }
 
@@ -235,15 +255,24 @@ public class Folder extends MailItem {
      * @param zimbraId  The zimbraId of the entry being revoked rights.
      * @perms {@link ACL#RIGHT_ADMIN} on the folder
      * @throws ServiceException The following error codes are possible:<ul>
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul> */
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul> */
     void revokeAccess(String zimbraId) throws ServiceException {
         if (!canAccess(ACL.RIGHT_ADMIN))
             throw ServiceException.PERM_DENIED("you do not have admin rights to folder " + getPath());
-        markItemModified(Change.MODIFIED_ACL);
-        if (mRights == null || !mRights.revokeAccess(zimbraId))
+        if (zimbraId.equalsIgnoreCase(getMailbox().getAccountId()))
+            throw ServiceException.PERM_DENIED("cannot revoke access from the owner of the folder");
+
+        ACL acl = getEffectiveACL();
+        if (acl == null || !acl.revokeAccess(zimbraId))
             return;
+        
+        // if there's an ACL on the folder, the folder does not inherit from its parent
+        alterTag(mMailbox.mNoInheritFlag, true);
+
+        markItemModified(Change.MODIFIED_ACL);
+        mRights.revokeAccess(zimbraId);
         if (mRights.isEmpty())
             mRights = null;
         saveMetadata();
@@ -252,28 +281,60 @@ public class Folder extends MailItem {
     /** Replaces the folder's {@link ACL} with the supplied one and updates
      *  the database accordingly.
      * 
-     * @param acl  The new ACL being applied (<code>null</code> is OK).
+     * @param acl  The new ACL being applied (<tt>null</tt> is OK).
      * @perms {@link ACL#RIGHT_ADMIN} on the folder
      * @throws ServiceException The following error codes are possible:<ul>
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul> */
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul> */
     void setPermissions(ACL acl) throws ServiceException {
         if (!canAccess(ACL.RIGHT_ADMIN))
             throw ServiceException.PERM_DENIED("you do not have admin rights to folder " + getPath());
+//        if (acl != null) {
+//            for (ACL.Grant grant : acl.getGrants())
+//                if (grant.getGranteeType() == ACL.GRANTEE_USER && grant.getGranteeId().equalsIgnoreCase(getMailbox().getAccountId()))
+//                    throw ServiceException.PERM_DENIED("cannot grant access to the owner of the folder");
+//        }
+
+        // if we're setting an ACL on the folder, the folder does not inherit from its parent
+        alterTag(mMailbox.mNoInheritFlag, true);
+
         markItemModified(Change.MODIFIED_ACL);
+        if (acl != null && acl.isEmpty())
+            acl = null;
         if (acl == null && mRights == null)
             return;
         mRights = acl;
         saveMetadata();
     }
 
-    /** Returns a copy of the ACL on the folder, or <code>null</code> if
-     *  one is not set. */
-    public ACL getPermissions() {
+    /** Returns a copy of the ACL directly set on the folder, or <tt>null</tt>
+     *  if one is not set. */
+    ACL getACL() {
         return mRights == null ? null : mRights.duplicate();
     }
 
+    /** Returns a copy of the ACL that applies to the folder (possibly
+     *  inherited from a parent), or <tt>null</tt> if one is not set. */
+    public ACL getEffectiveACL() {
+        if (mId == Mailbox.ID_FOLDER_ROOT || isTagged(mMailbox.mNoInheritFlag) || mParent == null)
+            return getACL();
+        return mParent.getEffectiveACL();
+    }
+
+
+    /** Returns this folder's parent folder.  The root folder's parent is
+     *  itself.
+     * @see Mailbox#ID_FOLDER_ROOT */
+    @Override
+    public MailItem getParent() throws ServiceException {
+        return mParent != null ? mParent : super.getFolder();
+    }
+
+    @Override
+    Folder getFolder() throws ServiceException {
+        return mParent != null ? mParent : super.getFolder();
+    }
 
     /** Returns whether the folder contains any subfolders. */
     public boolean hasSubfolders() {
@@ -284,8 +345,8 @@ public class Folder extends MailItem {
      *  case-insensitive.
      * 
      * @param name  The folder name to search for.
-     * @return The matching subfolder, or <code>null</code> if no such
-     *         folder exists. */
+     * @return The matching subfolder, or <tt>null</tt> if no such folder
+     *         exists. */
     Folder findSubfolder(String name) {
         if (name == null || mSubfolders == null)
             return null;
@@ -321,13 +382,14 @@ public class Folder extends MailItem {
         return visible;
     }
 
-    /** Returns a <code>List</code> that includes this folder and all its
+    /** Returns a <tt>List</tt> that includes this folder and all its
      *  subfolders.  The tree traversal is done depth-first, so this folder
      *  is the first element in the list, followed by its children, then
      *  its grandchildren, etc. */
     public List<Folder> getSubfolderHierarchy() {
         return accumulateHierarchy(new ArrayList<Folder>());
     }
+
     private List<Folder> accumulateHierarchy(List<Folder> list) {
         list.add(this);
         if (mSubfolders != null)
@@ -339,15 +401,43 @@ public class Folder extends MailItem {
     /** Updates the number of items in the folder.  Only "leaf node" items in
      *  the folder are summed; items in subfolders are included only in the
      *  size of the subfolder.
-     * @param delta  The change in item count, negative or positive. */
-    void updateSize(int delta) {
-        if (delta == 0 || !trackSize())
+     * @param countDelta  The change in item count, negative or positive.
+     * @param sizeDelta   The change in total size, negative or positive. */
+    void updateSize(int countDelta, long sizeDelta) throws ServiceException {
+        if (!trackSize() || (countDelta == 0 && sizeDelta == 0))
             return;
         // if we go negative, that's OK!  just pretend we're at 0.
         markItemModified(Change.MODIFIED_SIZE);
-        mData.size = Math.max(0, mData.size + delta);
-        if (delta > 0)
+        if (countDelta > 0) {
             mImapUIDNEXT = mMailbox.getLastItemId() + 1;
+            mImapMODSEQ = mMailbox.getOperationChangeID();
+        }
+        mData.size = Math.max(0, mData.size + countDelta);
+        mTotalSize = Math.max(0, mTotalSize + sizeDelta);
+    }
+
+    void setSize(int count, long totalSize) throws ServiceException {
+        if (!trackSize() || (count == 0 && totalSize == 0))
+            return;
+        markItemModified(Change.MODIFIED_SIZE);
+        if (count > mData.size) {
+            mImapUIDNEXT = mMailbox.getLastItemId() + 1;
+            mImapMODSEQ = mMailbox.getOperationChangeID();
+        }
+        mData.size = count;
+        mTotalSize = totalSize;
+    }
+
+    @Override
+    protected void updateUnread(int delta) throws ServiceException {
+        super.updateUnread(delta);
+        if (delta != 0 && trackUnread())
+            updateHighestMODSEQ();
+    }
+
+    void updateHighestMODSEQ() throws ServiceException {
+        markItemModified(Change.MODIFIED_SIZE);
+        mImapMODSEQ = mMailbox.getOperationChangeID();
     }
 
     @Override boolean isTaggable()       { return false; }
@@ -407,16 +497,15 @@ public class Folder extends MailItem {
      * @param name    The new folder's name.
      * @perms {@link ACL#RIGHT_INSERT} on the parent folder
      * @throws ServiceException   The following error codes are possible:<ul>
-     *    <li><code>mail.CANNOT_CONTAIN</code> - if the target folder
-     *        can't have subfolders
-     *    <li><code>mail.ALREADY_EXISTS</code> - if a folder by that name
-     *        already exists in the parent folder
-     *    <li><code>mail.INVALID_NAME</code> - if the new folder's name is
-     *        invalid
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul>
-     * @see #validateFolderName(String)
+     *    <li><tt>mail.CANNOT_CONTAIN</tt> - if the target folder can't have
+     *        subfolders
+     *    <li><tt>mail.ALREADY_EXISTS</tt> - if a folder by that name already
+     *        exists in the parent folder
+     *    <li><tt>mail.INVALID_NAME</tt> - if the new folder's name is invalid
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul>
+     * @see #validateItemName(String)
      * @see #canContain(byte) */
     static Folder create(int id, Mailbox mbox, Folder parent, String name) throws ServiceException {
         return create(id, mbox, parent, name, (byte) 0, TYPE_UNKNOWN, 0, DEFAULT_COLOR, null);
@@ -437,16 +526,15 @@ public class Folder extends MailItem {
      * @param url         The (optional) url to sync folder contents to.
      * @perms {@link ACL#RIGHT_INSERT} on the parent folder
      * @throws ServiceException   The following error codes are possible:<ul>
-     *    <li><code>mail.CANNOT_CONTAIN</code> - if the target folder
-     *        can't have subfolders
-     *    <li><code>mail.ALREADY_EXISTS</code> - if a folder by that name
-     *        already exists in the parent folder
-     *    <li><code>mail.INVALID_NAME</code> - if the new folder's name is
-     *        invalid
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul>
-     * @see #validateFolderName(String)
+     *    <li><tt>mail.CANNOT_CONTAIN</tt> - if the target folder can't have
+     *        subfolders
+     *    <li><tt>mail.ALREADY_EXISTS</tt> - if a folder by that name already
+     *        exists in the parent folder
+     *    <li><tt>mail.INVALID_NAME</tt> - if the new folder's name is invalid
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul>
+     * @see #validateItemName(String)
      * @see #canContain(byte)
      * @see #FOLDER_IS_IMMUTABLE
      * @see #FOLDER_DONT_TRACK_COUNTS */
@@ -455,7 +543,7 @@ public class Folder extends MailItem {
         if (id != Mailbox.ID_FOLDER_ROOT) {
             if (parent == null || !parent.canContain(TYPE_FOLDER))
                 throw MailServiceException.CANNOT_CONTAIN();
-            validateFolderName(name);
+            validateItemName(name);
             if (parent.findSubfolder(name) != null)
                 throw MailServiceException.ALREADY_EXISTS(name);
             if (!parent.canAccess(ACL.RIGHT_SUBFOLDER))
@@ -473,40 +561,40 @@ public class Folder extends MailItem {
         data.flags       = flags & Flag.FLAGS_FOLDER;
         data.name        = name;
         data.subject     = name;
-        data.metadata    = encodeMetadata(color, attributes, view, null, new SyncData(url), id + 1);
+        data.metadata    = encodeMetadata(color, attributes, view, null, new SyncData(url), id + 1, 0, mbox.getOperationChangeID());
         data.contentChanged(mbox);
         DbMailItem.create(mbox, data);
 
         Folder folder = new Folder(mbox, data);
         folder.finishCreation(parent);
+        ZimbraLog.mailbox.info("Created folder %s, id=%d", folder.getPath(), folder.getId());
         return folder;
     }
 
     /** Sets the remote URL for the folder.  This can point to a remote
-     *  calendar (<code>.ics</code> file), an RSS feed, etc.  Note that you
+     *  calendar (<tt>.ics</tt> file), an RSS feed, etc.  Note that you
      *  cannot add a remote data source to an existing folder, as refreshing
      *  the linked content empties the folder.<p>
      * 
      *  This is <i>not</i> used to mount other Zimbra users' folders; to do
      *  that, use a {@link Mountpoint}.
      * 
-     * @param url  The new URL for the folder, or <code>null</code> to
-     *             remove the association with a remote object.
+     * @param url  The new URL for the folder, or <tt>null</tt> to remove the
+     *             association with a remote object.
      * @perms {@link ACL#RIGHT_WRITE} on the folder
      * @throws ServiceException   The following error codes are possible:<ul>
-     *    <li><code>mail.CANNOT_SUBSCRIBE</code> - if you're attempting to
+     *    <li><tt>mail.CANNOT_SUBSCRIBE</tt> - if you're attempting to
      *        associate a URL with an existing, normal folder
-     *    <li><code>mail.IMMUTABLE_OBJECT</code> - if the folder can't be
-     *        modified
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul> */
+     *    <li><tt>mail.IMMUTABLE_OBJECT</tt> - if the folder can't be modified
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul> */
     void setUrl(String url) throws ServiceException {
         if (url == null)
             url = "";
         if (getUrl().equals(url))
             return;
-        if (!getUrl().equals(""))
+        if (getUrl().equals("") && !url.equals(""))
             throw MailServiceException.CANNOT_SUBSCRIBE(mId);
         if (!isMutable())
             throw MailServiceException.IMMUTABLE_OBJECT(mId);
@@ -526,11 +614,10 @@ public class Folder extends MailItem {
      * @param date  The last synchronized remote item's timestamp.
      * @perms {@link ACL#RIGHT_WRITE} on the folder
      * @throws ServiceException   The following error codes are possible:<ul>
-     *    <li><code>mail.IMMUTABLE_OBJECT</code> - if the folder can't be
-     *        modified
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul> */
+     *    <li><tt>mail.IMMUTABLE_OBJECT</tt> - if the folder can't be modified
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have sufficient
+     *        permissions</ul> */
     void setSubscriptionData(String guid, long date) throws ServiceException {
         if (getUrl().equals(""))
             return;
@@ -542,128 +629,6 @@ public class Folder extends MailItem {
         markItemModified(Change.MODIFIED_URL);
         mSyncData = new SyncData(getUrl(), guid, date);
         saveMetadata();
-    }
-
-    /** Renames the folder in place.  Altering a folder's case (e.g.
-     *  from <code>foo</code> to <code>FOO</code>) is allowed.
-     * 
-     * @param name  The new name for this folder.
-     * @perms {@link ACL#RIGHT_WRITE} on the folder
-     * @throws ServiceException   The following error codes are possible:<ul>
-     *    <li><code>mail.IMMUTABLE_OBJECT</code> - if the folder can't be
-     *        renamed
-     *    <li><code>mail.ALREADY_EXISTS</code> - if a folder by that name
-     *        already exists in the new parent folder
-     *    <li><code>mail.INVALID_NAME</code> - if the new folder's name is
-     *        invalid
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul>
-     * @see #validateFolderName(String) */
-    void rename(String name) throws ServiceException {
-        rename(name, mParent);
-    }
-
-    /** Renames the folder and optionally moves it.  Altering a folder's
-     *  case (e.g. from <code>foo</code> to <code>FOO</code>) is allowed.
-     *  If you don't want the folder to be moved, you must pass 
-     *  <code>folder.getParent()</code> as the second parameter.
-     * 
-     * @param name    The new name for this folder.
-     * @param target  The new parent folder to move this folder to.
-     * @perms {@link ACL#RIGHT_WRITE} on the folder to rename it,
-     *        {@link ACL#RIGHT_DELETE} on the parent folder and
-     *        {@link ACL#RIGHT_INSERT} on the target folder to move it
-     * @throws ServiceException   The following error codes are possible:<ul>
-     *    <li><code>mail.IMMUTABLE_OBJECT</code> - if the folder can't be
-     *        renamed
-     *    <li><code>mail.ALREADY_EXISTS</code> - if a folder by that name
-     *        already exists in the new parent folder
-     *    <li><code>mail.INVALID_NAME</code> - if the new folder's name is
-     *        invalid
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
-     *        sufficient permissions</ul>
-     * @see #validateFolderName(String)
-     * @see #move(Folder) */
-    void rename(String name, Folder target) throws ServiceException {
-        validateFolderName(name);
-        if (name.equals(mData.name) && target == mParent)
-            return;
-        if (!isMutable())
-            throw MailServiceException.IMMUTABLE_OBJECT(mId);
-        boolean renamed = !name.equals(mData.name);
-        boolean moved   = target != mParent;
-
-        if (moved &&!target.canAccess(ACL.RIGHT_INSERT))
-            throw ServiceException.PERM_DENIED("you do not have the required rights on the target folder");
-        if (moved && !mParent.canAccess(ACL.RIGHT_DELETE))
-            throw ServiceException.PERM_DENIED("you do not have the required rights on the parent folder");
-        if (renamed && !canAccess(ACL.RIGHT_WRITE))
-            throw ServiceException.PERM_DENIED("you do not have the required rights on the folder");
-
-        if (renamed) {
-            String originalPath = getPath();
-            markItemModified(Change.MODIFIED_NAME);
-            Folder existingFolder = target.findSubfolder(name);
-            if (existingFolder != null && existingFolder != this)
-                throw MailServiceException.ALREADY_EXISTS(name);
-            mData.name = name;
-            mData.date = mMailbox.getOperationTimestamp();
-            saveName();
-            updateRules(originalPath);
-        }
-
-        if (moved)
-            move(target);
-    }
-
-    /**
-     * Updates filter rules after a folder's path changes (move or rename).
-     */
-    private void updateRules(String originalPath)
-    throws ServiceException {
-        Account account = getAccount();
-        RuleManager rm = RuleManager.getInstance();
-        String rules = rm.getRules(account);
-        if (rules != null) {
-            // Assume that we always put quotes around folder paths.  Replace
-            // any paths that start with this folder's original path.  This will
-            // take care of rules for children affected by a parent's move or rename.
-            String newPath = getPath();
-            String newRules = rules.replace("\"" + originalPath, "\"" + newPath);
-            if (!newRules.equals(rules)) {
-                rm.setRules(account, newRules);
-                ZimbraLog.mailbox.debug(
-                    "Updated filter rules due to folder move or rename.  Old rules:\n" +
-                    rules + ", new rules:\n" + newRules);
-            }
-        }
-    }
-
-    /** The regexp defining printable characters not permitted in folder
-     *  names.  These are: ':', '/', '"', '\t', '\r', and '\n'. */
-    private static final String INVALID_CHARACTERS = ".*[:/\"\t\r\n].*";
-    /** The maximum length for a folder name.  This is not the maximum length
-     *  of a <u>path</u>, just the maximum length of a single folder's name. */
-    public static final int MAX_FOLDER_LENGTH = 128;
-
-    /** Returns whether a proposed folder name is valid.  Folder names must
-     *  be less than {@link #MAX_FOLDER_LENGTH} characters long, must contain
-     *  non-whitespace characters, and may not contain any characters in
-     *  {@link #INVALID_CHARACTERS} (':', '/', '"', '\t', '\r', '\n') or
-     *  banned in XML.
-     * 
-     * @param name  The proposed folder name.
-     * @throws ServiceException  The following error codes are possible:<ul>
-     *    <li><code>mail.INVALID_NAME</code> - if the name is not acceptable
-     *    </ul>
-     * @see StringUtil#stripControlCharacters */
-    protected static void validateFolderName(String name) throws ServiceException {
-        if (name == null || name != StringUtil.stripControlCharacters(name))
-            throw MailServiceException.INVALID_NAME(name);
-        if (name.trim().equals("") || name.length() > MAX_FOLDER_LENGTH || name.matches(INVALID_CHARACTERS))
-            throw MailServiceException.INVALID_NAME(name);
     }
 
     private void recursiveAlterUnread(boolean unread) throws ServiceException {
@@ -719,66 +684,102 @@ public class Folder extends MailItem {
      *  At present, user tags and non-folder-specific flags cannot be applied
      *  or removed on a folder.</i>  For folder-specific flags like
      *  {@link Mailbox#mSubscribeFlag}, the tagging or untagging applies to
-     *  the <code>Folder</code> itself.<p>
+     *  the <tt>Folder</tt> itself.<p>
      * 
-     *  You must use {@link #alterUnread} to change a folder's unread state.
+     *  You must use {@link #alterUnread} to change a folder's unread state.<p>
+     *  
+     *  Note that clearing the "no inherit" flag on a folder enables permission
+     *  inheritance and hence clears the folder's ACL as a side-effect.
      * 
      * @perms {@link ACL#RIGHT_WRITE} on the folder */
     @Override
-    void alterTag(Tag tag, boolean add) throws ServiceException {
+    void alterTag(Tag tag, boolean newValue) throws ServiceException {
         // folder flags are applied to the folder, not the contents
         if (!(tag instanceof Flag) || !((Flag) tag).isFolderOnly()) {
-            super.alterTag(tag, add);
+            super.alterTag(tag, newValue);
             return;
         }
 
-        if (!canAccess(ACL.RIGHT_WRITE))
-            throw ServiceException.PERM_DENIED("you do not have the necessary privileges on the folder");
-        if (add == isTagged(tag))
+        if (newValue == isTagged(tag))
             return;
+
+        boolean isNoInheritFlag = tag.getId() == Flag.ID_FLAG_NO_INHERIT;
+        if (!canAccess(isNoInheritFlag ? ACL.RIGHT_ADMIN : ACL.RIGHT_WRITE))
+            throw ServiceException.PERM_DENIED("you do not have the necessary privileges on the folder");
+        ACL effectiveACL = getEffectiveACL();
 
         // change the tag on the Folder itself, not on its contents
         markItemModified(tag instanceof Flag ? Change.MODIFIED_FLAGS : Change.MODIFIED_TAGS);
-        tagChanged(tag, add);
+        tagChanged(tag, newValue);
 
         List<Integer> ids = new ArrayList<Integer>();
         ids.add(mId);
-        DbMailItem.alterTag(tag, ids, add);
+        DbMailItem.alterTag(tag, ids, newValue);
+
+        // clearing the "no inherit" flag sets inherit ON and thus must clear the folder's ACL
+        if (isNoInheritFlag) {
+            if (!newValue && mRights != null && !mRights.isEmpty())
+                setPermissions(null);
+            else if (newValue)
+                setPermissions(effectiveACL);
+        }
     }
 
-    /** Moves this folder so that it is a subfolder of <code>folder</code>.
+    /** Renames the item and optionally moves it.  Altering an item's
+     *  case (e.g. from <tt>foo</tt> to <tt>FOO</tt>) is allowed.
+     *  If you don't want the item to be moved, you must pass 
+     *  <tt>folder.getFolder()</tt> as the second parameter.
+     * 
+     * @perms {@link ACL#RIGHT_WRITE} on the folder to rename it,
+     *        {@link ACL#RIGHT_DELETE} on the folder and
+     *        {@link ACL#RIGHT_INSERT} on the target folder to move it */
+    void rename(String name, Folder target) throws ServiceException {
+        validateItemName(name);
+        boolean renamed = !name.equals(mData.name);
+        if (!renamed && target == mParent)
+            return;
+
+        String originalPath = getPath();
+        super.rename(name, target);
+        if (renamed && !isHidden())
+            RuleManager.getInstance().folderRenamed(getAccount(), originalPath, getPath());
+    }
+
+    /** Moves this folder so that it is a subfolder of <tt>target</tt>.
      * 
      * @perms {@link ACL#RIGHT_INSERT} on the target folder,
-     *         {@link ACL#RIGHT_DELETE} on the source folder */
+     *        {@link ACL#RIGHT_DELETE} on the folder being moved */
     @Override
-    protected void move(Folder folder) throws ServiceException {
+    protected void move(Folder target) throws ServiceException {
         markItemModified(Change.MODIFIED_FOLDER | Change.MODIFIED_PARENT);
-        if (mData.folderId == folder.getId())
+        if (mData.folderId == target.getId())
             return;
         if (!isMovable())
             throw MailServiceException.IMMUTABLE_OBJECT(mId);
-        if (!mParent.canAccess(ACL.RIGHT_DELETE) || !folder.canAccess(ACL.RIGHT_INSERT))
+        if (!canAccess(ACL.RIGHT_DELETE))
             throw ServiceException.PERM_DENIED("you do not have the required permissions");
-        if (!folder.canContain(this))
+        if (target.getId() != Mailbox.ID_FOLDER_TRASH && target.getId() != Mailbox.ID_FOLDER_SPAM && !target.canAccess(ACL.RIGHT_INSERT))
+            throw ServiceException.PERM_DENIED("you do not have the required permissions");
+        if (!target.canContain(this))
             throw MailServiceException.CANNOT_CONTAIN();
 
         String originalPath = getPath();
         
         // moving a folder to the Trash marks its contents as read
-        if (!inTrash() && folder.inTrash())
+        if (!inTrash() && target.inTrash())
             recursiveAlterUnread(false);
 
         // tell the folder's old and new parents
         mParent.removeChild(this);
-        folder.addChild(this);
+        target.addChild(this);
 
         // and update the folder's data (in memory and DB)
-        DbMailItem.setFolder(this, folder);
-        mData.folderId = folder.getId();
-        mData.parentId = folder.getId();
+        DbMailItem.setFolder(this, target);
+        mData.folderId = target.getId();
+        mData.parentId = target.getId();
         mData.metadataChanged(mMailbox);
         
-        updateRules(originalPath);
+        RuleManager.getInstance().folderRenamed(getAccount(), originalPath, getPath());
     }
 
     @Override
@@ -828,8 +829,8 @@ public class Folder extends MailItem {
 
     /** Deletes this folder and all its subfolders. */
     @Override
-    void delete(boolean childrenOnly, boolean writeTombstones) throws ServiceException {
-        if (childrenOnly) {
+    void delete(DeleteScope scope, boolean writeTombstones) throws ServiceException {
+        if (scope == DeleteScope.CONTENTS_ONLY) {
             deleteSingleFolder(writeTombstones);
         } else {
             List<Folder> subfolders = getSubfolderHierarchy();
@@ -852,12 +853,13 @@ public class Folder extends MailItem {
         }
 
         // now we can empty *this* folder
-        super.delete(DELETE_CONTENTS, true);
+        super.delete(DeleteScope.CONTENTS_ONLY, true);
     }
 
     /** Deletes just this folder without affecting its subfolders. */
     void deleteSingleFolder(boolean writeTombstones) throws ServiceException {
-        super.delete(hasSubfolders() ? DELETE_CONTENTS : DELETE_ITEM, writeTombstones);
+        ZimbraLog.mailbox.info("Deleting folder %s, id=%d", getPath(), getId());
+        super.delete(hasSubfolders() ? DeleteScope.CONTENTS_ONLY : DeleteScope.ENTIRE_ITEM, writeTombstones);
     }
 
     /** Determines the set of items to be deleted.  Assembles a new
@@ -870,11 +872,11 @@ public class Folder extends MailItem {
      * 
      * @perms {@link ACL#RIGHT_DELETE} on the folder
      * @throws ServiceException The following error codes are possible:<ul>
-     *    <li><code>mail.MODIFY_CONFLICT</code> - if the caller specified a
+     *    <li><tt>mail.MODIFY_CONFLICT</tt> - if the caller specified a
      *        max change number and a modification check, and the modified
      *        change number of a contained item is greater
-     *    <li><code>service.FAILURE</code> - if there's a database failure
-     *    <li><code>service.PERM_DENIED</code> - if you don't have
+     *    <li><tt>service.FAILURE</tt> - if there's a database failure
+     *    <li><tt>service.PERM_DENIED</tt> - if you don't have
      *        sufficient permissions</ul> */
     @Override
     MailItem.PendingDelete getDeletionInfo() throws ServiceException {
@@ -886,9 +888,10 @@ public class Folder extends MailItem {
     @Override
     void propagateDeletion(PendingDelete info) throws ServiceException {
         if (info.incomplete)
-            info.cascadeIds = DbMailItem.markDeletionTargets(mMailbox, info.itemIds.getIds(TYPE_MESSAGE));
+            info.cascadeIds = DbMailItem.markDeletionTargets(mMailbox, info.itemIds.getIds(TYPE_MESSAGE, TYPE_CHAT), info.modifiedIds);
         else
-            info.cascadeIds = DbMailItem.markDeletionTargets(this);
+            info.cascadeIds = DbMailItem.markDeletionTargets(this, info.modifiedIds);
+        info.modifiedIds.removeAll(info.cascadeIds);
         super.propagateDeletion(info);
     }
 
@@ -896,6 +899,9 @@ public class Folder extends MailItem {
     void purgeCache(PendingDelete info, boolean purgeItem) throws ServiceException {
         // when deleting a folder, need to purge conv cache!
         mMailbox.purge(TYPE_CONVERSATION);
+        // fault modified conversations back in, thereby marking them dirty
+        mMailbox.getItemById(ArrayUtil.toIntArray(info.modifiedIds), MailItem.TYPE_CONVERSATION);
+        // remove this folder from the cache if needed
         super.purgeCache(info, purgeItem);
     }
 
@@ -917,13 +923,13 @@ public class Folder extends MailItem {
         PendingDelete info = DbMailItem.getLeafNodes(mbox, folders, beforeDate, allFolders);
         if (info.itemIds.isEmpty())
             return;
-        mbox.markItemDeleted(info.itemIds.getAll());
+        mbox.markItemDeleted(info.itemIds.getTypesMask(), info.itemIds.getAll());
 
         // update message counts
         for (Map.Entry<Integer, DbMailItem.LocationCount> entry : info.messages.entrySet()) {
             int folderID = entry.getKey();
-            int msgCount = entry.getValue().count;
-            mbox.getFolderById(folderID).updateSize(-msgCount);
+            DbMailItem.LocationCount lcount = entry.getValue();
+            mbox.getFolderById(folderID).updateSize(-lcount.count, -lcount.size);
         }
 
         // update the mailbox's size
@@ -937,8 +943,12 @@ public class Folder extends MailItem {
 
         // remove the deleted item(s) from the mailbox's cache
         if (!info.itemIds.isEmpty()) {
-            info.cascadeIds = DbMailItem.markDeletionTargets(mbox, info.itemIds.getIds(TYPE_MESSAGE));
+            info.cascadeIds = DbMailItem.markDeletionTargets(mbox, info.itemIds.getIds(TYPE_MESSAGE), info.modifiedIds);
+            if (info.cascadeIds != null)
+                info.modifiedIds.removeAll(info.cascadeIds);
             mbox.purge(TYPE_CONVERSATION);
+            for (int convId : info.modifiedIds)
+                mbox.getConversationById(convId);
         }
 
         // actually delete the items from the DB
@@ -948,7 +958,7 @@ public class Folder extends MailItem {
         // also delete any conversations whose messages have all been removed
         if (info.cascadeIds != null && !info.cascadeIds.isEmpty()) {
             DbMailItem.delete(mbox, info.cascadeIds);
-            mbox.markItemDeleted(info.cascadeIds);
+            mbox.markItemDeleted(MailItem.typeToBitmask(TYPE_CONVERSATION), info.cascadeIds);
             info.itemIds.add(TYPE_CONVERSATION, info.cascadeIds);
         }
 
@@ -967,10 +977,12 @@ public class Folder extends MailItem {
      *  value to the database.
      * @param initial  Whether this is the first time we're saving folder
      *                 counts, in which case we also initialize the IMAP
-     *                 UIDNEXT value. */
+     *                 UIDNEXT and HIGHESTMODSEQ values. */
     protected void saveFolderCounts(boolean initial) throws ServiceException {
-        if (initial)
+        if (initial) {
             mImapUIDNEXT = mMailbox.getLastItemId() + 1;
+            mImapMODSEQ  = mMailbox.getLastChangeID();
+        }
         DbMailItem.persistCounts(this, encodeMetadata());
     }
 
@@ -994,33 +1006,42 @@ public class Folder extends MailItem {
         }
         mDefaultView = (byte) meta.getLong(Metadata.FN_VIEW, view);
         mAttributes  = (byte) meta.getLong(Metadata.FN_ATTRS, 0);
+        mTotalSize   = meta.getLong(Metadata.FN_TOTAL_SIZE, 0L);
         mImapUIDNEXT = (int) meta.getLong(Metadata.FN_UIDNEXT, 0);
+        mImapMODSEQ  = (int) meta.getLong(Metadata.FN_MODSEQ, 0);
 
         if (meta.containsKey(Metadata.FN_URL))
             mSyncData = new SyncData(meta.get(Metadata.FN_URL), meta.get(Metadata.FN_SYNC_GUID, null), meta.getLong(Metadata.FN_SYNC_DATE, 0));
 
         MetadataList mlistACL = meta.getList(Metadata.FN_RIGHTS, true);
-        if (mlistACL != null)
-            if ((mRights = new ACL(mlistACL)).isEmpty())
-                mRights = null;
+        if (mlistACL != null) {
+            ACL acl = new ACL(mlistACL);
+            mRights = acl.isEmpty() ? null : acl;
+            if (!isTagged(mMailbox.mNoInheritFlag))
+                alterTag(mMailbox.mNoInheritFlag, true);
+        }
     }
 
     @Override
     Metadata encodeMetadata(Metadata meta) {
-        return encodeMetadata(meta, mColor, mAttributes, mDefaultView, mRights, mSyncData, mImapUIDNEXT);
+        return encodeMetadata(meta, mColor, mAttributes, mDefaultView, mRights, mSyncData, mImapUIDNEXT, mTotalSize, mImapMODSEQ);
     }
 
-    private static String encodeMetadata(byte color, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext) {
-        return encodeMetadata(new Metadata(), color, attributes, hint, rights, fsd, uidnext).toString();
+    private static String encodeMetadata(byte color, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext, long totalSize, int modseq) {
+        return encodeMetadata(new Metadata(), color, attributes, hint, rights, fsd, uidnext, totalSize, modseq).toString();
     }
 
-    static Metadata encodeMetadata(Metadata meta, byte color, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext) {
+    static Metadata encodeMetadata(Metadata meta, byte color, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext, long totalSize, int modseq) {
         if (hint != TYPE_UNKNOWN)
             meta.put(Metadata.FN_VIEW, hint);
         if (attributes != 0)
             meta.put(Metadata.FN_ATTRS, attributes);
+        if (totalSize > 0)
+            meta.put(Metadata.FN_TOTAL_SIZE, totalSize);
         if (uidnext > 0)
             meta.put(Metadata.FN_UIDNEXT, uidnext);
+        if (modseq > 0)
+            meta.put(Metadata.FN_MODSEQ, modseq);
         if (rights != null)
             meta.put(Metadata.FN_RIGHTS, rights.encode());
         if (fsd != null && fsd.url != null && !fsd.url.equals("")) {

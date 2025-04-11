@@ -39,7 +39,7 @@
  * @see DwtControl
  * @see DwtControl#setDragSource
  */
-function DwtDragSource(supportedOps) {
+DwtDragSource = function(supportedOps) {
 	this.__supportedOps = supportedOps
 	this.__evtMgr = new AjxEventMgr();
 };
@@ -116,6 +116,16 @@ function() {
 DwtDragSource.prototype._endDrag =
 function() {
 	DwtDragSource.__dragEvent.action = DwtDragEvent.DRAG_END;
+	DwtDragSource.__dragEvent.doit = false;
+	this.__evtMgr.notifyListeners(DwtDragSource.__DRAG_LISTENER, DwtDragSource.__dragEvent);
+	return DwtDragSource.__dragEvent.doit;
+};
+
+/** @private */
+
+DwtDragSource.prototype._cancelDrag =
+function() {
+	DwtDragSource.__dragEvent.action = DwtDragEvent.DRAG_CANCEL;
 	DwtDragSource.__dragEvent.doit = false;
 	this.__evtMgr.notifyListeners(DwtDragSource.__DRAG_LISTENER, DwtDragSource.__dragEvent);
 	return DwtDragSource.__dragEvent.doit;

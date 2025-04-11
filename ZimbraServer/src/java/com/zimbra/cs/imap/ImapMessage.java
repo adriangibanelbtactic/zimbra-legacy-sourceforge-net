@@ -36,12 +36,10 @@ import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeSet;
 
-import javax.mail.BodyPart;
 import javax.mail.MessagingException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MailDateFormat;
@@ -62,11 +60,9 @@ import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mime.Mime;
 import com.zimbra.cs.mime.MimeCompoundHeader;
 import com.zimbra.cs.mime.MimeCompoundHeader.*;
-import com.zimbra.cs.mime.MimeVisitor;
 import com.zimbra.cs.service.formatter.VCard;
 import com.zimbra.cs.util.JMSession;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.ZimbraLog;
 
 public class ImapMessage implements Comparable<ImapMessage> {
     static class ImapMessageSet extends TreeSet<ImapMessage> {
@@ -104,7 +100,7 @@ public class ImapMessage implements Comparable<ImapMessage> {
         sflags  = (type == MailItem.TYPE_CONTACT ? FLAG_IS_CONTACT : 0);
     }
 
-    ImapMessage(MailItem item) {
+    public ImapMessage(MailItem item) {
         this(item.getId(), item.getType(), item.getImapUid(), item.getFlagBitmask(), item.getTagBitmask());
     }
 
@@ -144,7 +140,7 @@ public class ImapMessage implements Comparable<ImapMessage> {
 
     static byte[] getContent(MailItem item) throws ServiceException {
         if (item instanceof Message) {
-            return ((Message) item).getMessageContent();
+            return ((Message) item).getContent();
         } else if (item instanceof Contact) {
             try {
                 VCard vcard = VCard.formatContact((Contact) item);
@@ -163,8 +159,9 @@ public class ImapMessage implements Comparable<ImapMessage> {
             } catch (Exception e) {
                 throw ServiceException.FAILURE("problems serializing contact " + item.getId(), e);
             }
-        } else
+        } else {
             return EMPTY_CONTENT;
+        }
     }
 
     static MimeMessage getMimeMessage(MailItem item, byte[] raw) throws ServiceException {
@@ -183,9 +180,28 @@ public class ImapMessage implements Comparable<ImapMessage> {
         }
     }
 
+    int getFlagModseq(ImapFlagCache i4cache) {
+        int modseq = 0;
+        long tagBuffer = tags;
+        for (int i = 0; tagBuffer != 0 && i < 64; i++) {
+            long mask = 1L << i;
+            if ((tagBuffer & mask) != 0) {
+                ImapFlag i4flag = i4cache.getByMask(mask);
+                if (i4flag != null)
+                    modseq = Math.max(modseq, i4flag.mModseq);
+                tagBuffer &= ~mask;
+            }
+        }
+        return modseq;
+    }
+
+    int getModseq(MailItem item, ImapFlagCache i4cache) {
+        return Math.max(item.getModifiedSequence(), getFlagModseq(i4cache));
+    }
+
     private static final String NO_FLAGS = "FLAGS ()";
 
-    String getFlags(ImapSession session) {
+    String getFlags(ImapFolder i4folder) {
         if ((flags & IMAP_FLAGS) == Flag.BITMASK_UNREAD && tags == 0 && sflags == 0)
             return NO_FLAGS;
         StringBuilder result = new StringBuilder("FLAGS (");
@@ -220,7 +236,7 @@ public class ImapMessage implements Comparable<ImapMessage> {
         for (int i = 0; tagBuffer != 0 && i < 64; i++) {
             long mask = 1L << i;
             if ((tagBuffer & mask) != 0) {
-                ImapFlag i4flag = session.getTagByMask(mask);
+                ImapFlag i4flag = i4folder.getTagByMask(mask);
                 if (i4flag != null)
                     result.append(result.length() == empty ? "" : " ").append(i4flag);
                 tagBuffer &= ~mask;
@@ -228,20 +244,20 @@ public class ImapMessage implements Comparable<ImapMessage> {
         }
         return result.append(')').toString();
     }
-    void setPermanentFlags(int f, long t, ImapFolder parent) {
+    void setPermanentFlags(int f, long t, int changeId, ImapFolder parent) {
         if (t == tags && (f & IMAP_FLAGS) == (flags & IMAP_FLAGS))
             return;
         flags = (f & IMAP_FLAGS) | (flags & ~IMAP_FLAGS);
         tags  = t;
         if (parent != null)
-            parent.dirtyMessage(this);
+            parent.dirtyMessage(this, changeId);
     }
     void setSessionFlags(short s, ImapFolder parent) {
         if ((s & MUTABLE_SESSION_FLAGS) == (sflags & MUTABLE_SESSION_FLAGS))
             return;
         sflags = (short) ((s & MUTABLE_SESSION_FLAGS) | (sflags & ~MUTABLE_SESSION_FLAGS));
         if (parent != null)
-            parent.dirtyMessage(this);
+            parent.dirtyMessage(this, -1);
     }
 
     private static final byte[] NIL = { 'N', 'I', 'L' };
@@ -407,6 +423,12 @@ public class ImapMessage implements Comparable<ImapMessage> {
                 ps.print("NIL");
             ps.write(' ');  ps.print(subtype);
             if (extensions) {
+                // 7.4.2: "Extension data follows the multipart subtype.  Extension data is never
+                //         returned with the BODY fetch, but can be returned with a BODYSTRUCTURE
+                //         fetch.  Extension data, if present, MUST be in the defined order.  The
+                //         extension data of a multipart body part are in the following order:
+                //         body parameter parenthesized list, body disposition, body language,
+                //         body location"
                 ps.write(' ');  nparams(ps, ctype);
                 ps.write(' ');  ndisposition(ps, mp.getHeader("Content-Disposition", null));
                 ps.write(' ');  nlist(ps, mp.getContentLanguage());
@@ -432,14 +454,20 @@ public class ImapMessage implements Comparable<ImapMessage> {
                 Object content = Mime.getMessageContent(mp);
                 ps.write(' ');  serializeEnvelope(ps, (MimeMessage) content);
                 ps.write(' ');  serializeStructure(ps, (MimePart) content, extensions);
-            }
-            if (rfc822 || primary.equals("\"TEXT\"")) {
+                ps.write(' ');  ps.print(getLineCount(mp));
+            } else if (primary.equals("\"TEXT\"")) {
                 // 7.4.2: "A body type of type TEXT contains, immediately after the basic fields, the
                 //         size of the body in text lines.  Note that this size is the size in its
                 //         content transfer encoding and not the resulting size after any decoding."
                 ps.write(' ');  ps.print(getLineCount(mp));
             }
             if (extensions) {
+                // 7.4.2: "Extension data follows the basic fields and the type-specific fields
+                //         listed above.  Extension data is never returned with the BODY fetch,
+                //         but can be returned with a BODYSTRUCTURE fetch.  Extension data, if
+                //         present, MUST be in the defined order.  The extension data of a
+                //         non-multipart body part are in the following order: body MD5, body
+                //         disposition, body language, body location"
                 ps.write(' ');  nstring(ps, mp.getContentMD5());
                 ps.write(' ');  ndisposition(ps, mp.getHeader("Content-Disposition", null));
                 ps.write(' ');  nlist(ps, mp.getContentLanguage());
@@ -475,116 +503,6 @@ public class ImapMessage implements Comparable<ImapMessage> {
         String[] samples = new String[] { null, "test", "\u0442", "ha\nnd", "\"dog\"", "ca\"t", "\0fr\0og\0" };
         for (String s : samples) {
             nstring2047(ps, s);  ps.write(' ');  nstring(ps, s);  ps.write(' ');  astring(ps, s);  ps.write(' ');  aSTRING(ps, s);  ps.write('\n');
-        }
-    }
-
-
-    private static class WindowsMobile5Converter extends MimeVisitor {
-        protected boolean visitBodyPart(MimeBodyPart bp)  { return false; }
-
-        protected boolean visitMessage(MimeMessage mm, VisitPhase visitKind) throws MessagingException {
-            if (visitKind != VisitPhase.VISIT_BEGIN)
-                return false;
-            // only want to affect multipart/alternative messages
-            String ctype = Mime.getContentType(mm);
-            if (!ctype.equals(Mime.CT_MULTIPART_ALTERNATIVE))
-                return false;
-
-            BodyPart bp = null;
-            try {
-                Object content = Mime.getMultipartContent(mm, ctype);
-                if (content instanceof MimeMultipart)
-                    bp = getPrimaryPart((MimeMultipart) content);
-            } catch (IOException e) {
-                ZimbraLog.extensions.warn("exception while traversing message; skipping", e);
-            } catch (MessagingException e) {
-                ZimbraLog.extensions.warn("exception while traversing message; skipping", e);
-            }
-            if (bp == null)
-                return false;
-            // check to make sure that the caller's OK with altering the message
-            if (mCallback != null && !mCallback.onModification())
-                return false;
-            // and put the selected part where the multipart/alternative used to be
-            mm.setDataHandler(bp.getDataHandler());
-            return true;
-        }
-        
-        protected boolean visitMultipart(MimeMultipart multi, VisitPhase visitKind) throws MessagingException {
-            if (visitKind != VisitPhase.VISIT_BEGIN)
-                return false;
-            // we should never hit a multipart/alternative part -- ever
-            if (Mime.getContentType(multi).equals(Mime.CT_MULTIPART_ALTERNATIVE)) {
-                ZimbraLog.extensions.warn("unexpected multipart/alternative found; skipping");
-                return false;
-            }
-
-            Map<Integer, BodyPart> replacements = null;
-            try {
-                for (int i = 0; i < multi.getCount(); i++) {
-                    BodyPart bp = multi.getBodyPart(i);
-                    String ctype = Mime.getContentType(bp);
-                    if (ctype.equals(Mime.CT_MULTIPART_ALTERNATIVE) && bp instanceof MimeBodyPart) {
-                        Object content = Mime.getMultipartContent((MimeBodyPart) bp, ctype);
-                        if (content instanceof MimeMultipart) {
-                            BodyPart subpart = getPrimaryPart((MimeMultipart) content);
-                            if (subpart != null) {
-                                if (replacements == null)
-                                    replacements = new HashMap<Integer, BodyPart>();
-                                replacements.put(i, subpart);
-                            }
-                        }
-                    }
-                }
-            } catch (IOException e) {
-                ZimbraLog.extensions.warn("exception while traversing multipart; skipping", e);
-            } catch (MessagingException e) {
-                ZimbraLog.extensions.warn("exception while traversing multipart; skipping", e);
-            }
-            if (replacements == null || replacements.isEmpty())
-                return false;
-            // check to make sure that the caller's OK with altering the message
-            if (mCallback != null && !mCallback.onModification())
-                return false;
-            // and put the selected parts where the multipart/alternatives used to be
-            for (Map.Entry<Integer, BodyPart> entry : replacements.entrySet()) {
-                multi.removeBodyPart(entry.getKey());
-                multi.addBodyPart(entry.getValue(), entry.getKey());
-            }
-            return true;
-        }
-
-        private static Map<String, Integer> typeRankings = new HashMap<String, Integer>();
-            static {
-                typeRankings.put(Mime.CT_TEXT_HTML, 1);
-                typeRankings.put(Mime.CT_TEXT_PLAIN, 2);
-                typeRankings.put(Mime.CT_TEXT_CALENDAR, 3);
-            }
-
-        private BodyPart getPrimaryPart(MimeMultipart multi) throws MessagingException, IOException {
-            BodyPart primary = null;
-            int primaryRank = 0;
-            for (int i = 0; i < multi.getCount(); i++) {
-                BodyPart subpart = multi.getBodyPart(i);
-                String ctype = Mime.getContentType(subpart);
-                if (ctype.equals(Mime.CT_MULTIPART_ALTERNATIVE) && subpart instanceof MimeBodyPart) {
-                    Object content = Mime.getMultipartContent((MimeBodyPart) subpart, ctype);
-                    if (content instanceof MimeMultipart) {
-                        subpart = getPrimaryPart((MimeMultipart) content);
-                        if (subpart == null)
-                            continue;
-                        ctype = Mime.getContentType(subpart);
-                    }
-                }
-                Integer rank = typeRankings.get(ctype);
-                if (rank == null)
-                    rank = 0;
-                if (primary == null || rank > primaryRank) {
-                    primary = subpart;
-                    primaryRank = rank;
-                }
-            }
-            return primary;
         }
     }
 }

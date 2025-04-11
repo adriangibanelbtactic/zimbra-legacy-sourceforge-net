@@ -77,6 +77,11 @@ public class SpamHandler {
         
     private Thread mSpamHandlerThread;
     
+    private String mSenderHeader;
+    private String mTypeHeader;
+    private String mTypeSpam;
+    private String mTypeHam;
+    
     public SpamHandler() {
         Config config;
         
@@ -113,6 +118,11 @@ public class SpamHandler {
             }
         }
 
+        mSenderHeader = config.getAttr(Provisioning.A_zimbraSpamReportSenderHeader, "X-Zimbra-Spam-Report-Sender");
+        mTypeHeader = config.getAttr(Provisioning.A_zimbraSpamReportTypeHeader, "X-Zimbra-Spam-Report-Type");
+        mTypeSpam = config.getAttr(Provisioning.A_zimbraSpamReportTypeSpam, "spam");
+        mTypeHam = config.getAttr(Provisioning.A_zimbraSpamReportTypeHam, "ham");
+        
         if (mIsSpamAddress != null || mIsNotSpamAddress != null) {
             Runnable r = new Runnable() {
                 public void run() {
@@ -127,7 +137,7 @@ public class SpamHandler {
     }
    
     private void sendReport(SpamReport sr) throws ServiceException, MessagingException {
-        String isSpamString = sr.mIsSpam ? "spam" : "!spam";
+        String isSpamString = sr.mIsSpam ? mTypeSpam : mTypeHam;
         InternetAddress toAddress = sr.mIsSpam ? mIsSpamAddress : mIsNotSpamAddress;
         
         SMTPMessage out = new SMTPMessage(JMSession.getSession());
@@ -154,6 +164,8 @@ public class SpamHandler {
         mbp.setHeader("Content-Disposition", Part.ATTACHMENT);
         mmp.addBodyPart(mbp);
         
+        out.addHeader(mSenderHeader, sr.mAccountName);
+        out.addHeader(mTypeHeader, isSpamString);
         out.setRecipient(javax.mail.Message.RecipientType.TO, toAddress);
         out.setEnvelopeFrom("<>");
         out.setSubject("zimbra-spam-report: " + sr.mAccountName + ": " + isSpamString);

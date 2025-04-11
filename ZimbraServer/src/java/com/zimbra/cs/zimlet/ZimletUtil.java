@@ -61,21 +61,14 @@ import com.zimbra.cs.account.NamedEntry;
 import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Zimlet;
 import com.zimbra.cs.account.Provisioning.CosBy;
+import com.zimbra.cs.account.soap.SoapProvisioning;
 import com.zimbra.cs.httpclient.URLUtil;
 import com.zimbra.common.localconfig.LC;
-import com.zimbra.cs.service.account.AccountService;
-import com.zimbra.cs.service.admin.AdminService;
-import com.zimbra.cs.service.mail.MailService;
 import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.FileUtil;
-import com.zimbra.common.util.ByteUtil;
-import com.zimbra.common.util.Pair;
-import com.zimbra.cs.util.Zimbra;
-import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapHttpTransport;
-import com.zimbra.soap.Element.XMLElement;
+import com.zimbra.common.util.*;
+import com.zimbra.common.soap.*;
+import com.zimbra.common.soap.Element.XMLElement;
 
 /**
  * 
@@ -313,11 +306,11 @@ public class ZimletUtil {
 		}
 		try {
 			String zimletBase = ZIMLET_BASE + "/" + zim.getZimletName() + "/";
-			Element entry = elem.addElement(AccountService.E_ZIMLET);
-			Element zimletContext = entry.addElement(AccountService.E_ZIMLET_CONTEXT);
-			zimletContext.addAttribute(AccountService.A_ZIMLET_BASE_URL, zimletBase);
+			Element entry = elem.addElement(AccountConstants.E_ZIMLET);
+			Element zimletContext = entry.addElement(AccountConstants.E_ZIMLET_CONTEXT);
+			zimletContext.addAttribute(AccountConstants.A_ZIMLET_BASE_URL, zimletBase);
 			if (priority >= 0) {
-				zimletContext.addAttribute(AccountService.A_ZIMLET_PRIORITY, priority);
+				zimletContext.addAttribute(AccountConstants.A_ZIMLET_PRIORITY, priority);
 			}
 			zim.getZimletDescription().addToElement(entry);
 			if (zim.hasZimletConfig()) {
@@ -344,9 +337,9 @@ public class ZimletUtil {
 	        	while (iter.hasNext()) {
 	        		ZimletFile zim = (ZimletFile) iter.next();
 	    			String zimletBase = ZIMLET_BASE + "/" + ZIMLET_DEV_DIR + "/" + zim.getZimletName() + "/";
-	    			Element entry = elem.addElement(AccountService.E_ZIMLET);
-	    			Element zimletContext = entry.addElement(AccountService.E_ZIMLET_CONTEXT);
-	    			zimletContext.addAttribute(AccountService.A_ZIMLET_BASE_URL, zimletBase);
+	    			Element entry = elem.addElement(AccountConstants.E_ZIMLET);
+	    			Element zimletContext = entry.addElement(AccountConstants.E_ZIMLET_CONTEXT);
+	    			zimletContext.addAttribute(AccountConstants.A_ZIMLET_BASE_URL, zimletBase);
 	    			zim.getZimletDescription().addToElement(entry);
 	    			if (zim.hasZimletConfig()) {
 	    				zim.getZimletConfig().addToElement(entry);
@@ -399,6 +392,7 @@ public class ZimletUtil {
 			if (listener != null)
 				listener.markFinished(localServer);
 		} catch (Exception e) {
+			ZimbraLog.zimlet.info("deploy", e);
 			if (listener != null)
 				listener.markFailed(localServer);
 		}
@@ -409,7 +403,7 @@ public class ZimletUtil {
 		// deploy on the rest of the servers
 		byte[] data = zf.toByteArray();
 		ZimletSoapUtil soapUtil = new ZimletSoapUtil(auth);
-		soapUtil.deployZimlet(zf.getName(), data, listener, true);
+		soapUtil.deployZimlet(zf.getName(), data, listener);
 	}
 	
 	enum Action { INSTALL, UPGRADE, REPAIR };
@@ -525,12 +519,12 @@ public class ZimletUtil {
 			FileUtil.mkdirs(zimletDir);
 		}
 		
-		File serviceLibDir = new File(LC.tomcat_directory.value() + File.separator + 
+		File serviceLibDir = new File(LC.mailboxd_directory.value() + File.separator + 
 									"webapps" + File.separator + 
 									"service" + File.separator + 
 									"WEB-INF" + File.separator + 
 									"lib");
-		File msgPropDir = new File(LC.tomcat_directory.value() + File.separator + 
+		File msgPropDir = new File(LC.mailboxd_directory.value() + File.separator + 
 									"webapps" + File.separator + 
 									"zimbra"  + File.separator + 
 									"WEB-INF" + File.separator + 
@@ -630,7 +624,7 @@ public class ZimletUtil {
 		
 		// deploy on the rest of the servers
 		ZimletSoapUtil soapUtil = new ZimletSoapUtil(auth);
-		soapUtil.undeployZimlet(zimlet, true);
+		soapUtil.undeployZimlet(zimlet);
 	}
 	
 	/**
@@ -1083,37 +1077,47 @@ public class ZimletUtil {
 		private String mAttachmentId;
 		private String mAuth;
 		private SoapHttpTransport mTransport;
+		private boolean mRunningInServer;
+		private Provisioning mProv;
 
-		public ZimletSoapUtil() {
+		public ZimletSoapUtil() throws ServiceException {
 			mUsername = LC.zimbra_ldap_user.value();
 			mPassword = LC.zimbra_ldap_password.value();
 			mAuth = null;
+			mRunningInServer = false;
+			SoapProvisioning sp = new SoapProvisioning();            
+			String server = LC.zimbra_zmprov_default_soap_server.value();
+			sp.soapSetURI(URLUtil.getAdminURL(server));
+			sp.soapAdminAuthenticate(mUsername, mPassword);
+			mProv = sp;
 		}
 		
 		public ZimletSoapUtil(String auth) {
 			mAuth = auth;
+			mRunningInServer = true;
+			mProv = Provisioning.getInstance();
 		}
 		
-		public void deployZimlet(String zimlet, byte[] data, DeployListener listener, boolean skipLocalhost) throws ServiceException {
-			Provisioning prov = Provisioning.getInstance();
-			List<Server> allServers = prov.getAllServers();
+		public void deployZimlet(String zimlet, byte[] data, DeployListener listener) throws ServiceException {
+			List<Server> allServers = mProv.getAllServers();
 			for (Server server : allServers) {
 				// localhost is already taken care of.
 		        boolean hasMailboxService = server.getMultiAttrSet(Provisioning.A_zimbraServiceEnabled).contains("mailbox");
-				if (skipLocalhost && prov.getLocalServer().equals(server) ||
-					!hasMailboxService)
+				if (mRunningInServer && (mProv.getLocalServer().compareTo(server) == 0) ||
+					!hasMailboxService) {
+					ZimbraLog.zimlet.info("Skipping on " + server.getName());
 					continue;
+				}
 				ZimbraLog.zimlet.info("Deploying on " + server.getName());
 				deployZimletOnServer(zimlet, data, server, listener);
 			}
 		}
 		
-		public void undeployZimlet(String zimlet, boolean skipLocalhost) throws ServiceException {
-			Provisioning prov = Provisioning.getInstance();
-			List<Server> allServers = prov.getAllServers();
+		public void undeployZimlet(String zimlet) throws ServiceException {
+			List<Server> allServers = mProv.getAllServers();
 			for (Server server : allServers) {
 		        boolean hasMailboxService = server.getMultiAttrSet(Provisioning.A_zimbraServiceEnabled).contains("mailbox");
-				if (skipLocalhost && prov.getLocalServer().equals(server) ||
+				if (mRunningInServer && (mProv.getLocalServer().compareTo(server) == 0) ||
 					!hasMailboxService)
 					continue;
 				ZimbraLog.zimlet.info("Undeploying on " + server.getName());
@@ -1142,6 +1146,7 @@ public class ZimletUtil {
 				if (listener != null)
 					listener.markFinished(server);
 			} catch (Exception e) {
+				ZimbraLog.zimlet.info("deploy failed on "+server.getName(), e);
 				if (listener != null)
 					listener.markFailed(server);
 				else if (e instanceof ServiceException)
@@ -1155,9 +1160,9 @@ public class ZimletUtil {
 		}
 		
 		private void soapDeployZimlet() throws ServiceException, IOException {
-			XMLElement req = new XMLElement(AdminService.DEPLOY_ZIMLET_REQUEST);
-			req.addAttribute(AdminService.A_ACTION, AdminService.A_DEPLOYLOCAL);
-			req.addElement(MailService.E_CONTENT).addAttribute(MailService.A_ATTACHMENT_ID, mAttachmentId);
+			XMLElement req = new XMLElement(AdminConstants.DEPLOY_ZIMLET_REQUEST);
+			req.addAttribute(AdminConstants.A_ACTION, AdminConstants.A_DEPLOYLOCAL);
+			req.addElement(MailConstants.E_CONTENT).addAttribute(MailConstants.A_ATTACHMENT_ID, mAttachmentId);
 			mTransport.invoke(req);
 		}
 		
@@ -1187,9 +1192,9 @@ public class ZimletUtil {
 		}
 		
 		private void soapUndeployZimlet(String name) throws ServiceException, IOException {
-			XMLElement req = new XMLElement(AdminService.UNDEPLOY_ZIMLET_REQUEST);
-			req.addAttribute(AdminService.A_ACTION, AdminService.A_DEPLOYLOCAL);
-			req.addAttribute(AdminService.A_NAME, name);
+			XMLElement req = new XMLElement(AdminConstants.UNDEPLOY_ZIMLET_REQUEST);
+			req.addAttribute(AdminConstants.A_ACTION, AdminConstants.A_DEPLOYLOCAL);
+			req.addAttribute(AdminConstants.A_NAME, name);
 			mTransport.invoke(req);
 		}
 		
@@ -1233,11 +1238,11 @@ public class ZimletUtil {
 	    }
 	    
 		private void auth() throws ServiceException, IOException {
-			XMLElement req = new XMLElement(AdminService.AUTH_REQUEST);
-			req.addElement(AdminService.E_NAME).setText(mUsername);
-			req.addElement(AdminService.E_PASSWORD).setText(mPassword);
+			XMLElement req = new XMLElement(AdminConstants.AUTH_REQUEST);
+			req.addElement(AdminConstants.E_NAME).setText(mUsername);
+			req.addElement(AdminConstants.E_PASSWORD).setText(mPassword);
 			Element resp = mTransport.invoke(req);
-			mAuth = resp.getElement(AccountService.E_AUTH_TOKEN).getText();
+			mAuth = resp.getElement(AccountConstants.E_AUTH_TOKEN).getText();
 		}
 		private static class ByteArrayPart extends PartBase {
 			private byte[] mData;
@@ -1379,7 +1384,7 @@ public class ZimletUtil {
 				} else {
 					ZimletSoapUtil soapUtil = new ZimletSoapUtil();
 					File zf = new File(zimlet);
-					soapUtil.deployZimlet(zf.getName(), ByteUtil.getContent(zf), null, false);
+					soapUtil.deployZimlet(zf.getName(), ByteUtil.getContent(zf), null);
 				}
 				break;
 			case INSTALL_ZIMLET:
@@ -1387,7 +1392,7 @@ public class ZimletUtil {
 				break;
 			case UNINSTALL_ZIMLET:
 				ZimletSoapUtil su = new ZimletSoapUtil();
-				su.undeployZimlet(zimlet, false);
+				su.undeployZimlet(zimlet);
 				break;
 			case LDAP_DEPLOY:
 				ldapDeploy(zimlet);
@@ -1425,7 +1430,10 @@ public class ZimletUtil {
 				break;
 			}
 		} catch (Exception e) {
-			System.out.println("Error: " + e.getMessage());
+			if (sQuietMode)
+				ZimbraLog.zimlet.error("Error " + e.getMessage());
+			else
+				ZimbraLog.zimlet.error("Error", e);
 			System.exit(1);
 		}
 	}
@@ -1453,9 +1461,9 @@ public class ZimletUtil {
     public static void main(String[] args) throws IOException {
     	getOpt(args);
     	if (sQuietMode) {
-    		Zimbra.toolSetup("WARN");
+    		CliUtil.toolSetup("WARN");
     	} else {
-    		Zimbra.toolSetup();
+    		CliUtil.toolSetup();
     	}
         setup();
         dispatch(args);

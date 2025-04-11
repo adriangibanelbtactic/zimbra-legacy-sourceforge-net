@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 2747 $
+ * $Date: 2005-08-31 15:12:28 -0300 (Wed, 31 Aug 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.handler;
 
 import org.dom4j.DocumentHelper;
@@ -194,13 +181,18 @@ public class IQAuthHandler extends IQHandler implements IQAuthInfo {
             response.setError(PacketError.Condition.not_acceptable);
         }
         username = username.toLowerCase();
+        if (username.indexOf('@') > 0) {
+            assert(username.substring(username.indexOf('@')).equals(session.getServerName()));
+        } else {
+            username = username + '@' + session.getServerName();
+        }
+        
         // If a session already exists with the requested JID, then check to see
         // if we should kick it off or refuse the new connection
         if (sessionManager.isActiveRoute(username, resource)) {
             ClientSession oldSession;
             try {
-                String domain = localServer.getServerInfo().getName();
-                oldSession = sessionManager.getSession(username, domain, resource);
+                oldSession = sessionManager.getSession(username, resource);
                 oldSession.incrementConflictCount();
                 int conflictLimit = sessionManager.getConflictKickLimit();
                 if (conflictLimit != SessionManager.NEVER_KICK && oldSession.getConflictCount() > conflictLimit) {

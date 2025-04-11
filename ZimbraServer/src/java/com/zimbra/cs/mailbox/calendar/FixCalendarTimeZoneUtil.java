@@ -34,11 +34,11 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.admin.AdminService;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapFaultException;
+import com.zimbra.common.util.CliUtil;
 import com.zimbra.cs.util.SoapCLI;
-import com.zimbra.cs.util.Zimbra;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
 
 public class FixCalendarTimeZoneUtil extends SoapCLI {
 
@@ -72,7 +72,7 @@ public class FixCalendarTimeZoneUtil extends SoapCLI {
     }
 
     public static void main(String[] args) {
-        Zimbra.toolSetup();
+        CliUtil.toolSetup();
         FixCalendarTimeZoneUtil util = null;
         try {
             util = new FixCalendarTimeZoneUtil();
@@ -103,12 +103,12 @@ public class FixCalendarTimeZoneUtil extends SoapCLI {
 
     private void doit(String[] accts, String after, String country, boolean sync)
     throws SoapFaultException, IOException, ServiceException {
-        Element req = new Element.XMLElement(AdminService.FIX_CALENDAR_TIME_ZONE_REQUEST);
+        Element req = new Element.XMLElement(AdminConstants.FIX_CALENDAR_TIME_ZONE_REQUEST);
         if (accts == null || accts.length == 0)
             throw ServiceException.INVALID_REQUEST("Missing -" + O_ACCOUNT + " option", null);
         for (String acct : accts) {
-            Element acctElem = req.addElement(AdminService.E_ACCOUNT);
-            acctElem.addAttribute(AdminService.A_NAME, acct);
+            Element acctElem = req.addElement(AdminConstants.E_ACCOUNT);
+            acctElem.addAttribute(AdminConstants.A_NAME, acct);
         }
         if (after != null) {
             Date afterTime = parseDatetime(after);
@@ -116,19 +116,19 @@ public class FixCalendarTimeZoneUtil extends SoapCLI {
                 SimpleDateFormat f = new SimpleDateFormat(CANONICAL_DATETIME_FORMAT);
                 String tstamp = f.format(afterTime);
                 System.out.printf("using cutoff time of %s\n", tstamp);
-                req.addAttribute(AdminService.A_TZFIXUP_AFTER, afterTime.getTime());
+                req.addAttribute(AdminConstants.A_TZFIXUP_AFTER, afterTime.getTime());
             } else {
                 System.err.printf("Invalid timestamp \"%s\" specified for --%s option\n",
                                   after, O_AFTER);
                 System.err.println();
-                printAllowedDatetimeFormats(System.err);
+                System.err.print(getAllowedDatetimeFormatsHelp());
                 System.exit(1);
             }
         }
         if (country != null)
-            req.addAttribute(AdminService.A_COUNTRY, country);
+            req.addAttribute(AdminConstants.A_COUNTRY, country);
         if (sync)
-            req.addAttribute(AdminService.A_TZFIXUP_SYNC, true);
+            req.addAttribute(AdminConstants.A_TZFIXUP_SYNC, true);
 
         auth();
         getTransport().invokeWithoutSession(req);

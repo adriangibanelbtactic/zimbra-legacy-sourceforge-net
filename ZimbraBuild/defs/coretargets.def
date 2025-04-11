@@ -88,8 +88,6 @@ $(BUILD_ROOT)/zimbracore.spec:
 		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(755, root, root) /opt/zimbra/libexec" >> \
 		$(BUILD_ROOT)/zimbracore.spec
-	echo "%attr(755, root, root) /opt/zimbra/logger" >> \
-		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(-, zimbra, zimbra) /opt/zimbra/conf" >> \
 		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(-, zimbra, zimbra) /opt/zimbra/db" >> \
@@ -100,10 +98,6 @@ $(BUILD_ROOT)/zimbracore.spec:
 		$(BUILD_ROOT)/zimbracore.spec
 	echo "%attr(-, zimbra, zimbra) /opt/zimbra/zimbramon" >> \
 		$(BUILD_ROOT)/zimbracore.spec
-	echo "%attr(-, zimbra, zimbra) /opt/zimbra/sleepycat-$(BDB_VERSION)" >> \
-		$(BUILD_ROOT)/zimbracore.spec
-	echo "%attr(-, root, zimbra) /opt/zimbra/$(SASL_DIR)-$(SASL_VERSION)" >> \
-		$(BUILD_ROOT)/zimbracore.spec
 
 core_stage: $(CORE_COMPONENTS)
 
@@ -112,6 +106,7 @@ $(CORE_DEST_DIR):
 	cp $(ENV_FILE_SOURCE) $(CORE_DEST_DIR)/$(ENV_FILE_DEST)
 	cp $(PROFILE_SOURCE) $(CORE_DEST_DIR)/$(PROFILE_DEST)
 	cp $(EXRC_SOURCE) $(CORE_DEST_DIR)/$(EXRC_DEST)
+	cp $(VIMINFO_SOURCE) $(CORE_DEST_DIR)/$(VIMINFO_DEST)
 
 $(CORE_DEST_DIR)/doc:
 	mkdir -p $@
@@ -126,11 +121,12 @@ $(CORE_DEST_DIR)/zimbramon: $(CORE_DEST_DIR)/zimbramon/lib $(CORE_DEST_DIR)/zimb
 	mkdir -p $(CORE_DEST_DIR)/zimbramon/mrtg/conf
 	cp $(PACKAGE_CONF_DIR)/Conf/mrtg.cfg $(CORE_DEST_DIR)/zimbramon/mrtg/conf
 	(cd $(CORE_DEST_DIR)/zimbramon; tar xzf $(RRD_SOURCE).tar.gz)
-	mkdir -p $(CORE_DEST_DIR)/logger/db/work
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/rrdtool/work
+	mkdir -p $(CORE_DEST_DIR)/zimbramon/rrdtool/work
 	cp -f $(PACKAGE_CONF_DIR)/Img/connection_failed.gif \
-		$(CORE_DEST_DIR)/logger/db/work
+		$(CORE_DEST_DIR)/zimbramon/rrdtool/work
 	cp -f $(PACKAGE_CONF_DIR)/Img/data_not_available.gif \
-		$(CORE_DEST_DIR)/logger/db/work
+		$(CORE_DEST_DIR)/zimbramon/rrdtool/work
 
 $(CORE_DEST_DIR)/zimbramon/crontabs:
 	mkdir -p $@
@@ -142,23 +138,24 @@ $(CORE_DEST_DIR)/zimbramon/lib:
 	tar xzf $(PERL_LIB_SOURCE)/builds/$(BUILD_PLATFORM)/perllib.tgz)
 	cp -R $(BUILD_ROOT)/lib/Zimbra $(CORE_DEST_DIR)/zimbramon/lib
 
-$(CORE_DEST_DIR)/lib: $(WEBAPP_DIR)/service.war $(LDAP_DEST_DIR)/$(LDAP_DIR) pcre_$(BUILD_PLATFORM) $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $(LAUNCHER_DIR)/build/zimbra-launcher.jar
+$(CORE_DEST_DIR)/lib: $(WEBAPP_DIR)/service.war $(LDAP_DEST_DIR)/$(LDAP_DIR) $(MTA_DEST_DIR)/$(BDB_DIR) pcre_$(BUILD_PLATFORM) $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $(LAUNCHER_DIR)/build/zimbra-launcher.jar
 	mkdir -p $@
 	cp -pr $(SERVICE_DIR)/build/dist/lib/* $@
 	cp -pr $(LDAP_DEST_DIR)/$(LDAP_DIR)/lib/* $@
+	cp -pr $(MTA_DEST_DIR)/$(BDB_DIR)/lib/* $@
 	cp -pr $(SERVICE_DIR)/build/dist/lib/* $@
 	cp -pr $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT) $@
 	(cd $@; tar xzf $(THIRD_PARTY)/mysql/$(BUILD_PLATFORM)/mysql-$(MYSQL_CLIENT_VERSION).tgz)
 	cp -f $(LAUNCHER_DIR)/build/zimbra-launcher.jar $(CORE_DEST_DIR)/lib/jars
 
 $(NATIVE_DIR)/build/libzimbra-native.$(JNI_EXT):
-	(cd $(NATIVE_DIR); make TOMCAT_HOME=$(TOMCAT_HOME) JAVA_BINARY=$(JAVA_BINARY))
+	(cd $(NATIVE_DIR); make JAVA_BINARY=$(JAVA_BINARY))
 
 $(LAUNCHER_DIR)/build/zimbra-launcher.jar:
-	(cd $(LAUNCHER_DIR); make TOMCAT_HOME=$(TOMCAT_HOME) JAVA_BINARY=$(JAVA_BINARY))
+	(cd $(LAUNCHER_DIR); make JAVA_BINARY=$(JAVA_BINARY))
 
-$(LAUNCHER_DIR)/build/zmtomcatmgr:
-	(cd $(LAUNCHER_DIR); make TOMCAT_HOME=$(TOMCAT_HOME) JAVA_BINARY=$(JAVA_BINARY))
+$(LAUNCHER_DIR)/build/zmmailboxdmgr:
+	(cd $(LAUNCHER_DIR); make JAVA_BINARY=$(JAVA_BINARY))
 
 pcre_UBUNTU6: 
 	mkdir -p $(CORE_DEST_DIR)/lib
@@ -195,8 +192,6 @@ pcre_SuSE10: ;
 pcre_openSUSE_10.2: ;
 
 pcre_SuSEES10: ;
-
-pcre_SLES10_64: ;
 
 pcre_RPL1: ;
 
@@ -255,11 +250,10 @@ $(CORE_DEST_DIR)/conf: $(WEBAPP_DIR)/service.war
 	cp $(SERVICE_DIR)/conf/postfix_header_checks.in $@
 	cp $(SERVICE_DIR)/conf/perdition.conf.in $@
 	cp $(SERVICE_DIR)/conf/salocal.cf $@/salocal.cf.in
-	cp $(SERVICE_DIR)/conf/zmmta.cf $@
+	cp $(SERVICE_DIR)/conf/zmmta.cf-$(MAILBOXD_SERVER) $@/zmmta.cf
 	cp $(SERVICE_DIR)/conf/timezones.ics $@
 	cp $(SERVICE_DIR)/conf/zimbra.ld.conf $@
 	cp $(SERVICE_DIR)/conf/my.logger.cnf $@
-	cp $(SERVICE_DIR)/conf/wildfire.xml $@
 	cp $(SERVICE_DIR)/conf/com.zimbra.zcs.plist $@
 	cp $(SERVICE_DIR)/conf/postfix_recipient_restrictions.cf $@
 	cp -Rf $(SERVICE_DIR)/conf/msgs $@/msgs
@@ -268,7 +262,7 @@ $(CORE_DEST_DIR)/conf: $(WEBAPP_DIR)/service.war
 	mkdir -p $@/attrs
 	cp -f $(SERVICE_DIR)/build/dist/conf/attrs/* $@/attrs
 
-$(CORE_DEST_DIR)/libexec: $(LAUNCHER_DIR)/build/zmtomcatmgr
+$(CORE_DEST_DIR)/libexec: $(LAUNCHER_DIR)/build/zmmailboxdmgr
 	@echo "*** Installing libexec"
 	mkdir -p $@/installer/util/modules
 	mkdir -p $@/installer/bin
@@ -287,8 +281,8 @@ $(CORE_DEST_DIR)/libexec: $(LAUNCHER_DIR)/build/zmtomcatmgr
 	cp -f $(PACKAGE_CONF_DIR)/Install/postinstall.pm $@/postinstall.pm
 	cp -f $(PACKAGE_CONF_DIR)/Install/preinstall.pm $@/preinstall.pm
 	cp -f $(PACKAGE_CONF_DIR)/Install/Util/addUser.sh $@/addUser.sh
-	cp -f $(LAUNCHER_DIR)/build/zmtomcatmgr $@
-	cp -f $(LAUNCHER_DIR)/build/zmtomcatmgr.unrestricted $@
+	cp -f $(LAUNCHER_DIR)/build/zmmailboxdmgr $@
+	cp -f $(LAUNCHER_DIR)/build/zmmailboxdmgr.unrestricted $@
 	cp $(SERVICE_DIR)/src/libexec/* $@
 	cp $@/swatch $@/logswatch
 	cp -f $(BUILD_ROOT)/rpmconf/Build/get_plat_tag.sh $@
@@ -308,7 +302,7 @@ $(CORE_DEST_DIR)/bin:
 	cp $(ZIMBRA_BIN_DIR)/zmantivirusctl $@
 	cp $(ZIMBRA_BIN_DIR)/zmcontrol $@
 	cp $(ZIMBRA_BIN_DIR)/zmloggerctl $@
-	cp $(ZIMBRA_BIN_DIR)/zmmailboxctl $@
+	cp $(ZIMBRA_BIN_DIR)/zmstorectl $@
 	cp $(ZIMBRA_BIN_DIR)/zmmtactl $@
 	cp $(ZIMBRA_BIN_DIR)/zmspellctl $@
 	cp $(ZIMBRA_BIN_DIR)/zmapachectl $@
@@ -325,16 +319,3 @@ $(CORE_DEST_DIR)/lib/libexpat.dylib: $(CORE_DEST_DIR)/lib
 	(cd $(CORE_DEST_DIR); tar xzf $(THIRD_PARTY)/popt/builds/$(BUILD_PLATFORM)/popt.tgz)
 	rm -rf $(CORE_DEST_DIR)/include
 
-$(CORE_DEST_DIR)/$(BDB_DIR):
-	@echo "*** Creating sleepycat"
-	mkdir -p $@
-	(cd $(CORE_DEST_DIR); tar xzf $(BDB_SOURCE).tgz; chmod u+w $(BDB_DIR)/bin/*)
-	rm -rf $(CORE_DEST_DIR)/$(BDB_DIR)/docs/java
-
-$(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION):
-	@echo "*** Creating cyrus-sasl"
-	mkdir -p $@
-	(cd $(CORE_DEST_DIR); tar xzf $(SASL_SOURCE).tgz;)
-	mkdir -p $(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION)/etc
-	cp -f $(SERVICE_DIR)/conf/saslauthd.conf.in $(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION)/etc/
-	cp -f $(SERVICE_DIR)/conf/postfix_sasl_smtpd.conf $(CORE_DEST_DIR)/$(SASL_DIR)-$(SASL_VERSION)/lib/sasl2/smtpd.conf

@@ -29,11 +29,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.DataSource;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.ldap.LdapUtil;
-import com.zimbra.cs.service.mail.MailService;
-import com.zimbra.soap.Element;
 
 public class ZPop3DataSource implements ZDataSource {
 
@@ -45,24 +45,24 @@ public class ZPop3DataSource implements ZDataSource {
     private String mUsername;
     private String mPassword;
     private String mFolderId;
-    private String mConnectionType;
+    private DataSource.ConnectionType mConnectionType;
     private boolean mLeaveOnServer;
     
     public ZPop3DataSource(Element e) throws ServiceException {
-        mId = e.getAttribute(MailService.A_ID);
-        mName = e.getAttribute(MailService.A_NAME);
-        mEnabled = e.getAttributeBool(MailService.A_DS_IS_ENABLED);
-        mHost = e.getAttribute(MailService.A_DS_HOST);
-        mPort = (int) e.getAttributeLong(MailService.A_DS_PORT, 110);
-        mUsername = e.getAttribute(MailService.A_DS_USERNAME);
-        mFolderId = e.getAttribute(MailService.A_FOLDER);
-        mConnectionType = e.getAttribute(MailService.A_DS_CONNECTION_TYPE);
-        mLeaveOnServer = e.getAttributeBool(MailService.A_DS_LEAVE_ON_SERVER);
+        mId = e.getAttribute(MailConstants.A_ID);
+        mName = e.getAttribute(MailConstants.A_NAME);
+        mEnabled = e.getAttributeBool(MailConstants.A_DS_IS_ENABLED);
+        mHost = e.getAttribute(MailConstants.A_DS_HOST);
+        mPort = (int) e.getAttributeLong(MailConstants.A_DS_PORT, 110);
+        mUsername = e.getAttribute(MailConstants.A_DS_USERNAME);
+        mFolderId = e.getAttribute(MailConstants.A_FOLDER);
+        mConnectionType = DataSource.ConnectionType.fromString(e.getAttribute(MailConstants.A_DS_CONNECTION_TYPE));
+        mLeaveOnServer = e.getAttributeBool(MailConstants.A_DS_LEAVE_ON_SERVER);
     }
 
     public ZPop3DataSource(String name, boolean enabled, String host, int port,
                            String username, String password, String folderid,
-                           String connectionType, boolean leaveOnServer) {
+                           DataSource.ConnectionType connectionType, boolean leaveOnServer) {
         mName = name;
         mEnabled = enabled;
         mHost = host;
@@ -90,23 +90,23 @@ public class ZPop3DataSource implements ZDataSource {
     }
 
     public Element toElement(Element parent) {
-        Element src = parent.addElement(MailService.E_DS_POP3);
-        if (mId != null) src.addAttribute(MailService.A_ID, mId);
-        src.addAttribute(MailService.A_NAME, mName);
-        src.addAttribute(MailService.A_DS_IS_ENABLED, mEnabled);
-        src.addAttribute(MailService.A_DS_HOST, mHost);
-        src.addAttribute(MailService.A_DS_PORT, mPort);
-        src.addAttribute(MailService.A_DS_USERNAME, mUsername);
-        if (mPassword != null) src.addAttribute(MailService.A_DS_PASSWORD, mPassword);
-        src.addAttribute(MailService.A_FOLDER, mFolderId);
-        src.addAttribute(MailService.A_DS_CONNECTION_TYPE, mConnectionType);
-        src.addAttribute(MailService.A_DS_LEAVE_ON_SERVER, mLeaveOnServer);
+        Element src = parent.addElement(MailConstants.E_DS_POP3);
+        if (mId != null) src.addAttribute(MailConstants.A_ID, mId);
+        src.addAttribute(MailConstants.A_NAME, mName);
+        src.addAttribute(MailConstants.A_DS_IS_ENABLED, mEnabled);
+        src.addAttribute(MailConstants.A_DS_HOST, mHost);
+        src.addAttribute(MailConstants.A_DS_PORT, mPort);
+        src.addAttribute(MailConstants.A_DS_USERNAME, mUsername);
+        if (mPassword != null) src.addAttribute(MailConstants.A_DS_PASSWORD, mPassword);
+        src.addAttribute(MailConstants.A_FOLDER, mFolderId);
+        src.addAttribute(MailConstants.A_DS_CONNECTION_TYPE, mConnectionType.name());
+        src.addAttribute(MailConstants.A_DS_LEAVE_ON_SERVER, mLeaveOnServer);
         return src;
     }
 
     public Element toIdElement(Element parent) {
-        Element src = parent.addElement(MailService.E_DS_POP3);
-        src.addAttribute(MailService.A_ID, mId);
+        Element src = parent.addElement(MailConstants.E_DS_POP3);
+        src.addAttribute(MailConstants.A_ID, mId);
         return src;
     }
 
@@ -132,8 +132,8 @@ public class ZPop3DataSource implements ZDataSource {
     public String getFolderId() { return mFolderId; }
     public void setFolderId(String folderid) { mFolderId = folderid; }
 
-    public String getConnectionType() { return mConnectionType; }
-    public void setConnectionType(String connectionType) { mConnectionType = connectionType; }
+    public DataSource.ConnectionType getConnectionType() { return mConnectionType; }
+    public void setConnectionType(DataSource.ConnectionType connectionType) { mConnectionType = connectionType; }
     
     public boolean leaveOnServer() { return mLeaveOnServer; }
     public void setLeaveOnServer(boolean leaveOnServer) { mLeaveOnServer = leaveOnServer; }
@@ -145,7 +145,7 @@ public class ZPop3DataSource implements ZDataSource {
         attrs.put(Provisioning.A_zimbraDataSourceEnabled, mEnabled ? "TRUE" : "FALSE");
         attrs.put(Provisioning.A_zimbraDataSourceUsername, mUsername);
         attrs.put(Provisioning.A_zimbraDataSourceHost, mHost);
-        attrs.put(Provisioning.A_zimbraDataSourceConnectionType, mConnectionType);
+        attrs.put(Provisioning.A_zimbraDataSourceConnectionType, mConnectionType.toString());
         if (mPort > 0)
             attrs.put(Provisioning.A_zimbraDataSourcePort, "" + mPort);
         if (mFolderId != null)
@@ -164,7 +164,7 @@ public class ZPop3DataSource implements ZDataSource {
         sb.add("port", mPort);
         sb.add("username", mUsername);
         sb.add("folderId", mFolderId);
-        sb.add("connectionType", mConnectionType);
+        sb.add("connectionType", mConnectionType.name());
         sb.add("leaveOnServer", mLeaveOnServer);
         sb.endStruct();
         return sb.toString();

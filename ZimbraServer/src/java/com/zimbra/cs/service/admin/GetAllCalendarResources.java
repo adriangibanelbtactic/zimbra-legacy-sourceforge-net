@@ -28,12 +28,13 @@ package com.zimbra.cs.service.admin;
 import org.dom4j.QName;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.CalendarResource;
 import com.zimbra.cs.account.Domain;
 import com.zimbra.cs.account.NamedEntry;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.service.account.ToXML;
-import com.zimbra.soap.Element;
 
 /**
  * @author jhahm
@@ -41,15 +42,14 @@ import com.zimbra.soap.Element;
 public class GetAllCalendarResources extends GetAllAccounts {
 
     protected QName getResponseQName() {
-        return AdminService.GET_ALL_CALENDAR_RESOURCES_RESPONSE;
+        return AdminConstants.GET_ALL_CALENDAR_RESOURCES_RESPONSE;
     }
     
     protected void doDomain(final Element e, Domain d)
     throws ServiceException {
         NamedEntry.Visitor visitor = new NamedEntry.Visitor() {
-            public void visit(com.zimbra.cs.account.NamedEntry entry)
-            throws ServiceException {
-                ToXML.encodeCalendarResource(e, (CalendarResource) entry, true);
+            public void visit(com.zimbra.cs.account.NamedEntry entry) {
+                ToXML.encodeCalendarResourceOld(e, (CalendarResource) entry, true);
             }
         };
         Provisioning.getInstance().getAllCalendarResources(d, visitor);

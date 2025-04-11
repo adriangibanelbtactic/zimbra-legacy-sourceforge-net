@@ -29,6 +29,7 @@
 package com.zimbra.cs.session;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -71,24 +72,27 @@ public final class PendingModifications {
         Change(Object thing, int reason)  { what = thing;  why = reason; }
     }
 
+
+    /** Set of all the MailItem types that are included in this structure
+     * The mask is generated from the MailItem type using 
+     * @link{MailItem#typeToBitmask} */
+    public int changedTypes = 0;
+
     // The key is MailItemID
-    public HashMap<Integer, MailItem> created;
+    public LinkedHashMap<Integer, MailItem> created;
     public HashMap<Integer, Change> modified;
     public HashMap<Integer, Object> deleted;
 
     /** IMNotifications are strictly sequential right now */
     public List<IMNotification> imNotifications;
 
-    /** used by the Session object */
+    /** used by the Session object to ensure that notifications are reliably
+     * received by the listener */
     private int mSequence;
-
+    public int getSequence() { return mSequence; }
 
     public PendingModifications() { }
     public PendingModifications(int seqno) { mSequence = seqno; }
-
-    public int getSequence() { 
-        return mSequence; 
-    }
 
     public boolean hasNotifications() {
         return ((imNotifications != null && imNotifications.size() > 0) ||
@@ -102,39 +106,54 @@ public final class PendingModifications {
             imNotifications = new LinkedList<IMNotification>();
         imNotifications.add(not);
     }
-
+    
     public void recordCreated(MailItem item) {
 //        ZimbraLog.mailbox.debug("--> NOTIFY: created " + item.getId());
         if (created == null)
-            created = new HashMap<Integer, MailItem>();
+            created = new LinkedHashMap<Integer, MailItem>();
+        changedTypes |= MailItem.typeToBitmask(item.getType());
         created.put(item.getId(), item);
     }
 
-    public void recordDeleted(int id) {
+    public void recordDeleted(int id, byte type) {
+        if (type != 0) 
+            changedTypes |= MailItem.typeToBitmask(type);
         Integer key = new Integer(id);
         delete(key, key);
     }
+
+    public void recordDeleted(List<Integer> ids, int typesMask) {
+        changedTypes |= typesMask;
+        for (Integer id : ids) 
+            delete(id,id);
+    }
+
     public void recordDeleted(MailItem item) {
+        changedTypes |= MailItem.typeToBitmask(item.getType());
         delete(new Integer(item.getId()), item);
     }
+
     private void delete(Integer key, Object value) {
-//        ZimbraLog.mailbox.debug("--> NOTIFY: deleted " + key);
-        if (created != null)
-            if (created.remove(key) != null)
-                return;
-        if (modified != null)
-            modified.remove(key);
-        if (deleted == null)
-            deleted = new HashMap<Integer, Object>();
-        deleted.put(key, value);
+//      ZimbraLog.mailbox.debug("--> NOTIFY: deleted " + key);
+      if (created != null)
+          if (created.remove(key) != null)
+              return;
+      if (modified != null)
+          modified.remove(key);
+      if (deleted == null)
+          deleted = new HashMap<Integer, Object>();
+      deleted.put(key, value);
     }
 
     public void recordModified(Mailbox mbox, int reason) {
         recordModified(new Integer(0), mbox, reason);
     }
+
     public void recordModified(MailItem item, int reason) {
+        changedTypes |= MailItem.typeToBitmask(item.getType());
         recordModified(new Integer(item.getId()), item, reason);
     }
+
     private void recordModified(Integer key, Object item, int reason) {
 //        ZimbraLog.mailbox.debug("--> NOTIFY: modified " + key + " (" + reason + ')');
         Change chg = null;
@@ -156,10 +175,42 @@ public final class PendingModifications {
         modified.put(key, chg);
     }
     
+    public void add(PendingModifications other) {
+        changedTypes |= other.changedTypes;
+        
+        // XXX: should constrain to folders, tags, and stuff relevant to the current query?
+        if (other.deleted != null) {
+            for (Object obj : other.deleted.values())
+                if (obj instanceof MailItem)
+                    recordDeleted((MailItem) obj);
+                else if (obj instanceof Integer)
+                    recordDeleted((Integer) obj, (byte) 0);
+        }
+
+        if (other.created != null) {
+            for (MailItem item : other.created.values())
+                recordCreated(item);
+        }
+
+        if (other.modified != null) {
+            for (Change chg : other.modified.values())
+                if (chg.what instanceof MailItem)
+                    recordModified((MailItem) chg.what, chg.why);
+                else if (chg.what instanceof Mailbox)
+                    recordModified((Mailbox) chg.what, chg.why);
+        }
+        
+        if (other.imNotifications != null) {
+            for (IMNotification not : other.imNotifications) 
+                addIMNotification(not);
+        }
+    }
+    
     public void clear()  { 
         created = null;  
         deleted = null;  
         modified = null;
+        changedTypes = 0;
         imNotifications = null;
     }
 }

@@ -1,26 +1,12 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: ComponentSession.java,v $
+ * $Revision: 3174 $
+ * $Date: 2005-12-08 17:41:00 -0300 (Thu, 08 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
 package org.jivesoftware.wildfire.component;
 
@@ -67,12 +53,11 @@ public class ComponentSession extends Session {
      * @param connection the connection with the component.
      * @return a newly created session between the server and a component.
      */
-    public static Session createSession(String serverName, XMPPPacketReader reader,
-            SocketConnection connection) throws UnauthorizedException, IOException,
+    public static Session createSession(String serverName, SocketConnection connection,
+                Element streamElt) throws UnauthorizedException, IOException,
             XmlPullParserException
     {
-        XmlPullParser xpp = reader.getXPPParser();
-        String domain = xpp.getAttributeValue("", "to");
+        String domain = streamElt.attributeValue("to");
 
         Log.debug("[ExComp] Starting registration of new external component for domain: " + domain);
 
@@ -90,7 +75,7 @@ public class ComponentSession extends Session {
 
         // Check that a domain was provided in the stream header
         if (domain == null) {
-            Log.debug("[ExComp] Domain not specified in stanza: " + xpp.getText());
+            Log.debug("[ExComp] Domain not specified in stanza: " + streamElt.asXML());
             // Include the bad-format in the response
             StreamError error = new StreamError(StreamError.Condition.bad_format);
             sb.append(error.toXML());
@@ -146,7 +131,7 @@ public class ComponentSession extends Session {
         }
 
         // Create a ComponentSession for the external component
-        Session session = SessionManager.getInstance().createComponentSession(connection);
+        Session session = SessionManager.getInstance().createComponentSession(connection, serverName);
         // Set the bind address as the address of the session
         session.setAddress(new JID(null, domain , null));
 
@@ -168,36 +153,39 @@ public class ComponentSession extends Session {
             sb.append("\">");
             writer.write(sb.toString());
             writer.flush();
-
-            // Perform authentication. Wait for the handshake (with the secret key)
-            Element doc = reader.parseDocument().getRootElement();
-            String digest = "handshake".equals(doc.getName()) ? doc.getStringValue() : "";
-            String anticipatedDigest = AuthFactory.createDigest(session.getStreamID().getID(),
-                    secretKey);
-            // Check that the provided handshake (secret key + sessionID) is correct
-            if (!anticipatedDigest.equalsIgnoreCase(digest)) {
-                Log.debug("[ExComp] Incorrect handshake for component with domain: " + domain);
-                //  The credentials supplied by the initiator are not valid (answer an error
-                // and close the connection)
-                writer.write(new StreamError(StreamError.Condition.not_authorized).toXML());
-                writer.flush();
-                // Close the underlying connection
-                connection.close();
-                return null;
-            }
-            else {
-                // Component has authenticated fine
-                session.setStatus(Session.STATUS_AUTHENTICATED);
-                // Send empty handshake element to acknowledge success
-                writer.write("<handshake></handshake>");
-                writer.flush();
-                // Bind the domain to this component
-                ExternalComponent component = ((ComponentSession) session).getExternalComponent();
-                InternalComponentManager.getInstance().addComponent(subdomain, component);
-                Log.debug("[ExComp] External component was registered SUCCESSFULLY with domain: " +
-                        domain);
-                return session;
-            }
+            
+            // TODO FIXME!
+            throw new IOException("Component Handshake Unimplemented");
+            
+//            // Perform authentication. Wait for the handshake (with the secret key)
+//            Element doc = reader.parseDocument().getRootElement();
+//            String digest = "handshake".equals(doc.getName()) ? doc.getStringValue() : "";
+//            String anticipatedDigest = AuthFactory.createDigest(session.getStreamID().getID(),
+//                    secretKey);
+//            // Check that the provided handshake (secret key + sessionID) is correct
+//            if (!anticipatedDigest.equalsIgnoreCase(digest)) {
+//                Log.debug("[ExComp] Incorrect handshake for component with domain: " + domain);
+//                //  The credentials supplied by the initiator are not valid (answer an error
+//                // and close the connection)
+//                writer.write(new StreamError(StreamError.Condition.not_authorized).toXML());
+//                writer.flush();
+//                // Close the underlying connection
+//                connection.close();
+//                return null;
+//            }
+//            else {
+//                // Component has authenticated fine
+//                session.setStatus(Session.STATUS_AUTHENTICATED);
+//                // Send empty handshake element to acknowledge success
+//                writer.write("<handshake></handshake>");
+//                writer.flush();
+//                // Bind the domain to this component
+//                ExternalComponent component = ((ComponentSession) session).getExternalComponent();
+//                InternalComponentManager.getInstance().addComponent(subdomain, component);
+//                Log.debug("[ExComp] External component was registered SUCCESSFULLY with domain: " +
+//                        domain);
+//                return session;
+//            }
         }
         catch (Exception e) {
             Log.error("An error occured while creating a ComponentSession", e);

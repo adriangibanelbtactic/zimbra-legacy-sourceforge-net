@@ -40,7 +40,9 @@ import com.zimbra.cs.index.queryparser.ParseException;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.cs.operation.Operation;
+import com.zimbra.cs.operation.BlockingOperation;
+import com.zimbra.cs.operation.Requester;
+import com.zimbra.cs.operation.Scheduler.Priority;
 import com.zimbra.cs.service.UserServlet;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet.Context;
@@ -81,10 +83,10 @@ public abstract class Formatter {
         return MailboxIndex.SEARCH_FOR_MESSAGES;
     }
 
-    public final void format(UserServlet.Context context, MailItem item) throws UserServletException, IOException, ServletException, ServiceException {
+    public final void format(UserServlet.Context context) throws UserServletException, IOException, ServletException, ServiceException {
+        BlockingOperation op = BlockingOperation.schedule(this.getClass().getSimpleName()+"(FORMAT)", null, context.opContext, context.targetMailbox, Requester.REST, Priority.BATCH, 1);
         try {
-            FormatOperation op = new FormatOperation(context, item, this);
-            op.schedule();
+        	formatCallback(context);
         } catch (ServiceException e) {
             Throwable cause = e.getCause();
             if (cause instanceof UserServletException)
@@ -94,13 +96,16 @@ public abstract class Formatter {
             if (cause instanceof IOException)
                 throw (IOException) cause;
             throw e;
+        } finally {
+            op.finish();
         }
     }
 
-    public final void save(byte[] body, UserServlet.Context context, Folder folder) throws UserServletException, IOException, ServletException, ServiceException {
+    public final void save(byte[] body, UserServlet.Context context, String contentType, Folder folder, String filename)
+    throws UserServletException, IOException, ServletException, ServiceException {
+        BlockingOperation op = BlockingOperation.schedule(this.getClass().getSimpleName()+"(SAVE)", null, context.opContext, context.targetMailbox, Requester.REST, Priority.BATCH, 1);
         try {
-            SaveOperation op = new SaveOperation(body, context, folder, this);
-            op.schedule();
+            saveCallback(body, context, contentType, folder, filename);
         } catch (ServiceException e) {
             Throwable cause = e.getCause();
             if (cause instanceof UserServletException)
@@ -110,19 +115,28 @@ public abstract class Formatter {
             if (cause instanceof IOException)
                 throw (IOException) cause;
             throw e;
+        } finally {
+            op.finish();
         }
     }
     
-    public abstract void formatCallback(UserServlet.Context context, MailItem item) throws UserServletException, ServiceException, IOException, ServletException;
+    public abstract void formatCallback(UserServlet.Context context)
+    throws UserServletException, ServiceException, IOException, ServletException;
 
-    public abstract void saveCallback(byte[] body, UserServlet.Context context, Folder folder) throws UserServletException, ServiceException, IOException, ServletException;
+    public abstract void saveCallback(byte[] body, UserServlet.Context context, String contentType, Folder folder, String filename)
+    throws UserServletException, ServiceException, IOException, ServletException;
 
-    public Iterator<? extends MailItem> getMailItems(Context context, MailItem item, long startTime, long endTime, long chunkSize) throws ServiceException {
+    public Iterator<? extends MailItem> getMailItems(Context context, long startTime, long endTime, long chunkSize) throws ServiceException {
+    	if (context.respListItems != null) {
+    		return context.respListItems.iterator();
+    	}
+    	
+    	assert(context.target != null);
         String query = context.getQueryString();
         if (query != null) {
             try {
-                if (item instanceof Folder) {
-                    Folder f = (Folder) item;
+                if (context.target instanceof Folder) {
+                    Folder f = (Folder) context.target;
                     ZimbraLog.misc.info("folderId: " + f.getId());
                     if (f.getId() != Mailbox.ID_FOLDER_USER_ROOT)
                         query = "in:" + f.getPath() + " " + query; 
@@ -140,12 +154,12 @@ public abstract class Formatter {
             } catch (ParseException e) {
                 throw ServiceException.FAILURE("search error", e);
             }
-        } else if (item instanceof Folder) {
-            Collection<? extends MailItem> items = getMailItemsFromFolder(context, (Folder) item, startTime, endTime, chunkSize);
+        } else if (context.target instanceof Folder) {
+            Collection<? extends MailItem> items = getMailItemsFromFolder(context, (Folder) context.target, startTime, endTime, chunkSize);
             return items != null ? items.iterator() : null;
         } else {
             ArrayList<MailItem> result = new ArrayList<MailItem>();
-            result.add(item);
+            result.add(context.target);
             return result.iterator();
         }
     }
@@ -157,8 +171,9 @@ public abstract class Formatter {
                 return context.targetMailbox.getCalendarItemsForRange(context.opContext, startTime, endTime, folder.getId(), null);
             case MailItem.TYPE_CONTACT:
                 return context.targetMailbox.getContactList(context.opContext, folder.getId());
+            case MailItem.TYPE_DOCUMENT:
             case MailItem.TYPE_WIKI:
-                return context.targetMailbox.getWikiList(context.opContext, folder.getId());
+                return context.targetMailbox.getDocumentList(context.opContext, folder.getId());
             default:
                 return context.targetMailbox.getItemList(context.opContext, MailItem.TYPE_MESSAGE, folder.getId());
         }
@@ -174,15 +189,13 @@ public abstract class Formatter {
     public static boolean checkGlobalOverride(String attr, Account account) throws ServletException {
         Provisioning prov = Provisioning.getInstance();
         try {
-            return prov.getConfig().getBooleanAttr(attr, false)
-                    || account.getBooleanAttr(attr, false);
+            return prov.getConfig().getBooleanAttr(attr, false) || account.getBooleanAttr(attr, false);
         } catch (ServiceException e) {
             throw new ServletException(e);
         }
     }
 
     protected static class QueryResultIterator implements Iterator<MailItem> {
-
         private ZimbraQueryResults mResults;
         
         QueryResultIterator(ZimbraQueryResults results) {
@@ -225,61 +238,5 @@ public abstract class Formatter {
             mResults = null;
         }
     }
-    
-    abstract int getFormatLoad();
-    abstract int getSaveLoad();
-    
-    protected static class FormatOperation extends Operation {
-        Context mContext;
-        MailItem mItem;
-        Formatter mFmt;
-
-        public FormatOperation(Context context, MailItem item, Formatter fmt) {
-            super(null, context.opContext, context.targetMailbox, Requester.REST, fmt.getFormatLoad());
-            mContext = context;
-            mItem = item;
-            mFmt = fmt;
-        }
-
-        public void callback() throws ServiceException {
-            try {
-                mFmt.formatCallback(mContext, mItem);
-            } catch (IOException e) {
-                throw ServiceException.FAILURE("Caught IOException", e);
-            } catch (ServletException e) {
-                throw ServiceException.FAILURE("Caught ServletException", e); 
-            } catch (UserServletException e) {
-                throw ServiceException.FAILURE("Caught UserServletException", e); 
-            }
-        }
-    }
-        
-    protected static class SaveOperation extends Operation {
-        byte[] mBody;
-        Context mContext;
-        Folder mFolder;
-        Formatter mFmt;
-
-        public SaveOperation(byte[] body, Context context, Folder folder, Formatter fmt) {
-            super(null, context.opContext, context.targetMailbox, Requester.REST, fmt.getSaveLoad());
-            mBody = body;
-            mContext = context;
-            mFolder = folder;
-            mFmt = fmt;
-        }
-
-        public void callback() throws ServiceException {
-            try {
-                mFmt.saveCallback(mBody, mContext, mFolder);
-            } catch (IOException e) {
-                throw ServiceException.FAILURE("Caught IOException", e);
-            } catch (ServletException e) {
-                throw ServiceException.FAILURE("Caught ServletException", e); 
-            } catch (UserServletException e) {
-                throw ServiceException.FAILURE("Caught UserServletException", e); 
-            }
-        }
-    }
-
     
 }

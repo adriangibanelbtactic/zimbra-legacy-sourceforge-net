@@ -34,25 +34,23 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.mailbox.Contact;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.cs.operation.GetContactListOperation;
-import com.zimbra.cs.operation.GetContactOperation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.session.PendingModifications.Change;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class GetContacts extends MailDocumentHandler  {
 
 	private static final int ALL_FOLDERS = -1;
 
-	protected static final String[] TARGET_FOLDER_PATH = new String[] { MailService.A_FOLDER };
+	protected static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.A_FOLDER };
 	protected String[] getProxiedIdPath(Element request) {
 		return TARGET_FOLDER_PATH;
 	}
@@ -61,10 +59,10 @@ public class GetContacts extends MailDocumentHandler  {
 		ZimbraSoapContext zsc = getZimbraSoapContext(context);
 		Mailbox mbox = getRequestedMailbox(zsc);
 		Mailbox.OperationContext octxt = zsc.getOperationContext();
-		Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
-		boolean sync = request.getAttributeBool(MailService.A_SYNC, false);
-		String folderIdStr  = request.getAttribute(MailService.A_FOLDER, null);
+		boolean sync = request.getAttributeBool(MailConstants.A_SYNC, false);
+		String folderIdStr  = request.getAttribute(MailConstants.A_FOLDER, null);
 		int folderId = ALL_FOLDERS;
 		if (folderIdStr != null) { 
 			ItemId iidFolder = new ItemId(folderIdStr, zsc);
@@ -75,7 +73,7 @@ public class GetContacts extends MailDocumentHandler  {
 		}
 
 		byte sort = DbMailItem.SORT_NONE;
-		String sortStr = request.getAttribute(MailService.A_SORTBY, "");
+		String sortStr = request.getAttribute(MailConstants.A_SORTBY, "");
 		if (sortStr.equals(MailboxIndex.SortBy.NAME_ASCENDING.toString()))
 			sort = DbMailItem.SORT_BY_SENDER | DbMailItem.SORT_ASCENDING;
 		else if (sortStr.equals(MailboxIndex.SortBy.NAME_DESCENDING.toString()))
@@ -85,13 +83,13 @@ public class GetContacts extends MailDocumentHandler  {
 		ArrayList<ItemId> ids = null;
 
 		for (Element e : request.listElements())
-			if (e.getName().equals(MailService.E_ATTRIBUTE)) {
-				String name = e.getAttribute(MailService.A_ATTRIBUTE_NAME);
+			if (e.getName().equals(MailConstants.E_ATTRIBUTE)) {
+				String name = e.getAttribute(MailConstants.A_ATTRIBUTE_NAME);
 				if (attrs == null)
 					attrs = new ArrayList<String>();
 				attrs.add(name);
-			} else if (e.getName().equals(MailService.E_CONTACT)) {
-				String idStr = e.getAttribute(MailService.A_ID);
+			} else if (e.getName().equals(MailConstants.E_CONTACT)) {
+				String idStr = e.getAttribute(MailConstants.A_ID);
 				String targets[] = idStr.split(",");
 				for (String target : targets) { 
 					ItemId iid = new ItemId(target, zsc);
@@ -104,8 +102,7 @@ public class GetContacts extends MailDocumentHandler  {
 				e.detach();
 			}
 
-		Element response = zsc.createElement(MailService.GET_CONTACTS_RESPONSE);
-		ContactAttrCache cacache = null;
+		Element response = zsc.createElement(MailConstants.GET_CONTACTS_RESPONSE);
 
 		// want to return modified date only on sync-related requests
 		int fields = ToXML.NOTIFY_FIELDS;
@@ -128,25 +125,24 @@ public class GetContacts extends MailDocumentHandler  {
 			}
 
 			if (local.size() > 0) {
-				GetContactOperation op = new GetContactOperation(session, octxt, mbox, Requester.SOAP, local);
-				op.schedule();
-				List<Contact> contacts = op.getResults();
-				
-				for (Contact con : contacts) {
-					if (con != null && (folderId == ALL_FOLDERS || folderId == con.getFolderId()))
-						ToXML.encodeContact(response, zsc, con, cacache, false, attrs, fields);
-				}
+			    synchronized(mbox) {
+                    for (int id : local) {
+                        Contact con = mbox.getContactById(octxt, id);
+                        if (con != null && (folderId == ALL_FOLDERS || folderId == con.getFolderId()))
+                            ToXML.encodeContact(response, ifmt, con, false, attrs, fields);
+                    }
+			    }
 			}
 			
 		} else {
 			ItemId iidFolder = new ItemId(mbox, folderId);
-			GetContactListOperation op = new GetContactListOperation(session, octxt, mbox, Requester.SOAP, iidFolder, sort);
-			op.schedule();
-			List<Contact> contacts = op.getResults();
+            List<Contact> contacts;
+            contacts = mbox.getContactList(octxt, iidFolder != null ? iidFolder.getId() : -1, sort);
 
-			for (Contact con : contacts)
+			for (Contact con : contacts) {
 				if (con != null)
-					ToXML.encodeContact(response, zsc, con, cacache, false, attrs, fields);
+					ToXML.encodeContact(response, ifmt, con, false, attrs, fields);
+            }
 		}
 		return response;
 	}
@@ -173,9 +169,9 @@ public class GetContacts extends MailDocumentHandler  {
 		List<Element> responses = new ArrayList<Element>();
 
         // note that we removed all <cn> elements from the request during handle(), above
-        Element cn = request.addElement(MailService.E_CONTACT);
+        Element cn = request.addElement(MailConstants.E_CONTACT);
         for (Map.Entry<String, StringBuffer> entry : remote.entrySet()) {
-			cn.addAttribute(MailService.A_ID, entry.getValue().toString());
+			cn.addAttribute(MailConstants.A_ID, entry.getValue().toString());
 
 			Element response = proxyRequest(request, context, entry.getKey());
             for (Element e : response.listElements())

@@ -37,7 +37,8 @@ import com.zimbra.cs.account.Provisioning.ServerBy;
 import com.zimbra.cs.util.Config;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -45,17 +46,17 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class ModifyServer extends AdminDocumentHandler {
 
-    private static final String[] TARGET_SERVER_PATH = new String[] { AdminService.E_ID };
+    private static final String[] TARGET_SERVER_PATH = new String[] { AdminConstants.E_ID };
     protected String[] getProxiedServerPath()  { return TARGET_SERVER_PATH; }
 
-	public Element handle(Element request, Map<String, Object> context) throws ServiceException {
+    public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
-	    Provisioning prov = Provisioning.getInstance();
+        Provisioning prov = Provisioning.getInstance();
 
-	    String id = request.getAttribute(AdminService.E_ID);
-	    Map<String, Object> attrs = AdminService.getAttrs(request);
-	    
-	    Server server = prov.get(ServerBy.id, id);
+        String id = request.getAttribute(AdminConstants.E_ID);
+        Map<String, Object> attrs = AdminService.getAttrs(request);
+        
+        Server server = prov.get(ServerBy.id, id);
         if (server == null)
             throw AccountServiceException.NO_SUCH_SERVER(id);
 
@@ -73,8 +74,8 @@ public class ModifyServer extends AdminDocumentHandler {
                 Config.enableUserServices(server.getBooleanAttr(Provisioning.A_zimbraUserServicesEnabled, true));
         }
 
-	    Element response = zsc.createElement(AdminService.MODIFY_SERVER_RESPONSE);
-	    GetServer.doServer(response, server);
-	    return response;
-	}
+        Element response = zsc.createElement(AdminConstants.MODIFY_SERVER_RESPONSE);
+        GetServer.doServer(response, server);
+        return response;
+    }
 }

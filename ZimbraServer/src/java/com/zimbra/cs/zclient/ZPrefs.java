@@ -25,8 +25,8 @@
 
 package com.zimbra.cs.zclient;
 
-import com.zimbra.cs.account.Provisioning;
 import com.zimbra.common.calendar.TZIDMapper;
+import com.zimbra.cs.account.Provisioning;
 
 import java.util.List;
 import java.util.Map;
@@ -65,8 +65,10 @@ public class ZPrefs {
 
     public Map<String, List<String>> getPrefs() { return mPrefs; }
 
+    public boolean getUseTimeZoneListInCalendar() { return getBool(Provisioning.A_zimbraPrefUseTimeZoneListInCalendar); }
+
     public boolean getReadingPaneEnabled() { return getBool(Provisioning.A_zimbraPrefReadingPaneEnabled); }
-    
+
     public boolean getIncludeSpamInSearch() { return getBool(Provisioning.A_zimbraPrefIncludeSpamInSearch); }
 
     public boolean getIncludeTrashInSearch() { return getBool(Provisioning.A_zimbraPrefIncludeTrashInSearch); }
@@ -118,6 +120,20 @@ public class ZPrefs {
 
     public long getContactsPerPage() { return getLong(Provisioning.A_zimbraPrefContactsPerPage); }
 
+    public long getCalendarFirstDayOfWeek() { return getLong(Provisioning.A_zimbraPrefCalendarFirstDayOfWeek); }
+
+    public long getCalendarDayHourStart() {
+        long hour = getLong(Provisioning.A_zimbraPrefCalendarDayHourStart);
+        return hour == -1 ? 8 : hour;
+    }
+
+    public long getCalendarDayHourEnd() {
+         long hour = getLong(Provisioning.A_zimbraPrefCalendarDayHourEnd);
+        return hour == -1 ? 18 : hour;
+    }
+
+    public String getCalendarInitialView() { return get(Provisioning.A_zimbraPrefCalendarInitialView); }
+
     public String getTimeZoneId() { return get(Provisioning.A_zimbraPrefTimeZoneId); }
 
     public String getTimeZoneWindowsId() { return TZIDMapper.toWindows(get(Provisioning.A_zimbraPrefTimeZoneId)); }
@@ -136,4 +152,3 @@ public class ZPrefs {
         return mCachedTimeZone;
     }
 }
-

@@ -30,19 +30,21 @@ package com.zimbra.cs.filter;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 import javax.mail.MessagingException;
 
-import org.apache.commons.collections.map.LRUMap;
 import org.apache.jsieve.SieveException;
 import org.apache.jsieve.SieveFactory;
 import org.apache.jsieve.parser.generated.Node;
 import org.apache.jsieve.parser.generated.ParseException;
-import org.apache.jsieve.parser.generated.TokenMgrError;
 
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.Element.ElementFactory;
+import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.mailbox.Flag;
@@ -51,27 +53,25 @@ import com.zimbra.cs.mailbox.MailboxManager;
 import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mailbox.SharedDeliveryContext;
 import com.zimbra.cs.mime.ParsedMessage;
-import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
 
 /**
- * @author kchen
+ * Handles setting and getting filter rules for an <tt>Account</tt>.
  */
 public class RuleManager {
-    // xxx: may need to store this in db so that it can be tuned
-    static final int MAX_CACHED_SCRIPTS = 200;
-    
+    /**
+     * Key used to save the parsed version of a Sieve script in an <tt>Account</tt>'s
+     * cached data.  The cache is invalidated whenever an <tt>Account</tt> attribute
+     * is modified, so the script and parsed rules won't get out of sync.
+     */
+    private static final String FILTER_RULES_CACHE_KEY =
+        StringUtil.getSimpleClassName(RuleManager.class.getName()) + ".FILTER_RULES_CACHE";
     private static RuleManager mInstance = new RuleManager();
-    /** maps account id to its parsed sieve rules */
-    private Map mScriptCache;
 
     public static RuleManager getInstance() {
         return mInstance;
     }
     
     private RuleManager() {
-        mScriptCache = Collections.synchronizedMap(new LRUMap(MAX_CACHED_SCRIPTS));
     }
 
     /**
@@ -85,29 +85,20 @@ public class RuleManager {
     public void setRules(Account account, String script) throws ServiceException {
         String accountId = account.getId();
         ZimbraLog.filter.debug("Setting filter rules for account %s:\n%s", accountId, script);
-        Mailbox mailbox =  MailboxManager.getInstance().getMailboxByAccount(account);
         if (script == null) {
             script = "";
         }
         try {
-            synchronized (mailbox) {
-                // invalidate the existing script
-                mScriptCache.remove(accountId);
-                Node node = parse(accountId, script);
-                SieveFactory sieveFactory = SieveFactory.getInstance();
-                // evaluate against dummy mail adapter to catch more errors
-                sieveFactory.evaluate(new DummyMailAdapter(), node);
-                // save 
-                Map attrs = new HashMap(3);
-                attrs.put(Provisioning.A_zimbraMailSieveScript, script);
-                Provisioning.getInstance().modifyAttrs(account, attrs);
-                mScriptCache.put(accountId, node);
-            }
-
+            Node node = parse(script);
+            SieveFactory sieveFactory = SieveFactory.getInstance();
+            // evaluate against dummy mail adapter to catch more errors
+            sieveFactory.evaluate(new DummyMailAdapter(), node);
+            // save 
+            Map<String, Object> attrs = new HashMap<String, Object>();
+            attrs.put(Provisioning.A_zimbraMailSieveScript, script);
+            Provisioning.getInstance().modifyAttrs(account, attrs);
+            account.setCachedData(FILTER_RULES_CACHE_KEY, node);
         } catch (ParseException e) {
-            ZimbraLog.filter.error("Unable to parse script:\n" + script);
-            throw ServiceException.PARSE_ERROR("parsing Sieve script", e);
-        } catch (TokenMgrError e) {
             ZimbraLog.filter.error("Unable to parse script:\n" + script);
             throw ServiceException.PARSE_ERROR("parsing Sieve script", e);
         } catch (SieveException e) {
@@ -115,37 +106,57 @@ public class RuleManager {
             throw ServiceException.PARSE_ERROR("evaluating Sieve script", e);
         }
     }
-     
-    public String getRules(Account account) throws ServiceException {
+
+    /**
+     * Returns the filter rules Sieve script for the given account. 
+     */
+    public String getRules(Account account) {
         String script = account.getAttr(Provisioning.A_zimbraMailSieveScript);
         return script;
     }
-    
-    public Element getRulesAsXML(Element parent, Account account) throws ServiceException {
-        try {
-            Mailbox mbox = MailboxManager.getInstance().getMailboxByAccount(account);
-            Node node = null;
-            synchronized (mbox) {
-                node = (Node) mScriptCache.get(account.getId());
-                if (node == null) {
-                    String script = getRules(account);
-                    if (script == null) {
-                        script = "";
-                    }
-                    String accountId = account.getId();
-                    node = parse(accountId, script);
-                    mScriptCache.put(accountId, node);
-                }
+
+    /**
+     * Returns the parsed filter rules for the given account.  If no cached
+     * copy of the parsed rules exists, parses the script returned by
+     * {@link #getRules(Account)} and caches the result on the <tt>Account</tt>.
+     *  
+     * @see Account#setCachedData(String, Object)
+     * @throws ParseException if there was an error while parsing the Sieve script
+     */
+    private Node getRulesNode(Account account)
+    throws ParseException {
+        Node node = (Node) account.getCachedData(FILTER_RULES_CACHE_KEY);
+        if (node == null) {
+            String script = getRules(account);
+            if (script == null) {
+                script = "";
             }
-            RuleRewriter t = new RuleRewriter(parent, node);
-            return t.getElement();
+            node = parse(script);
+            account.setCachedData(FILTER_RULES_CACHE_KEY, node);
+        }
+        return node;
+    }
+    
+    /**
+     * Returns the <tt>Account</tt>'s filter rules as an XML element tree.
+     * 
+     * @param factory used to create new XML elements
+     * @param account the account
+     */
+    public Element getRulesAsXML(ElementFactory factory, Account account) throws ServiceException {
+        Node node = null;
+        try {
+            node = getRulesNode(account);
         } catch (ParseException e) {
             throw ServiceException.PARSE_ERROR("parsing Sieve script", e);
-        } catch (TokenMgrError e) {
-            throw ServiceException.PARSE_ERROR("parsing Sieve script", e);
         }
+        RuleRewriter t = new RuleRewriter(factory, node);
+        return t.getElement();
     }
 
+    /**
+     * Sets filter rules, specified as an XML element tree.
+     */
     public void setXMLRules(Account account, Element eltRules) throws ServiceException {
         RuleRewriter t = new RuleRewriter(eltRules, MailboxManager.getInstance().getMailboxByAccount(account));
         String script = t.getScript();
@@ -158,30 +169,7 @@ public class RuleManager {
     {
         Message msg = null;
         try {
-            Node node = null;
-            synchronized (mailbox) {
-                /*
-                 * Need to hold lock on mailbox because the script may be modified and concurrently saved 
-                 * by another thread. Inconsistent scenario without synchronization goes like this:
-                 *   t1 is trying to save the script, t2 is trying to get the script to eval a mail delivery
-                 *   t1 invalidates the cache
-                 *   t2 doesn't find the script in the cache
-                 *   t2 then fetches the old script from ldap and parse it
-                 *   t1 finishes eval the new script and saves it to ldap
-                 *   t1 caches the new script
-                 *   t2 caches the old script
-                 * subsequently all delivery threads will be using the cached old script
-                 */
-                node = (Node) mScriptCache.get(account.getId());
-                if (node == null) {
-                    String script = getRules(account);
-                    if (script != null) {
-                        String accountId = account.getId();
-                        node = parse(accountId, script);
-                        mScriptCache.put(accountId, node);
-                    }
-                }
-            }
+            Node node = getRulesNode(account);
             
             ZimbraMailAdapter mailAdapter = new ZimbraMailAdapter(
                     mailbox, pm, recipient, sharedDeliveryCtxt);
@@ -213,13 +201,7 @@ public class RuleManager {
                         false, Flag.BITMASK_UNREAD, null, recipient, sharedDeliveryCtxt);
             }
         } catch (ParseException e) {
-            ZimbraLog.filter.warn("Unable to parse Sieve script.  Filing message in Inbox.", e);
-            // filtering system generates errors; 
-            // ignore filtering and file the message into INBOX
-            msg = mailbox.addMessage(null, pm, Mailbox.ID_FOLDER_INBOX,
-                    false, Flag.BITMASK_UNREAD, null, recipient, sharedDeliveryCtxt);
-        } catch (TokenMgrError e) {
-            ZimbraLog.filter.warn("Unable to parse Sieve script.  Filing message in Inbox.", e);
+            ZimbraLog.filter.warn("Sieve script parsing error:", e);
             // filtering system generates errors; 
             // ignore filtering and file the message into INBOX
             msg = mailbox.addMessage(null, pm, Mailbox.ID_FOLDER_INBOX,
@@ -228,14 +210,51 @@ public class RuleManager {
         return msg;
     }
     
-    /*
-     * Parses the sieve script and cache the result. 
+    /**
+     * Parses the sieve script and returns the result. 
      */
-    private Node parse(String accountId, String script) throws ParseException {
-        // caller is already synchronized on mailbox.
-        ByteArrayInputStream sin = new ByteArrayInputStream(script
-                .getBytes());
+    private Node parse(String script) throws ParseException {
+        ByteArrayInputStream sin = new ByteArrayInputStream(script.getBytes());
         Node node = SieveFactory.getInstance().parse(sin);
         return node;
-    }    
+    }
+
+    /**
+     * When a folder is renamed, updates any filter rules that reference
+     * that folder.
+     */
+    public void folderRenamed(Account account, String originalPath, String newPath)
+    throws ServiceException {
+        String rules = getRules(account);
+        if (rules != null) {
+            // Assume that we always put quotes around folder paths.  Replace
+            // any paths that start with this folder's original path.  This will
+            // take care of rules for children affected by a parent's move or rename.
+            String newRules = rules.replace("\"" + originalPath, "\"" + newPath);
+            if (!newRules.equals(rules)) {
+                setRules(account, newRules);
+                ZimbraLog.filter.info("Updated filter rules due to folder move or rename from %s to %s.",
+                    originalPath, newPath);
+                ZimbraLog.filter.debug("Old rules:\n%s, new rules:\n", rules, newRules);
+            }
+        }
+    }
+    
+    /**
+     * When a tag is renamed, updates any filter rules that reference
+     * that tag.
+     */
+    public void tagRenamed(Account account, String originalName, String newName)
+    throws ServiceException {
+        String rules = getRules(account);
+        if (rules != null) {
+            String newRules = rules.replace("tag \"" + originalName + "\"", "tag \"" + newName + "\"");
+            if (!newRules.equals(rules)) {
+                setRules(account, newRules);
+                ZimbraLog.filter.info("Updated filter rules due to tag rename from %s to %s.",
+                    originalName, newName);
+                ZimbraLog.filter.debug("Old rules:\n%s, new rules:\n", rules, newRules);
+            }
+        }
+    }
 }

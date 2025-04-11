@@ -1,31 +1,16 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3187 $
+ * $Date: 2005-12-11 13:34:34 -0300 (Sun, 11 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.net;
 
-import com.jcraft.jzlib.JZlib;
-import com.jcraft.jzlib.ZOutputStream;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.util.LocaleUtils;
 import org.jivesoftware.util.Log;
@@ -33,17 +18,11 @@ import org.jivesoftware.wildfire.*;
 import org.jivesoftware.wildfire.auth.UnauthorizedException;
 import org.jivesoftware.wildfire.interceptor.InterceptorManager;
 import org.jivesoftware.wildfire.interceptor.PacketRejectedException;
-import org.jivesoftware.wildfire.server.IncomingServerSession;
 import org.xmpp.packet.Packet;
 
-import javax.net.ssl.SSLSession;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.nio.channels.Channels;
+import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -58,14 +37,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @author Iain Shigeoka
  */
-public class SocketConnection implements Connection {
+public abstract class SocketConnection implements Connection {
 
     /**
      * The utf-8 charset for decoding and encoding XMPP packet streams.
      */
     public static final String CHARSET = "UTF-8";
-
-    private static Map<SocketConnection, String> instances =
+    public static final Charset sCharset = Charset.forName(CHARSET);
+    
+    protected static Map<SocketConnection, String> instances =
             new ConcurrentHashMap<SocketConnection, String>();
 
     /**
@@ -77,44 +57,42 @@ public class SocketConnection implements Connection {
      * the thread is blocked while sending data (because the socket is closed) then the clean up
      * thread will close the socket anyway.
      */
-    private long idleTimeout = -1;
+    protected long idleTimeout = -1;
 
-    final private Map<ConnectionCloseListener, Object> listeners =
+    final protected Map<ConnectionCloseListener, Object> listeners =
             new HashMap<ConnectionCloseListener, Object>();
 
-    private Socket socket;
-    private SocketReader socketReader;
+    protected SocketReader socketReader;
 
-    private Writer writer;
-    private AtomicBoolean writing = new AtomicBoolean(false);
+    protected Writer writer;
+    protected AtomicBoolean writing = new AtomicBoolean(false);
 
     /**
      * Deliverer to use when the connection is closed or was closed when delivering
      * a packet.
      */
-    private PacketDeliverer backupDeliverer;
+    protected PacketDeliverer backupDeliverer;
 
-    private Session session;
-    private boolean secure;
-    private boolean compressed;
-    private org.jivesoftware.util.XMLWriter xmlSerializer;
-    private boolean flashClient = false;
-    private int majorVersion = 1;
-    private int minorVersion = 0;
-    private String language = null;
-    private TLSStreamHandler tlsStreamHandler;
+    protected Session session;
+    protected boolean secure;
+    protected boolean compressed;
+    public org.jivesoftware.util.XMLWriter xmlSerializer;
+    protected boolean flashClient = false;
+    protected int majorVersion = 1;
+    protected int minorVersion = 0;
+    protected String language = null;
 
-    private long writeStarted = -1;
+    protected long writeStarted = -1;
 
     /**
      * TLS policy currently in use for this connection.
      */
-    private TLSPolicy tlsPolicy = TLSPolicy.optional;
+    protected TLSPolicy tlsPolicy = TLSPolicy.optional;
 
     /**
      * Compression policy currently in use for this connection.
      */
-    private CompressionPolicy compressionPolicy = CompressionPolicy.disabled;
+    protected CompressionPolicy compressionPolicy = CompressionPolicy.disabled;
 
     public static Collection<SocketConnection> getInstances() {
         return instances.keySet();
@@ -128,38 +106,11 @@ public class SocketConnection implements Connection {
      * @param isSecure true if this is a secure connection.
      * @throws NullPointerException if the socket is null.
      */
-    public SocketConnection(PacketDeliverer backupDeliverer, Socket socket, boolean isSecure)
+    public SocketConnection(PacketDeliverer backupDeliverer, boolean isSecure)
             throws IOException {
-        if (socket == null) {
-            throw new NullPointerException("Socket channel must be non-null");
-        }
-
         this.secure = isSecure;
-        this.socket = socket;
-        // DANIELE: Modify socket to use channel
-        if (socket.getChannel() != null) {
-            writer = Channels.newWriter(
-                    ServerTrafficCounter.wrapWritableChannel(socket.getChannel()), CHARSET);
-        }
-        else {
-            writer = new BufferedWriter(new OutputStreamWriter(
-                    ServerTrafficCounter.wrapOutputStream(socket.getOutputStream()), CHARSET));
-        }
         this.backupDeliverer = backupDeliverer;
-        xmlSerializer = new XMLSocketWriter(writer, this);
-
         instances.put(this, "");
-    }
-
-    /**
-     * Returns the stream handler responsible for securing the plain connection and providing
-     * the corresponding input and output streams.
-     *
-     * @return the stream handler responsible for securing the plain connection and providing
-     *         the corresponding input and output streams.
-     */
-    public TLSStreamHandler getTLSStreamHandler() {
-        return tlsStreamHandler;
     }
 
     /**
@@ -173,22 +124,7 @@ public class SocketConnection implements Connection {
      *        when not in client mode.
      * @throws IOException if an error occured while securing the connection.
      */
-    public void startTLS(boolean clientMode, String remoteServer) throws IOException {
-        if (!secure) {
-            secure = true;
-            // Prepare for TLS
-            tlsStreamHandler = new TLSStreamHandler(socket, clientMode, remoteServer, session instanceof IncomingServerSession);
-            if (!clientMode) {
-                // Indicate the client that the server is ready to negotiate TLS
-                deliverRawText("<proceed xmlns=\"urn:ietf:params:xml:ns:xmpp-tls\"/>");
-            }
-            // Start handshake
-            tlsStreamHandler.start();
-            // Use new wrapped writers
-            writer = new BufferedWriter(new OutputStreamWriter(tlsStreamHandler.getOutputStream(), CHARSET));
-            xmlSerializer = new XMLSocketWriter(writer, this);
-        }
-    }
+    abstract public void startTLS(boolean clientMode, String remoteServer) throws IOException;
 
     /**
      * Start using compression for this connection. Compression will only be available after TLS
@@ -197,24 +133,7 @@ public class SocketConnection implements Connection {
      *
      * @throws IOException if an error occured while starting compression.
      */
-    public void startCompression() throws IOException {
-        compressed = true;
-
-        if (tlsStreamHandler == null) {
-            ZOutputStream out = new ZOutputStream(
-                    ServerTrafficCounter.wrapOutputStream(socket.getOutputStream()),
-                    JZlib.Z_BEST_COMPRESSION);
-            out.setFlushMode(JZlib.Z_PARTIAL_FLUSH);
-            writer = new BufferedWriter(new OutputStreamWriter(out, CHARSET));
-            xmlSerializer = new XMLSocketWriter(writer, this);
-        }
-        else {
-            ZOutputStream out = new ZOutputStream(tlsStreamHandler.getOutputStream(), JZlib.Z_BEST_COMPRESSION);
-            out.setFlushMode(JZlib.Z_PARTIAL_FLUSH);
-            writer = new BufferedWriter(new OutputStreamWriter(out, CHARSET));
-            xmlSerializer = new XMLSocketWriter(writer, this);
-        }
-    }
+    abstract public void startCompression() throws IOException;
 
     public boolean validate() {
         if (isClosed()) {
@@ -262,19 +181,6 @@ public class SocketConnection implements Connection {
         return listeners.remove(listener);
     }
 
-    public InetAddress getInetAddress() {
-        return socket.getInetAddress();
-    }
-
-    /**
-     * Returns the port that the connection uses.
-     *
-     * @return the port that the connection uses.
-     */
-    public int getPort() {
-        return socket.getPort();
-    }
-
     /**
      * Returns the Writer used to send data to the connection. The writer should be
      * used with caution. In the majority of cases, the {@link #deliver(Packet)}
@@ -292,13 +198,6 @@ public class SocketConnection implements Connection {
      */
     public Writer getWriter() {
         return writer;
-    }
-
-    public boolean isClosed() {
-        if (session == null) {
-            return socket.isClosed();
-        }
-        return session.getStatus() == Session.STATUS_CLOSED;
     }
 
     public boolean isSecure() {
@@ -403,13 +302,6 @@ public class SocketConnection implements Connection {
      */
     public void setFlashClient(boolean flashClient) {
         this.flashClient = flashClient;
-    }
-
-    public SSLSession getSSLSession() {
-        if (tlsStreamHandler != null) {
-            return tlsStreamHandler.getSSLSession();
-        }
-        return null;
     }
 
     /**
@@ -519,7 +411,7 @@ public class SocketConnection implements Connection {
         return false;
     }
 
-    private void release() {
+    protected void release() {
         writeStarted = -1;
         instances.remove(this);
     }
@@ -530,7 +422,7 @@ public class SocketConnection implements Connection {
      * sending data over the socket has taken a long time and we need to close the socket, discard
      * the connection and its session.
      */
-    private void forceClose() {
+    protected void forceClose() {
         if (session != null) {
             // Set that the session is closed. This will prevent threads from trying to
             // deliver packets to this session thus preventing future locks.
@@ -542,24 +434,7 @@ public class SocketConnection implements Connection {
         notifyCloseListeners();
     }
 
-    private void closeConnection() {
-        release();
-        try {
-            if (tlsStreamHandler == null) {
-                socket.close();
-            }
-            else {
-                // Close the channels since we are using TLS (i.e. NIO). If the channels implement
-                // the InterruptibleChannel interface then any other thread that was blocked in
-                // an I/O operation will be interrupted and an exception thrown
-                tlsStreamHandler.close();
-            }
-        }
-        catch (Exception e) {
-            Log.error(LocaleUtils.getLocalizedString("admin.error.close")
-                    + "\n" + this.toString(), e);
-        }
-    }
+    abstract protected void closeConnection();
 
     public void deliver(Packet packet) throws UnauthorizedException, PacketException {
         if (isClosed()) {
@@ -643,7 +518,7 @@ public class SocketConnection implements Connection {
      * Notifies all close listeners that the connection has been closed.
      * Used by subclasses to properly finish closing the connection.
      */
-    private void notifyCloseListeners() {
+    protected void notifyCloseListeners() {
         synchronized (listeners) {
             for (ConnectionCloseListener listener : listeners.keySet()) {
                 try {
@@ -656,7 +531,7 @@ public class SocketConnection implements Connection {
         }
     }
 
-    private void requestWriting() throws Exception {
+    protected void requestWriting() throws Exception {
         for (;;) {
             if (writing.compareAndSet(false, true)) {
                 // We are now in writing mode and only we can write to the socket
@@ -675,12 +550,8 @@ public class SocketConnection implements Connection {
         }
     }
 
-    private void releaseWriting() {
+    protected void releaseWriting() {
         writing.compareAndSet(true, false);
-    }
-
-    public String toString() {
-        return super.toString() + " socket: " + socket + " session: " + session;
     }
 
     public void setSocketReader(SocketReader socketReader) {

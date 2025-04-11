@@ -29,22 +29,22 @@
  */
 package com.zimbra.cs.account;
 
-import com.zimbra.common.localconfig.LC;
-import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.cs.account.ldap.LdapProvisioning;
-import com.zimbra.cs.mailbox.calendar.ICalTimeZone;
-import com.zimbra.cs.mime.MimeTypeInfo;
-import com.zimbra.cs.util.AccountUtil;
-import com.zimbra.cs.util.L10nUtil;
-
-import javax.mail.internet.InternetAddress;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+
+import javax.mail.internet.InternetAddress;
+
+import com.zimbra.common.localconfig.LC;
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.cs.account.ldap.LdapProvisioning;
+import com.zimbra.cs.mime.MimeTypeInfo;
+import com.zimbra.cs.util.AccountUtil;
+import com.zimbra.cs.util.L10nUtil;
 
 /**
  * @author schemers
@@ -555,16 +555,26 @@ public abstract class Provisioning {
 
     public static final String A_zimbraPrefSkin = "zimbraPrefSkin";
     
+    public static final String A_zimbraPrefMailDefaultCharset = "zimbraPrefMailDefaultCharset";
+    
     public static final String A_zimbraPrefTimeZoneId = "zimbraPrefTimeZoneId";
     public static final String A_zimbraPrefUseTimeZoneListInCalendar = "zimbraPrefUseTimeZoneListInCalendar";
 
     public static final String A_zimbraPrefUseRfc2231 = "zimbraPrefUseRfc2231";
 
     public static final String A_zimbraPrefCalendarNotifyDelegatedChanges = "zimbraPrefCalendarNotifyDelegatedChanges";
-    
+
+    public static final String A_zimbraPrefCalendarFirstDayOfWeek = "zimbraPrefCalendarFirstDayOfWeek";
+
     public static final String A_zimbraPrefCalendarUseQuickAdd = "zimbraPrefCalendarUseQuickAdd";
-    
+
     public static final String A_zimbraPrefCalendarInitialCheckedCalendars = "zimbraPrefCalendarInitialCheckedCalendars";
+
+    public static final String A_zimbraPrefCalendarDayHourStart = "zimbraPrefCalendarDayHourStart";
+
+    public static final String A_zimbraPrefCalendarDayHourEnd = "zimbraPrefCalendarDayHourEnd";
+
+    public static final String A_zimbraPrefCalendarInitialView = "zimbraPrefCalendarInitialView";
 
     public static final String A_zimbraPrefShowSearchString = "zimbraPrefShowSearchString";
 
@@ -634,6 +644,8 @@ public abstract class Provisioning {
 
     public static final String A_zimbraFeatureCalendarEnabled = "zimbraFeatureCalendarEnabled";
 
+    public static final String A_zimbraFeatureTasksEnabled = "zimbraFeatureTasksEnabled";
+
     public static final String A_zimbraFeatureTaggingEnabled = "zimbraFeatureTaggingEnabled";
 
     public static final String A_zimbraFeatureAdvancedSearchEnabled = "zimbraFeatureAdvancedSearchEnabled";
@@ -671,6 +683,8 @@ public abstract class Provisioning {
     public static final String A_zimbraFeatureIdentitiesEnabled = "zimbraFeatureIdentitiesEnabled";
 
     public static final String A_zimbraFeaturePop3DataSourceEnabled = "zimbraFeaturePop3DataSourceEnabled";
+    
+    public static final String A_zimbraFeatureShortcutAliasesEnabled = "zimbraFeatureShortcutAliasesEnabled";
 
     /**
      * administrative notes for an entry.
@@ -834,6 +848,7 @@ public abstract class Provisioning {
      * the mail .signature value
      */
     public static final String A_zimbraPrefMailSignature = "zimbraPrefMailSignature";
+    public static final String A_zimbraMailSignatureMaxLength = "zimbraMailSignatureMaxLength";
     
     /**
      * wether or not to save outgoing mail
@@ -921,6 +936,8 @@ public abstract class Provisioning {
     public static final String A_zimbraImapSSLDisabledCapability = "zimbraImapSSLDisabledCapability";        
     public static final String A_zimbraImapCleartextLoginEnabled = "zimbraImapCleartextLoginEnabled";    
     public static final String A_zimbraImapEnabled = "zimbraImapEnabled";
+    public static final String A_zimbraImapProxyBindPort = "zimbraImapProxyBindPort";
+    public static final String A_zimbraImapSSLProxyBindPort = "zimbraImapSSLProxyBindPort";
 
     public static final String A_zimbraPop3AdvertisedName = "zimbraPop3AdvertisedName";
     public static final String A_zimbraPop3BindPort = "zimbraPop3BindPort";
@@ -934,6 +951,8 @@ public abstract class Provisioning {
     public static final String A_zimbraPop3SSLServerEnabled = "zimbraPop3SSLServerEnabled";            
     public static final String A_zimbraPop3CleartextLoginEnabled = "zimbraPop3CleartextLoginEnabled";    
     public static final String A_zimbraPop3Enabled = "zimbraPop3Enabled";
+    public static final String A_zimbraPop3ProxyBindPort = "zimbraPop3ProxyBindPort";
+    public static final String A_zimbraPop3SSLProxyBindPort = "zimbraPop3SSLProxyBindPort";
 
     public static final String A_zimbraNotifyServerEnabled = "zimbraNotifyServerEnabled";
     public static final String A_zimbraNotifyBindAddress = "zimbraNotifyBindAddress";
@@ -1021,6 +1040,11 @@ public abstract class Provisioning {
     public static final String A_zimbraObjectHandlerClass       = "zimbraObjectHandlerClass";
     public static final String A_zimbraObjectHandlerConfig      = "zimbraObjectHandlerConfig";
 
+    public static final String A_zimbraTableMaintenanceMinRows      = "zimbraTableMaintenanceMinRows";
+    public static final String A_zimbraTableMaintenanceMaxRows      = "zimbraTableMaintenanceMaxRows";
+    public static final String A_zimbraTableMaintenanceOperation    = "zimbraTableMaintenanceOperation";
+    public static final String A_zimbraTableMaintenanceGrowthFactor = "zimbraTableMaintenanceGrowthFactor";
+    
     public static final String A_zimbraSpamCheckEnabled = "zimbraSpamCheckEnabled";
     public static final String A_zimbraSpamKillPercent = "zimbraSpamKillPercent";
     public static final String A_zimbraSpamSubjectTag = "zimbraSpamSubjectTag";
@@ -1122,6 +1146,10 @@ public abstract class Provisioning {
     public static final String A_zimbraDataSourceConnectionType = "zimbraDataSourceConnectionType";    
     public static final String A_zimbraDataSourceMaxNumEntries = "zimbraDataSourceMaxNumEntries";    
     public static final String A_zimbraDataSourceLeaveOnServer = "zimbraDataSourceLeaveOnServer";
+    public static final String A_zimbraDataSourcePollingInterval = "zimbraDataSourcePollingInterval";
+    
+    // Server/globalconfig
+    public static final String A_zimbraDataSourceNumThreads = "zimbraDataSourceNumThreads";
 
     /*
      * Extension Text Analyzer
@@ -1146,23 +1174,40 @@ public abstract class Provisioning {
     public static final String A_zimbraSyncWindowSize = "zimbraSyncWindowSize";
     
     /*
+     * admin saved searches
+     */
+    public static final String A_zimbraAdminSavedSearches = "zimbraAdminSavedSearches";
+
+    /*
+     * family mailboxes
+     */
+    public static final String A_zimbraChildAccount          = "zimbraChildAccount";
+    public static final String A_zimbraChildVisibleAccount   = "zimbraChildVisibleAccount";
+    public static final String A_zimbraFeatureOptionsEnabled = "zimbraFeatureOptionsEnabled";
+
+    /*
      * Backup/Restore
      */
     public static final String A_zimbraBackupTarget = "zimbraBackupTarget";
     public static final String A_zimbraBackupReportEmailRecipients = "zimbraBackupReportEmailRecipients";
     public static final String A_zimbraBackupReportEmailSender = "zimbraBackupReportEmailSender";
     public static final String A_zimbraBackupReportEmailSubjectPrefix = "zimbraBackupReportEmailSubjectPrefix";
+    
+    /*
+     * IM
+     */
+    public static final String A_zimbraPrefIMFlashIcon      = "zimbraPrefIMFlashIcon";
+    public static final String A_zimbraPrefIMNotifyPresence = "zimbraPrefIMNotifyPresence";
+    public static final String A_zimbraPrefIMNotifyStatus   = "zimbraPrefIMNotifyStatus";
+    
 
     /*
-     * whether to use <> or account's real address for out of office 
-     * and new mail notifications 
+     * spam report headers
      */
-    public static final String A_zimbraAutoSubmittedNullReturnPath = "zimbraAutoSubmittedNullReturnPath";    
-
-    /*
-     * Cross mailbox search
-     */
-    public static final String A_zimbraExcludeFromCMBSearch = "zimbraExcludeFromCMBSearch";
+    public static final String A_zimbraSpamReportSenderHeader = "zimbraSpamReportSenderHeader";
+    public static final String A_zimbraSpamReportTypeHeader   = "zimbraSpamReportTypeHeader";
+    public static final String A_zimbraSpamReportTypeSpam     = "zimbraSpamReportTypeSpam";
+    public static final String A_zimbraSpamReportTypeHam     = "zimbraSpamReportTypeHam";
     
     private static Provisioning sProvisioning;
 
@@ -1276,13 +1321,6 @@ public abstract class Provisioning {
     }
     
     /**
-     * Returns account's time zone
-     * @return
-     * @throws ServiceException
-     */
-    public abstract ICalTimeZone getTimeZone(Account acct) throws ServiceException;
-
-    /**
      * @param zimbraId the zimbraId of the dl we are checking for
      * @return true if this account (or one of the dl it belongs to) is a member of the specified dl.
      * @throws ServiceException
@@ -1327,9 +1365,13 @@ public abstract class Provisioning {
     public abstract List<Zimlet> getObjectTypes() throws ServiceException;
     
     /**
-     * Creates the specified account. The A_zimbraId and A_uid attributes are automatically
+     * Creates the specified account. The A_uid attribute is automatically
      * created and should not be passed in.
      * 
+     * If A_zimbraId is passed in the attrs list, createAccount honors it if it is a valid uuid per RFC 4122. 
+     * It is caller's responsibility to ensure the uuid passed in is unique in the namespace.  
+     * createAccount does not check for uniqueness of the uuid passed in as an argument.
+     *      
      * For example:
      * <pre>
      * HashMap attrs  = new HashMap();
@@ -1349,7 +1391,7 @@ public abstract class Provisioning {
      * @throws ServiceException
      */
     public abstract Account createAccount(String emailAddress, String password, Map<String, Object> attrs) throws ServiceException;
-
+    
     /**
      * deletes the specified account, removing the account and all email aliases.
      * does not remove any mailbox associated with the account.
@@ -1467,7 +1509,9 @@ public abstract class Provisioning {
     public abstract void changePassword(Account acct, String currentPassword, String newPassword) throws ServiceException;
     
     public abstract void setPassword(Account acct, String newPassword) throws ServiceException;
-    
+
+    public abstract void checkPasswordStrength(Account acct, String password) throws ServiceException;
+
     public abstract void addAlias(Account acct, String alias) throws ServiceException;
     
     public abstract void removeAlias(Account acct, String alias) throws ServiceException;
@@ -1934,7 +1978,7 @@ public abstract class Provisioning {
                     attrs.put(A_zimbraPrefForwardReplyFormat, composeFormat);
             }
         }
-        return new Identity(DEFAULT_IDENTITY_NAME, account.getId(), attrs);        
+        return new Identity(account, DEFAULT_IDENTITY_NAME, account.getId(), attrs);        
     }
     
     public abstract Identity createIdentity(Account account, String identityName, Map<String, Object> attrs) throws ServiceException;

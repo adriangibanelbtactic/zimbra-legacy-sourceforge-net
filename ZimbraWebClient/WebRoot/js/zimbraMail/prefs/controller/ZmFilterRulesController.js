@@ -35,12 +35,14 @@
 * @param container		[DwtShell]			the shell
 * @param prefsApp		[ZmPreferencesApp]	the preferences app
 */
-function ZmFilterRulesController(appCtxt, container, prefsApp, prefsView) {
+ZmFilterRulesController = function(appCtxt, container, prefsApp, prefsView) {
 
 	ZmController.call(this, appCtxt, container, prefsApp);
 
+	ZmFilterRule._setPreconditions();
+
 	this._prefsView = prefsView;
-	this._rules = prefsApp.getFilterRules();
+	this._rules = AjxDispatcher.run("GetFilterRules");
 	this._filterRulesView = new ZmFilterRulesView(this._prefsView._parent, appCtxt, this);
 	
 	this._buttonListeners = new Object();
@@ -88,12 +90,12 @@ function() {
 				   ZmOperation.SEP,
 				   ZmOperation.MOVE_DOWN_FILTER_RULE];
 	
-	this._toolbar = new ZmButtonToolBar(this._filterRulesView, buttons, null, Dwt.STATIC_STYLE);
+	this._toolbar = new ZmButtonToolBar({parent:this._filterRulesView, buttons:buttons, posStyle:Dwt.STATIC_STYLE});
 
 	// add listeners
-	var id;
+	buttons = this._toolbar.opList;
 	for (var i = 0; i < buttons.length; i++) {
-		id = buttons[i];
+		var id = buttons[i];
 		if (this._buttonListeners[id]) {
 			this._toolbar.addSelectionListener(id, this._buttonListeners[id]);
 		}

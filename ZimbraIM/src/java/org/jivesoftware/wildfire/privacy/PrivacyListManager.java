@@ -1,27 +1,3 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
- */
 package org.jivesoftware.wildfire.privacy;
 
 import org.dom4j.Element;
@@ -66,6 +42,8 @@ public class PrivacyListManager {
      * @return the newly created PrivacyList.
      */
     public PrivacyList createPrivacyList(String username, String listName, Element listElement) {
+        assert(username.indexOf('@')>0);
+        
         // Create new list
         PrivacyList list = new PrivacyList(username, listName, false, listElement);
         // Add new list to cache
@@ -84,6 +62,8 @@ public class PrivacyListManager {
      * @param listName the name of the list being deleted.
      */
     public void deletePrivacyList(String username, String listName) {
+        assert(username.indexOf('@')>0);
+        
         // Remove the list from the cache
         listsCache.remove(getCacheKey(username, listName));
         // Delete the privacy list from the DB
@@ -102,6 +82,8 @@ public class PrivacyListManager {
      * @param username the username of the list owner.
      */
     public void deletePrivacyLists(String username) {
+        assert(username.indexOf('@')>0);
+        
         for (String listName : provider.getPrivacyLists(username).keySet()) {
             // Remove the list from the cache
             listsCache.remove(getCacheKey(username, listName));
@@ -119,6 +101,8 @@ public class PrivacyListManager {
      *         none was found.
      */
     public PrivacyList getDefaultPrivacyList(String username) {
+        assert(username.indexOf('@')>0);
+        
         // Check if we have the default list in the cache
         String cacheKey = getDefaultCacheKey(username);
         PrivacyList list = (PrivacyList) listsCache.get(cacheKey);
@@ -147,6 +131,7 @@ public class PrivacyListManager {
      *         none was found.
      */
     public PrivacyList getPrivacyList(String username, String listName) {
+        assert(username.indexOf('@')>0);
         // Check if we have a list in the cache
         String cacheKey = getCacheKey(username, listName);
         PrivacyList list = (PrivacyList) listsCache.get(cacheKey);
@@ -168,6 +153,7 @@ public class PrivacyListManager {
      * @param oldDefault the previous privacy list or <tt>null</tt> if no default list existed.
      */
     public void changeDefaultList(String username, PrivacyList newDefault, PrivacyList oldDefault) {
+        assert(username.indexOf('@')>0);
         // TODO Analyze concurrency issues when other resource may log in while doing this change
         if (oldDefault != null) {
             // Update old default list to become just another list
@@ -186,6 +172,7 @@ public class PrivacyListManager {
      * Returns the key to use to locate a privacy list in the cache.
      */
     private String getCacheKey(String username, String listName) {
+        assert(username.indexOf('@')>0);
         return username + listName;
     }
 
@@ -193,6 +180,7 @@ public class PrivacyListManager {
      * Returns the key to use to locate default privacy lists in the cache.
      */
     private String getDefaultCacheKey(String username) {
+        assert(username.indexOf('@')>0);
         return getCacheKey(username, "__d_e_f_a_u_l_t__");
     }
 }

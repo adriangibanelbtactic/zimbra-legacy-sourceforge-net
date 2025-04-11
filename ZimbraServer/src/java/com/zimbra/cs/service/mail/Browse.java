@@ -28,19 +28,17 @@
  */
 package com.zimbra.cs.service.mail;
 
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.BrowseResult;
 import com.zimbra.cs.mailbox.BrowseResult.DomainItem;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.cs.operation.BrowseOperation;
-import com.zimbra.cs.operation.Operation.Requester;
-import com.zimbra.cs.session.SessionCache;
-import com.zimbra.cs.session.SoapSession;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -51,31 +49,32 @@ public class Browse extends MailDocumentHandler  {
     public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext zc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zc);
-        SoapSession session = (SoapSession) zc.getSession(SessionCache.SESSION_SOAP);
         
         String browseBy = request.getAttribute("browseby", null);
         if (browseBy == null)
-            browseBy = request.getAttribute(MailService.A_BROWSE_BY);
+            browseBy = request.getAttribute(MailConstants.A_BROWSE_BY);
         
-        BrowseOperation op = new BrowseOperation(session, zc.getOperationContext(), mbox, Requester.SOAP, browseBy);
-        op.schedule();
+        BrowseResult browse;
+        try {
+            browse = mbox.browse(zc.getOperationContext(), browseBy);
+        } catch (IOException e) {
+            throw ServiceException.FAILURE("IO error", e);
+        }
         
-        BrowseResult browse =  op.getResult();
-        
-        Element response = zc.createElement(MailService.BROWSE_RESPONSE);
+        Element response = zc.createElement(MailConstants.BROWSE_RESPONSE);
         
         List result = browse.getResult();
         if (result != null) {
             for (Iterator mit = result.iterator(); mit.hasNext();) {
                 Object o = mit.next();
                 if (o instanceof String) {
-                    response.addElement(MailService.E_BROWSE_DATA).setText((String) o);
+                    response.addElement(MailConstants.E_BROWSE_DATA).setText((String) o);
                 } else if (o instanceof DomainItem) {
                     DomainItem domain = (DomainItem) o;
-                    Element e = response.addElement(MailService.E_BROWSE_DATA).setText(domain.getDomain());
+                    Element e = response.addElement(MailConstants.E_BROWSE_DATA).setText(domain.getDomain());
                     String flags = domain.getHeaderFlags();
                     if (!flags.equals(""))
-                        e.addAttribute(MailService.A_BROWSE_DOMAIN_HEADER, flags);
+                        e.addAttribute(MailConstants.A_BROWSE_DOMAIN_HEADER, flags);
                 } else {
                     throw new RuntimeException("unknown browse item: " + o.getClass().getName() + " " + o);
                 }

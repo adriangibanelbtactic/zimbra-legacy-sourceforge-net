@@ -26,11 +26,11 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.mail.MailService;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.zclient.ZMailbox.SearchSortBy;
 import com.zimbra.cs.zclient.event.ZModifySearchFolderEvent;
 import com.zimbra.cs.zclient.event.ZModifyEvent;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 public class ZSearchFolder extends ZFolder {
 
@@ -41,10 +41,10 @@ public class ZSearchFolder extends ZFolder {
     
     public ZSearchFolder(Element e, ZFolder parent) throws ServiceException {
         super(e, parent);
-        mQuery = e.getAttribute(MailService.A_QUERY);
-        mTypes = e.getAttribute(MailService.A_SEARCH_TYPES, null);
+        mQuery = e.getAttribute(MailConstants.A_QUERY);
+        mTypes = e.getAttribute(MailConstants.A_SEARCH_TYPES, null);
         try {
-            mSortBy = SearchSortBy.fromString(e.getAttribute(MailService.A_SORTBY, SearchSortBy.dateDesc.name()));
+            mSortBy = SearchSortBy.fromString(e.getAttribute(MailConstants.A_SORTBY, SearchSortBy.dateDesc.name()));
         } catch (ServiceException se) {
             mSortBy = SearchSortBy.dateDesc;
         }

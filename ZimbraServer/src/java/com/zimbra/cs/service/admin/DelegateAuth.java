@@ -29,6 +29,8 @@
 package com.zimbra.cs.service.admin;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.AccountServiceException;
@@ -36,7 +38,6 @@ import com.zimbra.cs.account.AuthToken;
 import com.zimbra.cs.account.AuthTokenException;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.AccountBy;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 import java.util.Map;
@@ -47,25 +48,21 @@ import java.util.Map;
 public class DelegateAuth extends AdminDocumentHandler {
 
     // default is one hour
-    private static final long DEFAULT_AUTH_LIFETIME = 60*60*1;
+	private static final long DEFAULT_AUTH_LIFETIME = 60*60*1;
 
     public static final String BY_NAME = "name";
     public static final String BY_ID = "id";
-    
-    public boolean domainAuthSufficient(Map context) {
-        return true;
-    }
 
-    public Element handle(Element request, Map<String, Object> context) throws ServiceException {
+	public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
 
-        Element a = request.getElement(AdminService.E_ACCOUNT);
-        String key = a.getAttribute(AdminService.A_BY);
+        Element a = request.getElement(AdminConstants.E_ACCOUNT);
+        String key = a.getAttribute(AdminConstants.A_BY);
         String value = a.getText();
 
-        long lifetime = request.getAttributeLong(AdminService.A_DURATION, DEFAULT_AUTH_LIFETIME) * 1000;
+        long lifetime = request.getAttributeLong(AdminConstants.A_DURATION, DEFAULT_AUTH_LIFETIME) * 1000;
         
-        Provisioning prov = Provisioning.getInstance();
+		Provisioning prov = Provisioning.getInstance();
         
         Account account = null;
 
@@ -80,13 +77,10 @@ public class DelegateAuth extends AdminDocumentHandler {
         if (account == null)
             throw AccountServiceException.NO_SUCH_ACCOUNT(value);
         
-        if (!canAccessAccount(lc, account))
-            throw ServiceException.PERM_DENIED("can not access account");
-        
         ZimbraLog.security.info(ZimbraLog.encodeAttrs(
-                new String[] {"cmd", "DelegateAuth","accountId", account.getId(), "accountName", account.getName()})); 
+                new String[] {"cmd", "DelegateAuth","accountId", account.getId(),"accountName", account.getName()})); 
 
-        Element response = lc.createElement(AdminService.DELEGATE_AUTH_RESPONSE);
+        Element response = lc.createElement(AdminConstants.DELEGATE_AUTH_RESPONSE);
         long maxLifetime = account.getTimeInterval(Provisioning.A_zimbraAuthTokenLifetime, DEFAULT_AUTH_LIFETIME*1000); 
 
         // take the min of requested lifetime vs maxLifetime
@@ -102,9 +96,19 @@ public class DelegateAuth extends AdminDocumentHandler {
         } catch (AuthTokenException e) {
             throw  ServiceException.FAILURE("unable to encode auth token", e);
         }
-        response.addAttribute(AdminService.E_AUTH_TOKEN, token, Element.DISP_CONTENT);
-        response.addAttribute(AdminService.E_LIFETIME, lifetime, Element.DISP_CONTENT);
-        return response;
+        response.addAttribute(AdminConstants.E_AUTH_TOKEN, token, Element.Disposition.CONTENT);
+        response.addAttribute(AdminConstants.E_LIFETIME, lifetime, Element.Disposition.CONTENT);
+		return response;
+	}
+
+    public boolean needsAuth(Map<String, Object> context) {
+        // can't require auth on auth request
+        return false;
+    }
+
+    public boolean needsAdminAuth(Map<String, Object> context) {
+        // can't require auth on auth request
+        return false;
     }
     
     /*

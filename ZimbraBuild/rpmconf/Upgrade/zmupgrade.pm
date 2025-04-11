@@ -42,7 +42,7 @@ chomp $rundir;
 my $scriptDir = "/opt/zimbra/libexec/scripts";
 
 my $lowVersion = 18;
-my $hiVersion = 36;
+my $hiVersion = 37;
 my $hiLoggerVersion = 5;
 
 # Variables for the combo schema updater
@@ -75,6 +75,7 @@ my %updateScripts = (
   '33' => "migrate20061205-UniqueAppointmentIndex.pl", # 4.5.0_RC1
   '34' => "migrate20061212-RepairMutableIndexIds.pl",  # 4.5.0_RC1
   '35' => "migrate20061221-RecalculateFolderSizes.pl", # 4.5.0_GA
+  '36' => "migrate20070306-Pop3MessageUid.pl",         # 5.0.0_BETA1
 );
 
 my %loggerUpdateScripts = (
@@ -117,12 +118,10 @@ my %updateFuncs = (
 	"4.5.3_GA" => \&upgrade453GA,
 	"4.5.4_GA" => \&upgrade454GA,
 	"4.5.5_GA" => \&upgrade455GA,
-	"4.5.6_GA" => \&upgrade456GA,
-	"4.5.7_GA" => \&upgrade457GA,
+  "4.6.0_BETA" => \&upgrade460BETA,
+  "4.6.0_RC1" => \&upgrade460RC1,
+  "4.6.0_GA" => \&upgrade460GA,
 	"5.0.0_BETA1" => \&upgrade500BETA1,
-	"5.0.0_BETA2" => \&upgrade500BETA2,
-	"5.0.0_RC1" => \&upgrade500RC1,
-	"5.0.0_RC2" => \&upgrade500RC2,
 	"5.0.0_GA" => \&upgrade500GA,
 );
 
@@ -158,12 +157,10 @@ my @versionOrder = (
 	"4.5.3_GA",
 	"4.5.4_GA",
 	"4.5.5_GA",
-	"4.5.6_GA",
-	"4.5.7_GA",
+  "4.6.0_BETA",
+  "4.6.0_RC1",
+  "4.6.0_GA",
   "5.0.0_BETA1",
-  "5.0.0_BETA2",
-  "5.0.0_RC1",
-  "5.0.0_RC2",
   "5.0.0_GA",
 );
 
@@ -201,6 +198,7 @@ sub upgrade {
 
 	my $needVolumeHack = 0;
 	my $needMysqlTableCheck = 0;
+	my $needLdapMigration = 0;
 
 	getInstalledPackages();
 
@@ -289,18 +287,14 @@ sub upgrade {
 		main::progress("This appears to be 4.5.4_GA\n");
 	} elsif ($startVersion eq "4.5.5_GA") {
 		main::progress("This appears to be 4.5.5_GA\n");
-	} elsif ($startVersion eq "4.5.6_GA") {
-		main::progress("This appears to be 4.5.6_GA\n");
-	} elsif ($startVersion eq "4.5.7_GA") {
-		main::progress("This appears to be 4.5.7_GA\n");
+	} elsif ($startVersion eq "4.6.0_BETA") {
+		print "This appears to be 4.6.0_BETA\n";
+	} elsif ($startVersion eq "4.6.0_RC1") {
+		print "This appears to be 4.6.0_RC1\n";
+	} elsif ($startVersion eq "4.6.0_GA") {
+		print "This appears to be 4.6.0_GA\n";
 	} elsif ($startVersion eq "5.0.0_BETA1") {
 		main::progress("This appears to be 5.0.0_BETA1\n");
-	} elsif ($startVersion eq "5.0.0_BETA2") {
-		main::progress("This appears to be 5.0.0_BETA2\n");
-	} elsif ($startVersion eq "5.0.0_RC1") {
-		main::progress("This appears to be 5.0.0_RC1\n");
-	} elsif ($startVersion eq "5.0.0_RC2") {
-		main::progress("This appears to be 5.0.0_RC2\n");
 	} elsif ($startVersion eq "5.0.0_GA") {
 		main::progress("This appears to be 5.0.0_GA\n");
 	} else {
@@ -308,9 +302,15 @@ sub upgrade {
 		return 1;
 	}
 
-  if ($targetVersion eq "4.5.2_GA") {
-    $needMysqlTableCheck=1;
+  
+	my $found = 0;
+	foreach my $v (@versionOrder) {
+    $found = 1 if ($v eq $startVersion);
+		if ($found) {
+      $needMysqlTableCheck=1 if ($v eq "4.5.2_GA");
 		}
+	  last if ($v eq $targetVersion);
+  }
 
 	if (isInstalled("zimbra-store")) {
 
@@ -351,14 +351,14 @@ sub upgrade {
 		stopLoggerSql();
 	}
 
-	my $found = 0;
 
-  #migrateLdap();
   # start ldap
 	if (isInstalled ("zimbra-ldap")) {
+    migrateLdap() if $needLdapMigration;
     if (startLdap()) {return 1;} 
   }
 
+	my $found = 0;
 	foreach my $v (@versionOrder) {
 	  main::progress("Checking $v\n");
 		if ($v eq $startVersion) {
@@ -1169,7 +1169,7 @@ sub upgrade450RC1 {
     my $result = $ldap->bind("uid=zimbra,cn=admins,cn=zimbra", password => $ldap_pass);
     unless($result->code()) {
       $result = DeleteLdapTree($ldap,$dn);
-      main::progress($result->code() ? "Failed to delete $dn: ".$result->error() : "Deleted $dn\n");
+      main::progress($result->code() ? "Failed to delete $dn: ".$result->error()."\n" : "Deleted $dn\n");
     }
     $result = $ldap->unbind;
   }
@@ -1246,75 +1246,130 @@ sub upgrade455GA {
 	main::progress("Updating from 4.5.5_GA\n");
 	return 0;
 }
-sub upgrade456GA {
+sub upgrade460BETA {
 	my ($startBuild, $targetVersion, $targetBuild) = (@_);
-	main::progress("Updating from 4.5.6_GA\n");
-  # bug 16425 rewrite default perms on localconfig.xml
-  main::setLocalConfig("upgrade_dummy", "1");
-  main::deleteLocalConfig("upgrade_dummy");
-
-  # bug 17879
-  if (isInstalled("zimbra-store")) {
-    updateMySQLcnf();
-  }
-
+	Migrate::log("Updating from 4.6.0_BETA");
 	return 0;
 }
-sub upgrade457GA {
+sub upgrade460RC1 {
 	my ($startBuild, $targetVersion, $targetBuild) = (@_);
-	main::progress("Updating from 4.5.7_GA\n");
-  if (isInstalled("zimbra-ldap")) {
-    #bug 17887
-    main::runAsZimbra("$ZMPROV mcf zimbraHttpNumThreads 100");
-    main::runAsZimbra("$ZMPROV mcf zimbraHttpSSLNumThreads 50");
-    #bug 17794
-    main::runAsZimbra("$ZMPROV mcf zimbraMtaMyDestination localhost");
-    #bug 18388
-	  my $threads = (split(/\s+/, `su - zimbra -c "$ZMPROV gcf zimbraPop3NumThreads"`))[-1];
-    main::runAsZimbra("$ZMPROV mcf zimbraPop3NumThreads 100")
-      if ($threads eq "20");
-  }
-  if (isInstalled("zimbra-mta")) {
-    # migrate amavis data 
-    migrateAmavisDB("2.5.2");
-  }
-
-  if (isInstalled("zimbra-store")) {
-    # 19749
-    updateMySQLcnf();
-		if (startSql()) { return 1; }
-		main::runAsZimbra("perl -I${scriptDir} ${scriptDir}/migrateLargeMetadata.pl -a");
-		stopSql();
-  }
-
-  if (isInstalled("zimbra-logger")) {
-    updateLoggerMySQLcnf();
-  }
+	Migrate::log("Updating from 4.6.0_RC1");
+	return 0;
+}
+sub upgrade460GA {
+	my ($startBuild, $targetVersion, $targetBuild) = (@_);
+	Migrate::log("Updating from 4.6.0_GA");
 	return 0;
 }
 sub upgrade500BETA1 {
 	my ($startBuild, $targetVersion, $targetBuild) = (@_);
 	main::progress("Updating from 5.0.0_BETA1\n");
-	return 0;
+
+  my $zimbra_home = main::getLocalConfig("zimbra_home");
+  $zimbra_home = "/opt/zimbra" if ($zimbra_home eq "");
+
+  if (isInstalled("zimbra-store")) {
+    if (startSql()) { return 1; }
+    Migrate::log("Executing ${scriptDir}/migrate20070302-NullContactVolumeId.pl"); 
+    main::runAsZimbra("perl -I${scriptDir} ${scriptDir}/migrate20070302-NullContactVolumeId.pl");
+    stopSql();
+
+    my $mailboxd_java_options = main::getLocalConfig("mailboxd_java_options");
+    if ($mailboxd_java_options eq "") {
+      my $tomcat_java_options = main::getLocalConfig("tomcat_java_options");
+      main::setLocalConfig("mailboxd_java_options", "$tomcat_java_options");
+      main::deleteLocalConfig("tomcat_java_options");
     }
 
-sub upgrade500BETA2 {
-	my ($startBuild, $targetVersion, $targetBuild) = (@_);
-	main::progress("Updating from 5.0.0_BETA2\n");
 
-  # bug 16425 rewrite default perms on localconfig.xml
-  main::setLocalConfig("upgrade_dummy", "1");
-  main::deleteLocalConfig("upgrade_dummy");
-	return 0;
-}
-sub upgrade500RC1 {
-	my ($startBuild, $targetVersion, $targetBuild) = (@_);
-	main::progress("Updating from 5.0.0_RC1\n");
-	return 0;
-}
-sub upgrade500RC2 {
-	my ($startBuild, $targetVersion, $targetBuild) = (@_);
-	main::progress("Updating from 5.0.0_RC2\n");
+    my $mailboxd_directory = main::getLocalConfig("mailboxd_directory");
+    if ($mailboxd_directory eq "") {
+      main::setLocalConfig("mailboxd_directory", "${zimbra_home}/mailboxd");
+      $main::config{mailboxd_directory} = $mailboxd_directory;
+      main::deleteLocalConfig("tomcat_directory");
+    }
+
+    my $mailboxd_keystore = main::getLocalConfig("mailboxd_keystore");
+    if ($mailboxd_keystore eq "" || -f "${zimbra_home}/mailboxd/etc/jettyrc") {
+      $mailboxd_keystore="${zimbra_home}/mailboxd/etc/keystore";
+      main::deleteLocalConfig("tomcat_keystore");
+    } elsif ( -f "${zimbra_home}/mailboxd/conf/server.xml.in") {
+      $mailboxd_keystore="${zimbra_home}/mailboxd/conf/keystore";
+    }
+    $main::config{mailboxd_keystore} = $mailboxd_keystore;
+    main::setLocalConfig("mailboxd_keystore", "${mailboxd_keystore}");
+
+    my $mailboxd_java_heap_memory_percent = 
+      main::getLocalConfig("mailboxd_java_heap_memory_percent");
+
+    if ($mailboxd_java_heap_memory_percent eq "") {
+      my $tomcat_java_heap_memory_percent  = 
+        main::getLocalConfig("tomcat_java_heap_memory_percent");
+      $tomcat_java_heap_memory_percent = 40 
+        if ($tomcat_java_heap_memory_percent eq "");
+      main::setLocalConfig("mailboxd_java_heap_memory_percent", 
+        "$tomcat_java_heap_memory_percent");
+      main::deleteLocalConfig("tomcat_java_heap_memory_percent");
+    }
+
+    my $mailboxd_java_home = main::getLocalConfig("mailboxd_java_home");
+    if ($mailboxd_java_home eq "") {
+      my $tomcat_java_home = main::getLocalConfig("tomcat_java_home");
+      main::setLocalConfig("mailboxd_java_home", "$tomcat_java_home");
+      main::deleteLocalConfig("tomcat_java_home");
+    }
+
+    my $zimlet_directory = "${zimbra_home}/mailboxd/webapps/service/zimlet";
+    main::setLocalConfig("zimlet_directory", "$zimlet_directory");
+
+    # convert tomcat keystore to jetty keystore
+    if (!-f "${mailboxd_keystore}" && -f "/opt/zimbra/tomcat/conf/keystore") { 
+      Migrate::log("Migrating tomcat keystore to ${mailboxd_keystore}");
+      main::runAsZimbra("mkdir -p `dirname ${mailboxd_keystore}`; cp -f /opt/zimbra/tomcat/conf/keystore ${mailboxd_keystore}; /opt/zimbra/java/bin/keytool -keystore ${mailboxd_keystore} -keyclone -alias tomcat -dest jetty -storepass zimbra -new zimbra");
+    }
+
+  }
+
+  if (isInstalled("zimbra-ldap")) {
+    main::runAsZimbra("$ZMPROV mc default zimbraFeatureTasksEnabled TRUE");
+    # bug add zimbraBackupTarget 
+    my $zimbraBackupTarget = main::getLdapConfigValue("zimbraBackupTarget");
+    if ($zimbraBackupTarget eq "") {
+      $zimbraBackupTarget = "${zimbra_home}/backup";
+      Migrate::log("Setting global ldap config zimbraBackupTarget=$zimbraBackupTarget");
+      main::runAsZimbra("$ZMPROV mcf zimbraBackupTarget $zimbraBackupTarget");
+    }
+
+    # bug 15452 add zimbraSpamSenderHeader and zimbraSpamTypeHeader
+    my $zimbraSpamReportSenderHeader = main::getLdapConfigValue("zimbraSpamReportSenderHeader");
+    if ($zimbraSpamReportSenderHeader eq "") {
+      $zimbraSpamReportSenderHeader = "X-Zimbra-Spam-Report-Sender";
+      Migrate::log("Setting global ldap config zimbraSpamReportSenderHeader=$zimbraSpamReportSenderHeader");
+      main::runAsZimbra("$ZMPROV mcf zimbraSpamReportSenderHeader $zimbraSpamReportSenderHeader");
+    }
+    my $zimbraSpamReportTypeHeader = main::getLdapConfigValue("zimbraSpamReportTypeHeader");
+    if ($zimbraSpamReportTypeHeader eq "") {
+      $zimbraSpamReportTypeHeader = "X-Zimbra-Spam-Report-Type";
+      Migrate::log("Setting global ldap config zimbraSpamReportTypeHeader=$zimbraSpamReportTypeHeader");
+      main::runAsZimbra("$ZMPROV mcf zimbraSpamReportTypeHeader $zimbraSpamReportTypeHeader");
+    }
+
+    my $zimbraSpamReportTypeSpam = main::getLdapConfigValue("zimbraSpamReportTypeSpam");
+    if ($zimbraSpamReportTypeSpam eq "") {
+      $zimbraSpamReportTypeSpam = "spam";
+      Migrate::log("Setting global ldap config zimbraSpamReportTypeSpam=$zimbraSpamReportTypeSpam");
+      main::runAsZimbra("$ZMPROV mcf zimbraSpamReportTypeSpam $zimbraSpamReportTypeSpam");
+    }
+
+    my $zimbraSpamReportTypeHam = main::getLdapConfigValue("zimbraSpamReportTypeHam");
+    if ($zimbraSpamReportTypeHam eq "") {
+      $zimbraSpamReportTypeHam = "ham";
+      Migrate::log("Setting global ldap config zimbraSpamReportTypeHam=$zimbraSpamReportTypeHam");
+      main::runAsZimbra("$ZMPROV mcf zimbraSpamReportTypeHam $zimbraSpamReportTypeHam");
+    }
+
+    my $zimbraSpamReportTypeHeader = main::getLdapConfigValue("zimbraSpamReportTypeHeader");
+  }
 	return 0;
 }
 sub upgrade500GA {
@@ -1386,7 +1441,7 @@ sub startSql {
 		main::progress("Starting mysql\n");
 		my $rc = 0xffff & system("su - zimbra -c \"/opt/zimbra/bin/mysql.server start > /dev/null 2>&1\"");
     my $timeout = sleep 10;
-    while (!isSqlRunning() && $timeout <= 1200 ) {
+    while (!isSqlRunning() && $timeout <= 120 ) {
 		  $rc = 0xffff & system("su - zimbra -c \"/opt/zimbra/bin/mysql.server start > /dev/null 2>&1\"");
       $timeout += sleep 10;
     }
@@ -1569,56 +1624,9 @@ sub movePostfixQueue {
 	`/opt/zimbra/bin/zmfixperms.sh`;
 }
 
-sub updateLoggerMySQLcnf {
-
-  my $mycnf = "/opt/zimbra/conf/my.logger.cnf";
-  my $mysql_pidfile = main::getLocalConfig("logger_mysql_pidfile");
-  $mysql_pidfile = "/opt/zimbra/logger/db/mysql.pid" if ($mysql_pidfile eq "");
-  if (-e "$mycnf") {
-    unless (open(MYCNF, "$mycnf")) {
-      Migrate::myquit(1, "${mycnf}: $!\n");
-    }
-    my @CNF = <MYCNF>;
-    close(MYCNF);
-    my $i=0;
-    my $mycnfChanged = 0;
-    my $tmpfile = "/tmp/my.cnf.$$";;
-    my $zimbra_user = `zmlocalconfig -m nokey zimbra_user 2> /dev/null` || "zmbra";;
-    open(TMP, ">$tmpfile");
-    foreach (@CNF) {
-      if (/^port/ && $CNF[$i+1] !~ m/^user/) {
-        print TMP;
-        print TMP "user         = $zimbra_user\n";
-        $mycnfChanged=1;
-        next;
-      } elsif (/^err-log/ && $CNF[$i+1] !~ m/^pid-file/) {
-        print TMP;
-        print TMP "pid-file = ${mysql_pidfile}\n";
-        $mycnfChanged=1;
-        next;
-      } elsif (/^skip-external-locking/) {
-        # 19749 remove skip-external-locking
-        print TMP "external-locking\n";
-        $mycnfChanged=1;
-        next;
-      }
-      print TMP;
-      $i++;
-    }
-    close(TMP);
-  
-    if ($mycnfChanged) {
-      `mv $mycnf ${mycnf}.${startVersion}`;
-      `cp -f $tmpfile $mycnf`;
-      `chmod 644 $mycnf`;
-    } 
-  }
-}
 sub updateMySQLcnf {
 
   my $mycnf = "/opt/zimbra/conf/my.cnf";
-  my $mysql_pidfile = main::getLocalConfig("mysql_pidfile");
-  $mysql_pidfile = "/opt/zimbra/db/mysql.pid" if ($mysql_pidfile eq "");
   if (-e "$mycnf") {
     unless (open(MYCNF, "$mycnf")) {
       Migrate::myquit(1, "${mycnf}: $!\n");
@@ -1628,22 +1636,12 @@ sub updateMySQLcnf {
     my $i=0;
     my $mycnfChanged = 0;
     my $tmpfile = "/tmp/my.cnf.$$";;
-    my $zimbra_user = `zmlocalconfig -m nokey zimbra_user 2> /dev/null` || "zmbra";;
+    my $zimbra_user = `zmlocalconfig -m nokey zimbra_user 2> /dev/null` || "zimbra";;
     open(TMP, ">$tmpfile");
     foreach (@CNF) {
       if (/^port/ && $CNF[$i+1] !~ m/^user/) {
         print TMP;
         print TMP "user         = $zimbra_user\n";
-        $mycnfChanged=1;
-        next;
-      } elsif (/^err-log/ && $CNF[$i+1] !~ m/^pid-file/) {
-        print TMP;
-        print TMP "pid-file = ${mysql_pidfile}\n";
-        $mycnfChanged=1;
-        next;
-      } elsif (/^skip-external-locking/) {
-        # 19749 remove skip-external-locking
-        print TMP "external-locking\n";
         $mycnfChanged=1;
         next;
       }
@@ -1653,7 +1651,7 @@ sub updateMySQLcnf {
     close(TMP);
   
     if ($mycnfChanged) {
-      `mv $mycnf ${mycnf}.${startVersion}`;
+      `mv $mycnf ${mycnf}.3.2.0_M2`;
       `cp -f $tmpfile $mycnf`;
       `chmod 644 $mycnf`;
     } 
@@ -1754,12 +1752,9 @@ sub migrateLdap {
 			`mkdir /opt/zimbra/openldap-data`;
 			`touch /opt/zimbra/openldap-data/DB_CONFIG`;
 			`chown -R zimbra:zimbra /opt/zimbra/openldap-data`;
-			main::runAsZimbra("/opt/zimbra/openldap/sbin/slapadd -b '' -f /opt/zimbra/conf/slapd.conf -l /opt/zimbra/openldap-data.prev/ldap.bak");
-		} else {
-                        stopLdap();
-                        main::runAsZimbra("/opt/zimbra/sleepycat/bin/db_recover -h /opt/zimbra/openldap-data");
-			main::runAsZimbra("/opt/zimbra/openldap/sbin/slapindex -b '' -f /opt/zimbra/conf/slapd.conf");
+			main::runAsZimbra("/opt/zimbra/openldap/sbin/slapadd -f /opt/zimbra/conf/slapd.conf -l /opt/zimbra/openldap-data.prev/ldap.bak");
 		}
+		main::runAsZimbra("/opt/zimbra/openldap/sbin/slapindex -f /opt/zimbra/conf/slapd.conf");
 		if (startLdap()) {return 1;} 
 	}
   return;
@@ -1809,14 +1804,6 @@ sub migrateAmavisDB($) {
   }
 }
 
-
-sub verifyDatabaseIntegrity {
-  if (-x "/opt/zimbra/libexec/zmdbintegrityreport") {
-    main::progress("Verifying integrity of databases.\n");
-	  main::runAsZimbra("/opt/zimbra/libexec/zmdbintegrityreport -v -r");
-  }
-  return;
-}
 
 sub verifyMysqlConfig {
   my $mysqlConf = "/opt/zimbra/conf/my.cnf";

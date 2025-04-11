@@ -83,15 +83,26 @@ public class DebugConfig {
     // If true, turns off object detection feature.
     public static boolean disableObjects;
 
+    // If true, allow VALARMs whose ACTION is not DISPLAY, namely AUDIO, EMAIL,
+    // and PROCEDURE.  False by default, which means only DISPLAY alarms are
+    // supported and others are ignored.
+    public static boolean calendarAllowNonDisplayAlarms;
+
+    // If true, fsync is skipped for redolog writes.
+    public static boolean disableRedoLogFsync;
+
+    // If true, fsync is skipped for message blob file saving.
+    public static boolean disableMessageStoreFsync;
+
     // If true, convert TZ-relative times to UTC time in SOAP responses for
     // non-recurring appointments/tasks.  Recurring series or instances are
     // unaffected by this switch.
     public static boolean calendarForceUTC;
 
-    public static final boolean disableMailboxGroup;
     public static final int numMailboxGroups;
 
     static {
+        calendarAllowNonDisplayAlarms = booleanValue("debug_calendar_allow_non_display_alarms", false);
         calendarForceUTC = booleanValue("debug_calendar_force_utc", false);
         validateOutgoingICalendar = booleanValue("debug_validate_outgoing_icalendar", false);        
         disableConversation = booleanValue("debug_disable_conversation", false);
@@ -112,11 +123,10 @@ public class DebugConfig {
         disableIndexingAttachmentsSeparately = booleanValue("debug_disable_indexing_attachments_separately", false);
         disableIndexingAttachmentsTogether = booleanValue("debug_disable_indexing_attachments_together", false);
 
-        disableMailboxGroup = booleanValue("debug_disable_mailbox_group", false);
-        if (!disableMailboxGroup)
-            numMailboxGroups = Math.max(LC.zimbra_mailbox_groups.intValue(), 1);
-        else
-            numMailboxGroups = 32000;
+        disableRedoLogFsync = booleanValue("debug_disable_redolog_fsync", false);
+        disableMessageStoreFsync = booleanValue("debug_disable_message_store_fsync", false);
+
+        numMailboxGroups = Math.max(LC.zimbra_mailbox_groups.intValue(), 1);
     }
 
     private static boolean booleanValue(String key, boolean defaultValue) {

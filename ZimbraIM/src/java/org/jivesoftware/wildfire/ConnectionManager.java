@@ -1,29 +1,18 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 1583 $
+ * $Date: 2005-07-03 17:55:39 -0300 (Sun, 03 Jul 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
+import org.apache.mina.common.IoSession;
+import org.jivesoftware.wildfire.net.NioCompletionHandler;
 import org.jivesoftware.wildfire.net.SocketReader;
 
 import java.io.IOException;
@@ -46,18 +35,29 @@ public interface ConnectionManager {
     public Iterator<ServerPort> getPorts();
 
     /**
-     * Creates a new socket reader for the new accepted socket to be managed
+     * Creates a new blocking-mode socket reader for the new accepted socket to be managed
      * by the connection manager.
      *
      * @param socket the new accepted socket by this manager.
-     * @param isSecure true if the connection is secure.
      * @param serverPort holds information about the port on which the server is listening for
      *        connections.
      * @param useBlockingMode true means that the server will use a thread per connection.
      */
-    public SocketReader createSocketReader(Socket socket, boolean isSecure, ServerPort serverPort,
-            boolean useBlockingMode) throws IOException;
-
+    public SocketReader createSocketReader(Socket socket, boolean isSecure, ServerPort serverPort)
+    throws IOException;
+    
+    /**
+     * Creates a new nio-mode socket reader for the new accepted socket to be managed
+     * by the connection manager.
+     *
+     * @param nioSocket the newly accepted IoSession object
+     * @param serverPort holds information about the port on which the server is listening for
+     *        connections.
+     * @param useBlockingMode true means that the server will use a thread per connection.
+     */
+    public SocketReader createSocketReader(IoSession nioSocket, boolean isSecure, 
+                ServerPort serverPort) throws IOException;
+    
     /**
      * Sets if the port listener for unsecured clients will be available or not. When disabled
      * there won't be a port listener active. Therefore, new clients won't be able to connect to

@@ -6,7 +6,6 @@
 <%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
 <%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<fmt:setLocale value='${pageContext.request.locale}' scope='request' />
 <fmt:setBundle basename="/msgs/ZhMsg" scope="request"/>
 <app:handleError>
     <zm:getMailbox var="mailbox"/>
@@ -101,7 +100,7 @@
                                         <input type="hidden" name="loginOp" value="login"/>
                                         <table width=100% cellpadding=4>
                                             <tr>
-                                                <td class='zLoginLabelContainer'><fmt:message key="oldPassword"/>:</td>
+                                                <td class='zLoginLabelContainer'><fmt:message key="password"/>:</td>
                                                 <td colspan=2 class='zLoginFieldContainer'>
                                                     <input autocomplete="off" class='zLoginField' name='password' type='password' value="${fn:escapeXml(param.password)}"/>
                                                 </td>

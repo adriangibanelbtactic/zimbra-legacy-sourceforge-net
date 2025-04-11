@@ -24,6 +24,7 @@
  */
 package com.zimbra.cs.service.formatter;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -40,15 +41,17 @@ import javax.servlet.http.HttpServletResponse;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.mailbox.CalendarItem;
+import com.zimbra.cs.mailbox.Contact;
 import com.zimbra.cs.mailbox.Document;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Message;
+import com.zimbra.cs.mailbox.MailServiceException.NoSuchItemException;
 import com.zimbra.cs.mime.MPartInfo;
 import com.zimbra.cs.mime.Mime;
+import com.zimbra.cs.mime.ParsedDocument;
 import com.zimbra.cs.mime.ParsedMessage;
-import com.zimbra.cs.operation.Operation;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet;
 import com.zimbra.cs.service.UserServlet.Context;
@@ -58,21 +61,15 @@ import com.zimbra.common.util.HttpUtil;
 
 public class NativeFormatter extends Formatter {
     
-    public static class Format {};
-    public static class Save {};
-    static int sFormatLoad = Operation.setLoad(NativeFormatter.Format.class, 10);
-    static int sSaveLoad = Operation.setLoad(NativeFormatter.Save.class, 10);
-    int getFormatLoad() { return  sFormatLoad; }
-    int getSaveLoad() { return sSaveLoad; }
-    
-
     private static final String CONVERSION_PATH = "/extension/convertd";
     public static final String ATTR_MIMEPART   = "mimepart";
     public static final String ATTR_MSGDIGEST  = "msgdigest";
     public static final String ATTR_CONTENTURL = "contenturl";
-    
+
+    public static final String FMT_NATIVE = "native";
+
     public String getType() {
-        return "native";
+        return FMT_NATIVE;
     }
 
     public String getDefaultSearchTypes() {
@@ -80,14 +77,16 @@ public class NativeFormatter extends Formatter {
         return MailboxIndex.SEARCH_FOR_MESSAGES;
     }
 
-    public void formatCallback(Context context, MailItem item) throws IOException, ServiceException, UserServletException, ServletException {
+    public void formatCallback(Context context) throws IOException, ServiceException, UserServletException, ServletException {
         try {
-            if (item instanceof Message) {
-                handleMessage(context, (Message) item);
-            } else if (item instanceof CalendarItem) {
-                handleCalendarItem(context, (CalendarItem) item);
-            } else if (item instanceof Document) {
-                handleDocument(context, (Document) item);
+            if (context.target instanceof Message) {
+                handleMessage(context, (Message) context.target);
+            } else if (context.target instanceof CalendarItem) {
+                handleCalendarItem(context, (CalendarItem) context.target);
+            } else if (context.target instanceof Document) {
+                handleDocument(context, (Document) context.target);
+            } else if (context.target instanceof Contact) {
+                handleContact(context, (Contact) context.target);
             } else {
                 throw UserServletException.notImplemented("can only handle messages/appointments/tasks/documents");
             }
@@ -95,7 +94,7 @@ public class NativeFormatter extends Formatter {
             throw ServiceException.FAILURE(me.getMessage(), me);
         }
     }
-    
+
     private void handleMessage(Context context, Message msg) throws IOException, ServiceException, MessagingException, ServletException {
         if (context.hasBody()) {
             List<MPartInfo> parts = Mime.getParts(msg.getMimeMessage());
@@ -110,7 +109,7 @@ public class NativeFormatter extends Formatter {
             handleMessagePart(context, mp, msg);
         } else {
             context.resp.setContentType(Mime.CT_TEXT_PLAIN);
-            InputStream is = msg.getRawMessage();
+            InputStream is = msg.getContentStream();
             ByteUtil.copy(is, true, context.resp.getOutputStream(), false);
         }
     }
@@ -131,7 +130,20 @@ public class NativeFormatter extends Formatter {
             ByteUtil.copy(is, true, context.resp.getOutputStream(), false);
         }
     }
-    
+
+    private void handleContact(Context context, Contact con) throws IOException, ServiceException, MessagingException, ServletException {
+        if (!con.hasAttachment()) {
+            context.resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "body not found");
+        } else if (context.hasPart()) {
+            MimePart mp = Mime.getMimePart(con.getMimeMessage(false), context.getPart());
+            handleMessagePart(context, mp, con);
+        } else {
+            context.resp.setContentType(Mime.CT_TEXT_PLAIN);
+            InputStream is = new ByteArrayInputStream(con.getContent());
+            ByteUtil.copy(is, true, context.resp.getOutputStream(), false);
+        }
+    }
+
     private void handleMessagePart(Context context, MimePart mp, MailItem item) throws IOException, MessagingException, ServletException {
         if (mp == null) {
             context.resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "part not found");
@@ -196,14 +208,29 @@ public class NativeFormatter extends Formatter {
         return true;
     }
 
-    public void saveCallback(byte[] body, Context context, Folder folder) throws IOException, ServiceException, UserServletException {
+    public void saveCallback(byte[] body, Context context, String contentType, Folder folder, String filename) throws IOException, ServiceException, UserServletException {
+        Mailbox mbox = folder.getMailbox();
+        if (filename == null) {
+            try {
+                ParsedMessage pm = new ParsedMessage(body, mbox.attachmentsIndexingEnabled());
+                mbox.addMessage(context.opContext, pm, folder.getId(), true, 0, null);
+                return;
+            } catch (MessagingException e) {
+                throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "error parsing message");
+            }
+        }
+
+        String creator = (context.authAccount == null ? null : context.authAccount.getName());
+        ParsedDocument pd = new ParsedDocument(body, filename, contentType, System.currentTimeMillis(), creator);
         try {
-            Mailbox mbox = folder.getMailbox();
-            ParsedMessage pm = new ParsedMessage(body, mbox.attachmentsIndexingEnabled());
-            mbox.addMessage(context.opContext, pm, folder.getId(), true, 0, null);
-        } catch (MessagingException e) {
-            throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "error parsing message");
+            MailItem item = mbox.getItemByPath(context.opContext, filename, folder.getId());
+            // XXX: should we just overwrite here instead?
+            if (!(item instanceof Document))
+                throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "cannot overwrite existing object at that path");
+
+            mbox.addDocumentRevision(context.opContext, item.getId(), item.getType(), pd);
+        } catch (NoSuchItemException nsie) {
+            mbox.createDocument(context.opContext, folder.getId(), pd, MailItem.TYPE_DOCUMENT);
         }
     }
 }
-

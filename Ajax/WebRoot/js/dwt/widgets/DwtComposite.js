@@ -43,7 +43,7 @@
  * 		specified defaults to an auto-generated id (optional)
  * @param {int} index index at which to add this control among parent's children (optional)
  */
-function DwtComposite(parent, className, posStyle, deferred, id, index) {
+DwtComposite = function(parent, className, posStyle, deferred, id, index) {
 
 	if (arguments.length == 0) return;
 	className = className || "DwtComposite";
@@ -150,7 +150,8 @@ function(child, index) {
 	
 	// check for a previously removed element
 	var childHtmlEl = child._removedEl ? child._removedEl : child.getHtmlElement();
-	if (this instanceof DwtShell && this.isVirtual()) {
+    childHtmlEl.setAttribute("parentId", this._htmlElId);
+    if (this instanceof DwtShell && this.isVirtual()) {
 		// If we are operating in "virtual shell" mode, then children of the shell's html elements
 	 	// are actually parented to the body
 		document.body.appendChild(childHtmlEl);
@@ -186,10 +187,13 @@ function(child, preserveElement) {
 		// Sometimes children are nested in arbitrary HTML so we elect to remove them
 		// in this fashion rather than use this.getHtmlElement().removeChild(child.getHtmlElement()
 		var childHtmlEl = child.getHtmlElement();
-		if (childHtmlEl && childHtmlEl.parentNode) {
-			var el = childHtmlEl.parentNode.removeChild(childHtmlEl);
-			if (preserveElement)
-				child._removedEl = el;
+        if (childHtmlEl) {
+			childHtmlEl.removeAttribute("parentId");
+			if (childHtmlEl.parentNode) {
+				var el = childHtmlEl.parentNode.removeChild(childHtmlEl);
+				if (preserveElement)
+					child._removedEl = el;
+			}
 		}
 	}
 }

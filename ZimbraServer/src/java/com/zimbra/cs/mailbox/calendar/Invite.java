@@ -26,10 +26,6 @@
 package com.zimbra.cs.mailbox.calendar;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.StringReader;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -43,6 +39,7 @@ import javax.mail.internet.MimeMultipart;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.ZimbraLog;
 
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Provisioning;
@@ -52,12 +49,10 @@ import com.zimbra.cs.index.Fragment;
 import com.zimbra.cs.mailbox.CalendarItem;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
-import com.zimbra.cs.mailbox.MailboxManager;
 import com.zimbra.cs.mailbox.Metadata;
 import com.zimbra.cs.mailbox.CalendarItem.Instance;
 import com.zimbra.cs.mailbox.calendar.Recurrence.IRecurrence;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ICalTok;
-import com.zimbra.cs.mailbox.calendar.ZCalendar.ZCalendarBuilder;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZComponent;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZParameter;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZProperty;
@@ -106,7 +101,6 @@ public class Invite {
             ParsedDateTime end,
             ParsedDuration duration,
             Recurrence.IRecurrence recurrence,
-            boolean isOrganizer,
             ZOrganizer org,
             List<ZAttendee> attendees,
             String name, 
@@ -140,7 +134,6 @@ public class Invite {
         mEnd = end;
         mDuration = duration;
         mRecurrence = recurrence;
-        mIsOrganizer = isOrganizer;
         mOrganizer = org;
         mAttendees = attendees;
         mName = name != null ? name : "";
@@ -213,7 +206,6 @@ public class Invite {
             ParsedDuration durationOrNull,
             RecurId recurId,
             Recurrence.IRecurrence recurrenceOrNull,
-            boolean isOrganizer,
             ZOrganizer organizer,
             List<ZAttendee> attendees,
             String name,
@@ -242,7 +234,6 @@ public class Invite {
                 dtEndOrNull,
                 durationOrNull,
                 recurrenceOrNull,
-                isOrganizer,
                 organizer,
                 attendees,
                 name,
@@ -297,7 +288,6 @@ public class Invite {
     private static final String FN_NUM_ATTENDEES   = "numAt";
     private static final String FN_NUM_XPROPS_OR_XPARAMS = "numX";
     private static final String FN_ORGANIZER       = "org";
-    private static final String FN_IS_ORGANIZER    = "isOrg";
     private static final String FN_PARTSTAT        = "ptst";
     private static final String FN_RSVP            = "rsvp";
     private static final String FN_RECURRENCE = "recurrence";
@@ -311,6 +301,8 @@ public class Invite {
     private static final String FN_PRIORITY        = "prio";
     private static final String FN_PCT_COMPLETE    = "pctcompl";
     private static final String FN_VALUE           = "v";
+    private static final String FN_NUM_ALARMS      = "numAl";
+    private static final String FN_ALARM           = "al";
     private static final String FN_XPROP_OR_XPARAM = "x";
 
     
@@ -364,7 +356,6 @@ public class Invite {
         if (inv.hasOrganizer()) {
             meta.put(FN_ORGANIZER, inv.getOrganizer().encodeMetadata());
         }
-        meta.put(FN_IS_ORGANIZER, inv.isOrganizer());
 
         List ats = inv.getAttendees();
         meta.put(FN_NUM_ATTENDEES, String.valueOf(ats.size()));
@@ -376,6 +367,15 @@ public class Invite {
 
         meta.put(FN_PRIORITY, inv.getPriority());
         meta.put(FN_PCT_COMPLETE, inv.getPercentComplete());
+
+        if (inv.mAlarms.size() > 0) {
+            meta.put(FN_NUM_ALARMS, inv.mAlarms.size());
+            i = 0;
+            for (Iterator<Alarm> iter = inv.mAlarms.iterator(); iter.hasNext(); i++) {
+                Alarm alarm = iter.next();
+                meta.put(FN_ALARM + i, alarm.encodeMetadata());
+            }
+        }
 
         if (inv.mXProps.size() > 0)
             encodeXPropsAsMetadata(meta, inv.xpropsIterator());
@@ -422,13 +422,12 @@ public class Invite {
 
     public static ICalTok lookupMethod(String methodName) {
         ICalTok toRet;
-        String methodNameUpper = methodName.toUpperCase();  // work around livemeeting.com bug
         try {
-            toRet = ICalTok.valueOf(methodNameUpper);
+            toRet = ICalTok.valueOf(methodName);
         } catch (IllegalArgumentException e) {
             toRet = ICalTok.PUBLISH;
             // Apple iCal generates non-standard "METHOD:EXPORT".
-            if (methodNameUpper.compareToIgnoreCase("EXPORT") != 0)
+            if (methodName.compareToIgnoreCase("EXPORT") != 0)
                 sLog.warn("Invalid METHOD " + methodName +
                           "; assuming PUBLISH", e);
         }
@@ -526,7 +525,7 @@ public class Invite {
         boolean rsvp = meta.getBool(FN_RSVP, true);
         long dtstamp = meta.getLong(FN_DTSTAMP, 0);
         int seqno = (int) meta.getLong(FN_SEQ_NO, 0);
-
+        
         ZOrganizer org = null;
         try {
             Metadata metaOrg = meta.getMap(FN_ORGANIZER, true);
@@ -536,7 +535,7 @@ public class Invite {
                     + calItem!=null ? Integer.toString(calItem.getId()) : "(null)"
                     + " invite "+mailItemId+"-" + componentNum);
         }
-
+        
         long numAts = meta.getLong(FN_NUM_ATTENDEES, 0);
         ArrayList<ZAttendee> attendees = new ArrayList<ZAttendee>((int) numAts);
         for (int i = 0; i < numAts; i++) {
@@ -545,26 +544,9 @@ public class Invite {
                 if (metaAttendee != null)
                     attendees.add(new ZAttendee(metaAttendee));
             } catch (ServiceException e) {
-                sLog.warn("Problem decoding attendee " + i + " for calendar item " 
+                ZimbraLog.calendar.warn("Problem decoding attendee " + i + " for calendar item " 
                         + calItem!=null ? Integer.toString(calItem.getId()) : "(null)"
                         + " invite "+mailItemId+"-" + componentNum);
-            }
-        }
-
-        boolean isOrganizer = false;
-        if (meta.containsKey(FN_IS_ORGANIZER)) {
-            isOrganizer = meta.getBool(FN_IS_ORGANIZER);
-        } else {
-            // backward compat for invites created before FN_IS_ORGANIZER was introduced
-            if (org != null) {
-                String orgAddr = org.getAddress();
-                Account account = MailboxManager.getInstance().getMailboxById(mailboxId).getAccount();
-                isOrganizer = AccountUtil.addressMatchesAccount(account, orgAddr);
-            } else {
-                // If there are other attendees, it's an Outlook POP/IMAP bug.  If not,
-                // it's a properly formatted single-user event.  See isOrganizer()
-                // method for more info.
-                isOrganizer = numAts < 1;
             }
         }
 
@@ -573,10 +555,30 @@ public class Invite {
 
         Invite invite = new Invite(itemType, methodStr, tzMap, calItem, uid, status,
                 priority, pctComplete, completed, freebusy, transp,
-                dtStart, dtEnd, duration, recurrence, isOrganizer, org, attendees,
+                dtStart, dtEnd, duration, recurrence, org, attendees,
                 name, comment, loc, flags, partStat, rsvp,
                 recurrenceId, dtstamp, seqno,
                 mailboxId, mailItemId, componentNum, sentByMe, null, fragment);
+
+        long numAlarms = meta.getLong(FN_NUM_ALARMS, 0);
+        for (int i = 0; i < numAlarms; i++) {
+            try {
+                Metadata metaAlarm = meta.getMap(FN_ALARM + i, true);
+                if (metaAlarm != null) {
+                    Alarm alarm = Alarm.decodeMetadata(metaAlarm);
+                    if (alarm != null)
+                        invite.addAlarm(alarm);
+                }
+            } catch (ServiceException e) {
+                ZimbraLog.calendar.warn("Problem decoding alarm " + i + " for calendar item " 
+                        + calItem!=null ? Integer.toString(calItem.getId()) : "(null)"
+                        + " invite "+mailItemId+"-" + componentNum, e);
+            } catch (ParseException e) {
+                ZimbraLog.calendar.warn("Problem decoding alarm " + i + " for calendar item " 
+                        + calItem!=null ? Integer.toString(calItem.getId()) : "(null)"
+                        + " invite "+mailItemId+"-" + componentNum, e);
+            }
+        }
 
         List<ZProperty> xprops = decodeXPropsFromMetadata(meta);
         if (xprops != null) {
@@ -662,46 +664,8 @@ public class Invite {
     public static String getDescription(MimeMessage mmInv) throws ServiceException {
         if (mmInv == null) return null;
         try {
-            // If top-level is text/icalendar, parse the iCalendar object and return
-            // the DESCRIPTION of the first VEVENT/VTODO encountered.
-            String mmCtStr = mmInv.getContentType();
-            if (mmCtStr != null) {
-                ContentType mmCt = new ContentType(mmCtStr);
-                if (mmCt.match(Mime.CT_TEXT_CALENDAR)) {
-                    Object mmInvContent = mmInv.getContent();
-                    Reader reader = null;
-                    try {
-                        if (mmInvContent instanceof InputStream)
-                            reader = new InputStreamReader((InputStream) mmInvContent);
-                        else if (mmInvContent instanceof String)
-                            reader = new StringReader((String) mmInvContent);
-                        if (reader != null) {
-                            ZVCalendar iCal = ZCalendarBuilder.build(reader);
-                            for (Iterator<ZComponent> compIter = iCal.getComponentIterator(); compIter.hasNext(); ) {
-                                ZComponent component = compIter.next();
-                                ICalTok compTypeTok = component.getTok();
-                                if (compTypeTok == ICalTok.VEVENT || compTypeTok == ICalTok.VTODO) {
-                                    for (Iterator<ZProperty> propIter = component.getPropertyIterator(); propIter.hasNext(); ) {
-                                        ZProperty prop = propIter.next();
-                                        if (prop.getToken() == ICalTok.DESCRIPTION) {
-                                            return prop.getValue();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } finally {
-                        if (reader != null)
-                            reader.close();
-                    }
-                }
-            }
-
             Object mmInvContent = mmInv.getContent();
-            if (!(mmInvContent instanceof MimeMultipart))
-                return null;
-
-            // If top-level is multipart, get description from text/plain part.
+            if (!(mmInvContent instanceof MimeMultipart)) return null;
             MimeMultipart mm = (MimeMultipart) mmInvContent;
             int numParts = mm.getCount();
             BodyPart textPlain = null;
@@ -775,7 +739,8 @@ public class Invite {
      */
     public void updateMyPartStat(Account acct, String partStat)
     throws ServiceException {
-        if (mIsOrganizer) {
+        boolean iAmOrganizer = thisAcctIsOrganizer(acct);
+        if (iAmOrganizer) {
             setPartStat(IcalXmlStrMap.PARTSTAT_ACCEPTED);
             setRsvp(false);
         } else {
@@ -823,6 +788,7 @@ public class Invite {
     void setMailboxId(int id) { mMailboxId = id; }
     public void setMailItemId(int id) { mMailItemId = id; }
     public int getFlags() { return mFlags; }
+    public void setFlags(int flags) { mFlags = flags; }
     public String getPartStat() { return mPartStat; }
     public boolean getRsvp() { return mRsvp; }
     public void setRsvp(boolean rsvp) { mRsvp = rsvp; }
@@ -983,6 +949,15 @@ public class Invite {
     }
     public boolean hasAlarm() { return ((mFlags & APPT_FLAG_HASALARM)!=0); }
     
+    public boolean hasAttachment() { return ((mFlags & APPT_FLAG_HAS_ATTACHMENT)!=0); }
+    public void setHasAttachment(boolean hasAttachment) {
+        if (hasAttachment) {
+            mFlags |= APPT_FLAG_HAS_ATTACHMENT;
+        } else {
+            mFlags &= ~APPT_FLAG_HAS_ATTACHMENT;
+        }
+    }
+    
     public String toString() {
         StringBuffer sb = new StringBuffer();
         sb.append("{ ");
@@ -1014,6 +989,10 @@ public class Invite {
         sb.append(", DTStamp: ").append(mDTStamp);
         sb.append(", mSeqNo ").append(mSeqNo);
 
+        for (Alarm alarm : mAlarms) {
+            sb.append(", alarm: ").append(alarm.toString());
+        }
+
         for (ZProperty xprop : mXProps) {
             sb.append(", ").append(xprop.toString());
         }
@@ -1033,6 +1012,7 @@ public class Invite {
     public static final int APPT_FLAG_HASALARM        = 0x10;
     public static final int APPT_FLAG_ISRECUR         = 0x20;
     public static final int APPT_FLAG_NEEDS_REPLY     = 0x40;  // obsolete
+    public static final int APPT_FLAG_HAS_ATTACHMENT  = 0x80;  // obsolete
     
     protected CalendarItem mCalItem = null;
     
@@ -1069,7 +1049,7 @@ public class Invite {
 
     private List<ZAttendee> mAttendees = new ArrayList<ZAttendee>();
     private ZOrganizer mOrganizer;
-    private boolean mIsOrganizer;
+//    private ArrayList /* VAlarm */ mAlarms = new ArrayList();
 
     private String mPriority;         // 0 .. 9
     private String mPercentComplete;  // 0 .. 100
@@ -1079,25 +1059,25 @@ public class Invite {
 
     private ICalTok mMethod;
 
+    private List<Alarm> mAlarms = new ArrayList<Alarm>();
+
     private List<ZProperty> mXProps = new ArrayList<ZProperty>();
 
-    public Invite(String method, TimeZoneMap tzMap, boolean isOrganizer) {
+    public Invite(String method, TimeZoneMap tzMap) {
         setItemType(MailItem.TYPE_APPOINTMENT);
         mMethod = lookupMethod(method);
         if (ICalTok.CANCEL.equals(mMethod))
             mStatus = IcalXmlStrMap.STATUS_CANCELLED;
         mTzMap = tzMap;
-        mIsOrganizer = isOrganizer;
         mFragment = "";
     }
 
-    public Invite(byte itemType, String method, TimeZoneMap tzMap, boolean isOrganizer) {
+    public Invite(byte itemType, String method, TimeZoneMap tzMap) {
         setItemType(itemType);
         mMethod = lookupMethod(method);
         if (ICalTok.CANCEL.equals(mMethod))
             mStatus = IcalXmlStrMap.STATUS_CANCELLED;
         mTzMap = tzMap;
-        mIsOrganizer = isOrganizer;
         mFragment = "";
     }
     
@@ -1113,7 +1093,7 @@ public class Invite {
      * @return TRUE if this account is the "organizer" of the Event
      * @throws ServiceException
      */
-    private boolean thisAcctIsOrganizer(Account acct) throws ServiceException {
+    public boolean thisAcctIsOrganizer(Account acct) throws ServiceException {
         if (hasOrganizer()) {
             String addr = getOrganizer().getAddress();
             return AccountUtil.addressMatchesAccount(acct, addr);
@@ -1124,7 +1104,7 @@ public class Invite {
             return !hasOtherAttendees();
         }
     }
-
+    
     /**
      * Find the (first) Attendee in our list that matches the passed-in account
      * 
@@ -1267,8 +1247,6 @@ public class Invite {
      */
     public Account getOrganizerAccount() throws ServiceException {
         Account account = null;
-        if (mIsOrganizer && mCalItem != null)
-            return mCalItem.getAccount();
         if (hasOrganizer()) {
             String address = getOrganizer().getAddress();
             if (address != null) {
@@ -1280,15 +1258,23 @@ public class Invite {
         return account;
     }
 
-    /**
-     * Returns whether the invite was created for the organizer account.
-     * @return
-     */
-    public boolean isOrganizer() {
-        return mIsOrganizer;
-    }
-    public void setIsOrganizer(Account acct) throws ServiceException {
-        mIsOrganizer = thisAcctIsOrganizer(acct);
+    public boolean isOrganizer(ZAttendee attendee) {
+        if (hasOrganizer())
+            return attendee.addressMatches(getOrganizer().getAddress());
+        else {
+            // According to RFC2445 a non-group event (e.g. a single user's
+            // event with no other attendee) MUST NOT have an organizer.  That
+            // means we should return true in this method.  However, an Outlook
+            // bug prevents us from doing so.  Outlook running in POP/IMAP mode
+            // omits ORGANIZER line from the iCalendar part when forwarding an
+            // email that is a previous invitation to another user.  In light of
+            // this behavior, we have to adjust the logic a bit.  If there's no
+            // organizer and no attendee, assume it's a properly formatted
+            // single-user event.  If organizer is missing but there are
+            // attendees, assume it's an instance of Outlook bug, which means
+            // the current attendee is not the organizer.
+            return !hasOtherAttendees();
+        }
     }
 
     public boolean isEvent()  { return mItemType == MailItem.TYPE_APPOINTMENT; }
@@ -1337,12 +1323,31 @@ public class Invite {
     throws ServiceException {
         return createFromCalendar(account, fragment, cal, sentByMe, null, 0);
     }
-    
+
     public static List<Invite> createFromCalendar(Account account, String fragment, ZVCalendar cal, boolean sentByMe, Mailbox mbx, int mailItemId)
     throws ServiceException {
-        List<Invite> toRet = new ArrayList<Invite>();
-        
-        TimeZoneMap tzmap = new TimeZoneMap(Provisioning.getInstance().getTimeZone(account));
+        List<Invite> list = new ArrayList<Invite>();
+        createFromCalendar(list, account, fragment, cal, sentByMe, mbx, mailItemId);
+        return list;
+    }
+
+    public static List<Invite> createFromCalendar(Account account, String fragment, List<ZVCalendar> cals, boolean sentByMe)
+    throws ServiceException {
+        return createFromCalendar(account, fragment, cals, sentByMe, null, 0);
+    }
+
+    public static List<Invite> createFromCalendar(Account account, String fragment, List<ZVCalendar> cals, boolean sentByMe, Mailbox mbx, int mailItemId)
+    throws ServiceException {
+        List<Invite> list = new ArrayList<Invite>();
+        for (ZVCalendar cal : cals) {
+            createFromCalendar(list, account, fragment, cal, sentByMe, mbx, mailItemId);
+        }
+        return list;
+    }
+
+    private static void createFromCalendar(List<Invite> toAdd, Account account, String fragment, ZVCalendar cal, boolean sentByMe, Mailbox mbx, int mailItemId)
+    throws ServiceException {
+        TimeZoneMap tzmap = new TimeZoneMap(ICalTimeZone.getAccountTimeZone(account));
         
         String methodStr = cal.getPropVal(ICalTok.METHOD, ICalTok.PUBLISH.toString());
         
@@ -1374,9 +1379,9 @@ public class Invite {
                 boolean isEvent = ICalTok.VEVENT.equals(compTypeTok);
                 boolean isTodo = ICalTok.VTODO.equals(compTypeTok);
                 try {
-                    Invite newInv = new Invite(type, methodStr, tzmap, false);
+                    Invite newInv = new Invite(type, methodStr, tzmap);
 
-                    toRet.add(newInv);
+                    toAdd.add(newInv);
 
                     List<Object> addRecurs = new ArrayList<Object>();
                     List<Object> subRecurs = new ArrayList<Object>();
@@ -1387,6 +1392,19 @@ public class Invite {
                     newInv.setMailItemId(mailItemId);
                     newInv.setSentByMe(sentByMe);
                     compNum++;
+
+                    for (ZComponent subcomp : comp.mComponents) {
+                        ICalTok subCompTypeTok = subcomp.getTok();
+                        switch (subCompTypeTok) {
+                        case VALARM:
+                            Alarm alarm = Alarm.parse(subcomp);
+                            if (alarm != null)
+                                newInv.addAlarm(alarm);
+                            break;
+                        default:
+                            // ignore all other sub components
+                        }
+                    }
 
                     for (ZProperty prop : comp.mProperties) {
                         if (prop.mTok == null) {
@@ -1532,8 +1550,6 @@ public class Invite {
                         }
                     }
 
-                    newInv.setIsOrganizer(account);
-
                     newInv.validateDuration();
 
                     ParsedDuration duration = newInv.getDuration();
@@ -1583,6 +1599,10 @@ public class Invite {
                             newInv.setRecurrence(new Recurrence.RecurrenceRule(newInv.getStartTime(), duration, new InviteInfo(newInv), addRules, subRules));
                         }
                     }
+                    
+                    String location = newInv.getLocation();
+                    if (location == null)
+                    	newInv.setLocation("");
                 } catch (ParseException e) {
                     throw ServiceException.PARSE_ERROR(
                         "Unable to parse iCalendar data: " + e.getMessage(), e);
@@ -1591,8 +1611,6 @@ public class Invite {
                 break;
             }
         }
-        
-        return toRet;
     }
     
     
@@ -1747,12 +1765,23 @@ public class Invite {
             component.addProperty(completed.toProperty(ICalTok.COMPLETED, false));
         }
 
+        // VALARMs
+        for (Alarm alarm : mAlarms) {
+            ZComponent alarmComp = alarm.toZComponent();
+            component.addComponent(alarmComp);
+        }
+
         // x-prop
         for (ZProperty xprop : mXProps) {
             component.addProperty(xprop);
         }
 
         return component;
+    }
+
+    public Iterator<Alarm> alarmsIterator() { return mAlarms.iterator(); }
+    public void addAlarm(Alarm alarm) {
+        mAlarms.add(alarm);
     }
 
     public Iterator<ZProperty> xpropsIterator() { return mXProps.iterator(); }
@@ -1779,5 +1808,26 @@ public class Invite {
                 mDuration = dur;
             }
         }
+    }
+
+    public Invite newCopy() {
+        Invite inv = new Invite(
+                mItemType, mMethod != null ? mMethod.toString() : null,
+                mTzMap,
+                mCalItem, mUid,
+                mStatus, mPriority,
+                mPercentComplete, mCompleted,
+                mFreeBusy, mTransparency,
+                mStart, mEnd, mDuration,
+                mRecurrence,
+                mOrganizer, mAttendees,
+                mName, mComment, mLocation,
+                mFlags, mPartStat, mRsvp, mRecurrenceId, mDTStamp, mSeqNo,
+                0, // mMailboxId
+                0, // mMailItemId
+                0, // mComponentNum
+                mSentByMe,
+                mDescription, mFragment);
+        return inv;
     }
 }

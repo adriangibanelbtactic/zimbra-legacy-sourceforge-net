@@ -24,6 +24,7 @@
  */
 package com.zimbra.cs.dav;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
 import javax.servlet.http.HttpServletRequest;
@@ -34,7 +35,11 @@ import org.dom4j.DocumentException;
 import org.dom4j.io.SAXReader;
 
 import com.zimbra.cs.account.Account;
+import com.zimbra.cs.dav.resource.DavResource;
+import com.zimbra.cs.dav.resource.UrlNamespace;
 import com.zimbra.cs.dav.service.DavResponse;
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
@@ -52,10 +57,13 @@ public class DavContext {
 	private String mUri;
 	private String mUser;
 	private String mPath;
+	private int mItemId;
 	private int mStatus;
 	private Document mRequestMsg;
+	private byte[] mRequestData;
 	private DavResponse mResponse;
 	private boolean mResponseSent;
+	private DavResource mRequestedResource;
 	
 	public DavContext(HttpServletRequest req, HttpServletResponse resp, Account authUser) {
 		mReq = req;  mResp = resp;
@@ -64,6 +72,11 @@ public class DavContext {
 		if (index != -1) {
 			mUser = mUri.substring(1, index);
 			mPath = mUri.substring(index);
+		}
+		if (req.getQueryString() != null) {
+			String id = req.getParameter("id");
+			if (id != null)
+				mItemId = Integer.parseInt(id);
 		}
 		mStatus = HttpServletResponse.SC_OK;
 		mAuthAccount = authUser;
@@ -183,19 +196,32 @@ public class DavContext {
 				hdr != null && Integer.parseInt(hdr) > 0);
 	}
 	
+	public byte[] getRequestData() throws DavException {
+		try {
+			if (mRequestData == null)
+				mRequestData = ByteUtil.getContent(mReq.getInputStream(), 0);
+
+			if (ZimbraLog.dav.isDebugEnabled())
+				ZimbraLog.dav.debug(new String(mRequestData, "UTF-8"));
+
+		} catch (IOException e) {
+			throw new DavException("unable to read input", HttpServletResponse.SC_BAD_REQUEST, e);
+		}
+		return mRequestData;
+	}
+	
 	/* Returns XML Document containing the request. */
 	public Document getRequestMessage() throws DavException {
 		if (mRequestMsg != null)
 			return mRequestMsg;
 		try {
 			if (hasRequestMessage()) {
-				mRequestMsg = new SAXReader().read(mReq.getInputStream());
+				ByteArrayInputStream bais = new ByteArrayInputStream(getRequestData());
+				mRequestMsg = new SAXReader().read(bais);
 				return mRequestMsg;
 			}
 		} catch (DocumentException e) {
 			throw new DavException("unable to parse request message", HttpServletResponse.SC_BAD_REQUEST, e);
-		} catch (IOException e) {
-			throw new DavException("unable to read input", HttpServletResponse.SC_BAD_REQUEST, e);
 		}
 		throw new DavException("no request msg", HttpServletResponse.SC_BAD_REQUEST, null);
 	}
@@ -210,5 +236,33 @@ public class DavContext {
 		if (mResponse == null)
 			mResponse = new DavResponse();
 		return mResponse;
+	}
+	
+	public DavResource getRequestedResource() throws DavException, ServiceException {
+		if (mRequestedResource != null)
+			return mRequestedResource;
+		if (mItemId != 0)
+			mRequestedResource = UrlNamespace.getResourceByItemId(this, mUser, mItemId);
+		else
+			mRequestedResource = UrlNamespace.getResourceAt(this, mUser, mPath);
+		return mRequestedResource;
+	}
+	
+	private static final String EVOLUTION = "Evolution";
+	private static final String ICAL = "DAVKit";
+	
+	private boolean userAgentHeaderContains(String str) {
+		String userAgent = mReq.getHeader(DavProtocol.HEADER_USER_AGENT);
+		if (userAgent == null)
+			return false;
+		return userAgent.indexOf(str) >= 0;
+	}
+	
+	public boolean isEvolutionClient() {
+		return userAgentHeaderContains(EVOLUTION);
+	}
+	
+	public boolean isIcalClient() {
+		return userAgentHeaderContains(ICAL);
 	}
 }

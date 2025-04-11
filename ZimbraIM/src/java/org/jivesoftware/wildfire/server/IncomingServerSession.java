@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: IncomingServerSession.java,v $
+ * $Revision: 3174 $
+ * $Date: 2005-12-08 17:41:00 -0300 (Thu, 08 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.server;
 
 import org.dom4j.Element;
@@ -78,6 +65,8 @@ public class IncomingServerSession extends Session {
      * many connections from the same remote server to the same local domain.
      */
     private String localDomain = null;
+    
+    private ServerDialback mDialback = null;
 
     /**
      * Creates a new session that will receive packets. The new session will be authenticated
@@ -101,18 +90,27 @@ public class IncomingServerSession extends Session {
      * @throws XmlPullParserException if an error occurs while parsing the XML.
      * @throws IOException if an input/output error occurs while using the connection.
      */
-    public static Session createSession(String serverName, XMPPPacketReader reader,
-            SocketConnection connection) throws XmlPullParserException, IOException {
-        XmlPullParser xpp = reader.getXPPParser();
-        if (xpp.getNamespace("db") != null) {
+    public static Session createSession(String serverName, 
+            SocketConnection connection, Element streamElt) throws XmlPullParserException, IOException {
+        if (streamElt.getNamespaceForPrefix("db") != null) {
             // Server is trying to establish connection and authenticate using server dialback
             if (ServerDialback.isEnabled()) {
                 ServerDialback method = new ServerDialback(connection, serverName);
-                return method.createIncomingSession(reader);
+                return method.getDialbackCreatorSession(streamElt);
+//                throw new IOException("Server Session Handshaking UNIMPLEMENTED (pass 2nd Element) method="+method);
+//                return method.createIncomingSession(streamElt, null);
+//                
+//                if (!method.sendIncomingReplyStreamHeader(streamElt)) { 
+//                    method.sendFailedIncomingReplyStreamHeader();
+//                    return null;
+//                } else {
+//                    mDialback = method;
+//            }
+            } else {
+                Log.debug("Server dialback is disabled. Rejecting connection: " + connection);
             }
-            Log.debug("Server dialback is disabled. Rejecting connection: " + connection);
         }
-        String version = xpp.getAttributeValue("", "version");
+        String version = streamElt.attributeValue("version");
         int[] serverVersion = version != null ? decodeVersion(version) : new int[] {0,0};
         if (serverVersion[0] >= 1) {
             // Remote server is XMPP 1.0 compliant so offer TLS and SASL to establish the connection
@@ -134,7 +132,7 @@ public class IncomingServerSession extends Session {
         // using server dialback to establish and authenticate the connection
         connection.close();
         return null;
-    }
+    } 
 
     /**
      * Returns a new incoming server session pending to be authenticated. The remote server
@@ -152,7 +150,7 @@ public class IncomingServerSession extends Session {
         StreamID streamID = SessionManager.getInstance().nextStreamID();
         // Create a server Session for the remote server
         IncomingServerSession session = SessionManager.getInstance()
-                .createIncomingServerSession(connection, streamID);
+                .createIncomingServerSession(connection, serverName, streamID);
 
         // Send the stream header
         StringBuilder openingStream = new StringBuilder();

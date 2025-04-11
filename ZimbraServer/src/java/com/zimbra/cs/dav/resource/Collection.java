@@ -25,7 +25,6 @@
 package com.zimbra.cs.dav.resource;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,8 +32,8 @@ import java.util.List;
 import javax.servlet.http.HttpServletResponse;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavElements;
 import com.zimbra.cs.dav.DavException;
@@ -47,6 +46,7 @@ import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
+import com.zimbra.cs.mailbox.Mountpoint;
 import com.zimbra.cs.mailbox.MailServiceException.NoSuchItemException;
 
 /**
@@ -73,17 +73,36 @@ public class Collection extends MailItemResource {
 		mView = f.getDefaultView();
 		mType = f.getType();
 		addProperties(Acl.getAclProperties(this, f));
-		List<String> urlList = new java.util.ArrayList<String>();
+		
+		if (f instanceof Mountpoint) {
+			Mountpoint mp = (Mountpoint) f;
+			mRemoteOwnerId = mp.getOwnerId();
+			mRemoteId = mp.getRemoteId();
+		}
+
+		/* root folder is also the principal URL for the user */
+		if (isRootCollection())
+			addResourceType(DavElements.E_PRINCIPAL);
+		
+		boolean hasCalendar = false;
 		for (Folder sub : f.getSubfolderHierarchy())
-			if (sub.getDefaultView() == MailItem.TYPE_APPOINTMENT)
-				urlList.add(UrlNamespace.getHomeUrl(this.getOwner()) + sub.getPath() + "/");
-		if (urlList.size() > 0) {
+			if (sub.getDefaultView() == MailItem.TYPE_APPOINTMENT) {
+				hasCalendar = true;
+				break;
+			}
+		if (hasCalendar) {
 			mDavCompliance.add(Compliance.one);
 			mDavCompliance.add(Compliance.two);
 			mDavCompliance.add(Compliance.three);
 			mDavCompliance.add(Compliance.access_control);
 			mDavCompliance.add(Compliance.calendar_access);
-			this.addProperty(CalDavProperty.getCalendarHomeSet(urlList));
+			mDavCompliance.add(Compliance.calendar_schedule);
+			addProperty(CalDavProperty.getCalendarHomeSet(UrlNamespace.getHomeUrl(this.getOwner()) + f.getPath()));
+			addProperty(CalDavProperty.getScheduleInboxURL(UrlNamespace.getHomeUrl(this.getOwner()) + "/Inbox/"));
+			addProperty(CalDavProperty.getScheduleOutboxURL(UrlNamespace.getHomeUrl(this.getOwner()) + "/Sent/"));
+			ArrayList<String> addrs = new ArrayList<String>();
+			addrs.add(f.getAccount().getAttr(Provisioning.A_zimbraMailDeliveryAddress));
+			addProperty(CalDavProperty.getCalendarUserAddressSet(addrs));
 		}
 	}
 	
@@ -100,11 +119,6 @@ public class Collection extends MailItemResource {
 		}
 	}
 	
-	@Override
-	public InputStream getContent() throws IOException, DavException {
-		return null;
-	}
-
 	@Override
 	public boolean isCollection() {
 		return true;
@@ -125,7 +139,7 @@ public class Collection extends MailItemResource {
 			ZimbraLog.dav.error("can't get children from folder: id="+mId, e);
 		}
 		// this is where we add the phantom folder for attachment browser.
-		if (mId == Mailbox.ID_FOLDER_USER_ROOT) {
+		if (isRootCollection()) {
 			children.add(new Collection(UrlNamespace.ATTACHMENTS_PREFIX, getOwner()));
 		}
 		return children;
@@ -137,12 +151,8 @@ public class Collection extends MailItemResource {
 		List<MailItem> ret = new ArrayList<MailItem>();
 		
 		// XXX aggregate into single call
-		for (MailItem f : mbox.getItemList(ctxt.getOperationContext(), MailItem.TYPE_FOLDER, mId)) {
-			byte view = ((Folder)f).getDefaultView();
-			if (view == MailItem.TYPE_APPOINTMENT || view == MailItem.TYPE_DOCUMENT || view == MailItem.TYPE_WIKI)
-				ret.add(f);
-		}
-		//ret.addAll(mbox.getItemList(ctxt.getOperationContext(), MailItem.TYPE_MOUNTPOINT, mId));
+		ret.addAll(mbox.getItemList(ctxt.getOperationContext(), MailItem.TYPE_FOLDER, mId));
+		ret.addAll(mbox.getItemList(ctxt.getOperationContext(), MailItem.TYPE_MOUNTPOINT, mId));
 		ret.addAll(mbox.getItemList(ctxt.getOperationContext(), MailItem.TYPE_DOCUMENT, mId));
 		ret.addAll(mbox.getItemList(ctxt.getOperationContext(), MailItem.TYPE_WIKI, mId));
 		return ret;
@@ -159,7 +169,7 @@ public class Collection extends MailItemResource {
 		} catch (ServiceException e) {
 			if (e.getCode().equals(MailServiceException.ALREADY_EXISTS))
 				throw new DavException("item already exists", HttpServletResponse.SC_CONFLICT, e);
-			else if (e.getCode().equals(MailServiceException.PERM_DENIED))
+			else if (e.getCode().equals(ServiceException.PERM_DENIED))
 				throw new DavException("permission denied", HttpServletResponse.SC_FORBIDDEN, e);
 			else
 				throw new DavException("can't create", HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e);
@@ -177,8 +187,7 @@ public class Collection extends MailItemResource {
 
 		String author = ctxt.getAuthAccount().getName();
 		String ctype = ctxt.getRequest().getContentType();
-		int clen = ctxt.getRequest().getContentLength();
-		byte[] data = ByteUtil.getContent(ctxt.getRequest().getInputStream(), clen);
+		byte[] data = ctxt.getRequestData();
 		if (ctype == null)
 			ctype = URLConnection.getFileNameMap().getContentTypeFor(name);
 		if (ctype == null)
@@ -187,8 +196,8 @@ public class Collection extends MailItemResource {
 			// add a revision if the resource already exists
 			MailItem item = mbox.getItemByPath(ctxt.getOperationContext(), ctxt.getPath());
 			if (item.getType() != MailItem.TYPE_DOCUMENT && item.getType() != MailItem.TYPE_WIKI)
-				throw new DavException("no DAV resource for "+MailItem.getNameForType(item.getType()), HttpServletResponse.SC_NOT_ACCEPTABLE, null);
-			Document doc = mbox.addDocumentRevision(ctxt.getOperationContext(), (Document)item, data, author);
+				throw new DavException("no DAV resource for " + MailItem.getNameForType(item.getType()), HttpServletResponse.SC_NOT_ACCEPTABLE, null);
+			Document doc = mbox.addDocumentRevision(ctxt.getOperationContext(), item.getId(), item.getType(), data, author);
 			return new Notebook(ctxt, doc);
 		} catch (ServiceException e) {
 			if (!(e instanceof NoSuchItemException))
@@ -197,7 +206,7 @@ public class Collection extends MailItemResource {
 		
 		// create
 		try {
-			Document doc = mbox.createDocument(ctxt.getOperationContext(), mId, name, ctype, author, data, null);
+			Document doc = mbox.createDocument(ctxt.getOperationContext(), mId, name, ctype, author, data);
 			return new Notebook(ctxt, doc);
 		} catch (ServiceException se) {
 			throw new DavException("cannot create ", HttpServletResponse.SC_INTERNAL_SERVER_ERROR, se);
@@ -215,5 +224,9 @@ public class Collection extends MailItemResource {
 		} catch (ServiceException e) {
 			throw new DavException("cannot get item", HttpServletResponse.SC_NOT_FOUND, e);
 		}
+	}
+	
+	protected boolean isRootCollection() {
+		return (mId == Mailbox.ID_FOLDER_USER_ROOT);
 	}
 }

@@ -30,8 +30,6 @@ package com.zimbra.cs.index;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -45,8 +43,6 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.TreeSet;
 
-import com.zimbra.common.util.Log;
-import com.zimbra.common.util.LogFactory;
 import org.apache.log4j.Layout;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -77,10 +73,8 @@ import com.zimbra.cs.tcpserver.ProtocolHandler;
 import com.zimbra.cs.tcpserver.TcpServer;
 import com.zimbra.cs.tcpserver.TcpServerInputStream;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.ExceptionToString;
-import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.common.util.*;
 import com.zimbra.cs.util.NetUtil;
-import com.zimbra.cs.util.Zimbra;
 
 
 /**
@@ -146,7 +140,7 @@ public class IndexEditor {
     public void checkIndex(int mailboxId, boolean repair) {
         MailboxIndex midx = null;
         try {
-            midx = MailboxManager.getInstance().getMailboxById(mailboxId).getMailboxIndex();  
+            midx = MailboxManager.getInstance().getMailboxById(mailboxId).getMailboxIndex();
             if (midx != null)
                 midx.chkIndex(repair);
         } catch(Exception e) {
@@ -160,7 +154,7 @@ public class IndexEditor {
         MailboxIndex midx = null;
         try {
             Mailbox mbox = MailboxManager.getInstance().getMailboxById(mailboxId);
-            midx = mbox.getMailboxIndex();  
+            midx = mbox.getMailboxIndex();
             MailItem item = mbox.getItemById(null, msg, MailItem.TYPE_MESSAGE);
             item.reindex(null, true, null);
         } catch(Exception e) {
@@ -201,7 +195,7 @@ public class IndexEditor {
 
 //            ZimbraQuery zq = new ZimbraQuery(qstr, null, null, mbox, types, sortBy, false, false, 100, true, Mailbox.SearchResultMode.NORMAL);
 
-            return zq.execute(); 
+            return zq.execute();
         }
     }
 
@@ -238,7 +232,7 @@ public class IndexEditor {
                 params.setPrefetch(true);
                 params.setMode(SearchResultMode.NORMAL);
                 ZimbraQuery zq = new ZimbraQuery(mbox, params, false, false);
-                
+
 //                ZimbraQuery zq = new ZimbraQuery(qstr, null, null, mbox, types, sortBy, false, false, 100, true, Mailbox.SearchResultMode.NORMAL);
                 res[i] = zq.execute();
             }
@@ -322,7 +316,7 @@ public class IndexEditor {
             } finally {
                 res.doneWithSearchResults();
             }
-        }      
+        }
     }
 
     public void displayHit(ZimbraHit hit, int groupBy) {
@@ -335,7 +329,7 @@ public class IndexEditor {
             {
                 MessageHit mh = (MessageHit)iter.next();
                 outputStream.println("\t" + mh.toString());
-            } 
+            }
         } else {
             if (hit instanceof MessageHit) {
                 MessageHit mh = (MessageHit)hit;
@@ -467,7 +461,7 @@ public class IndexEditor {
         return toRet.toString();
     }
 
-    public void dumpDocument(Document d, boolean isDeleted) 
+    public void dumpDocument(Document d, boolean isDeleted)
     {
         if (isDeleted) {
             outputStream.print("DELETED ");
@@ -486,8 +480,8 @@ public class IndexEditor {
         } else {
             blobId = "MISSING";
         }
-        String dateStr = d.get(LuceneFields.L_DATE);
-        if (dateStr == null) { 
+        String dateStr = d.get(LuceneFields.L_SORT_DATE);
+        if (dateStr == null) {
             dateStr = "";
         } else {
             Date dt = DateField.stringToDate(dateStr);
@@ -496,7 +490,7 @@ public class IndexEditor {
         String sizeStr = d.get(LuceneFields.L_SIZE);
         if (sizeStr == null) {
             sizeStr = "";
-        }				
+        }
         String part = d.get(LuceneFields.L_PARTNAME);
         if (part == null) {
             part = "NO_PART";
@@ -512,7 +506,7 @@ public class IndexEditor {
 
     private class DocCallback extends MailboxIndex.DocEnumInterface
     {
-        public void maxDocNo(int num) 
+        public void maxDocNo(int num)
         {
             outputStream.println("There are "+num+" documents in this index.");
             outputStream.println("MB-BLOB-ID    DATE                                PART      SIZE  SUBJECT");
@@ -542,8 +536,8 @@ public class IndexEditor {
                 part = "NULL_PART";
             }
 
-            String dateStr = d.get(LuceneFields.L_DATE);
-            if (dateStr == null) { 
+            String dateStr = d.get(LuceneFields.L_SORT_DATE);
+            if (dateStr == null) {
                 dateStr = "";
             } else {
                 dateStr = DateField.stringToDate(dateStr).toString();
@@ -560,7 +554,7 @@ public class IndexEditor {
 
     }
 
-    public void dumpAll(int mailboxId) throws IOException, ServiceException 
+    public void dumpAll(int mailboxId) throws IOException, ServiceException
     {
 //      MailboxIndex searcher = Indexer.GetInstance().getMailboxIndex(mailboxId);
         MailboxIndex searcher = MailboxManager.getInstance().getMailboxById(mailboxId).getMailboxIndex();
@@ -579,7 +573,7 @@ public class IndexEditor {
     {
         Term term = new Term(LuceneFields.L_MAILBOX_BLOB_ID, Integer.toString(mailItemId));
         MailboxIndex idx = MailboxManager.getInstance().getMailboxById(mailboxId).getMailboxIndex();
-        MailboxIndex.CountedIndexSearcher searcher = null;
+        RefCountedIndexSearcher searcher = null;
 
         if (idx != null) {
             try {
@@ -601,7 +595,7 @@ public class IndexEditor {
         }
     }
 
-    private static int NumDigits(String s) 
+    private static int NumDigits(String s)
     {
         int ret = 0;
         char[] array = s.toCharArray();
@@ -632,7 +626,7 @@ public class IndexEditor {
             minNum = Integer.parseInt(min);
             constrain = true;
         }
-        if (!max.equals("")) { 
+        if (!max.equals("")) {
             constrain = true;
             maxNum = Integer.parseInt(max);
         }
@@ -644,7 +638,7 @@ public class IndexEditor {
 //      MailboxIndex searcher = Mailbox.getMailboxById(mailboxId).getMailboxIndex();
 
 
-        MailboxIndex.AdminInterface admin = null;		
+        MailboxIndex.AdminInterface admin = null;
 
         try {
 //          Collection c = new ArrayList();
@@ -673,7 +667,7 @@ public class IndexEditor {
             int totalTerms = 0;
             ArrayList ats = new ArrayList();
             while (iterator.hasNext()) {
-                MailboxIndex.AdminInterface.TermInfo info = 
+                MailboxIndex.AdminInterface.TermInfo info =
                     (MailboxIndex.AdminInterface.TermInfo)iterator.next();
                 String termText = info.mTerm.text();
 
@@ -729,7 +723,7 @@ public class IndexEditor {
 //      MailboxIndex searcher = Mailbox.getMailboxById(mailboxId).getMailboxIndex();
 
 
-        MailboxIndex.AdminInterface admin = null;		
+        MailboxIndex.AdminInterface admin = null;
 
         try {
 //          Collection c = new ArrayList();
@@ -755,7 +749,7 @@ public class IndexEditor {
 
             Iterator iterator = c.iterator();
             while (iterator.hasNext()) {
-                MailboxIndex.AdminInterface.TermInfo info = 
+                MailboxIndex.AdminInterface.TermInfo info =
                     (MailboxIndex.AdminInterface.TermInfo)iterator.next();
 
                 if (tot > maxNum) {
@@ -773,7 +767,7 @@ public class IndexEditor {
                         }
                     }
                 }
-            }	
+            }
         } catch (Exception e) {
             outputStream.println("Caught "+ExceptionToString.ToString(e));
         } finally {
@@ -781,7 +775,7 @@ public class IndexEditor {
                 admin.close();
             }
         }
-    } 
+    }
 
     public int CountNear(MailboxIndex.AdminInterface admin, Term[] terms, int slop, boolean inOrder) throws IOException
     {
@@ -850,7 +844,7 @@ public class IndexEditor {
             minNum = Integer.parseInt(min);
             constrain = true;
         }
-        if (!max.equals("")) { 
+        if (!max.equals("")) {
             constrain = true;
             maxNum = Integer.parseInt(max);
         }
@@ -859,7 +853,7 @@ public class IndexEditor {
 
         outputStream.print("Slop> ");
         String sSlop = inputReader.readLine();
-        if (!sSlop.equals("")) { 
+        if (!sSlop.equals("")) {
             constrain = true;
             slopNum = Integer.parseInt(sSlop);
         }
@@ -895,7 +889,7 @@ public class IndexEditor {
 
         outputStream.println("-------------------------------");
 
-        MailboxIndex.AdminInterface admin = null;		
+        MailboxIndex.AdminInterface admin = null;
         try {
             Mailbox mbox = MailboxManager.getInstance().getMailboxById(mailboxId);
             MailboxIndex mi = mbox.getMailboxIndex();
@@ -970,35 +964,6 @@ public class IndexEditor {
         }
     }
 
-//  public static void archive(int mailboxId) throws IOException
-//  {
-//  MailboxIndex.AdminInterface admin = null;		
-//  try {
-//  admin = Indexer.GetInstance().getAdminInterface(mailboxId);
-//  admin.archiveIndex();
-//  } finally {
-//  if (admin!=null) {
-//  admin.close();
-//  }
-//  }
-//  }
-
-    public void hack(int mailboxId) throws IOException, ServiceException
-    {
-        MailboxIndex.AdminInterface admin = null;       
-        try {
-            Mailbox mbox = MailboxManager.getInstance().getMailboxById(mailboxId);
-            MailboxIndex mi = mbox.getMailboxIndex();
-            admin = mi != null ? mi.getAdminInterface() : null;
-            if (admin != null)
-                admin.hackIndex();
-        } finally {
-            if (admin!=null) {
-                admin.close();
-            }
-        }
-    }
-
 
 //  private static class MemoryThread extends Thread
 //  {
@@ -1035,7 +1000,7 @@ public class IndexEditor {
         sTcpServer = new IndexEditorTcpServer("IndexEditorTcpServer", 3, Thread.NORM_PRIORITY, serverSocket);
         sIndexEditorProtocolHandler = new IndexEditorProtocolhandler(sTcpServer);
         sTcpServer.addActiveHandler(sIndexEditorProtocolHandler);
-        sThread = new Thread(new IndexEditorTcpThread(), "IndexEditor-TcpServer"); 
+        sThread = new Thread(new IndexEditorTcpThread(), "IndexEditor-TcpServer");
         sThread.start();
     }
 
@@ -1087,10 +1052,10 @@ public class IndexEditor {
     }
 
 
-    private static class IndexEditorProtocolhandler extends ProtocolHandler 
+    private static class IndexEditorProtocolhandler extends ProtocolHandler
     {
         private InputStream mInputStream;
-        private OutputStream mOutputStream;    
+        private OutputStream mOutputStream;
 //      private String mRemoteAddress;
         private IndexEditor mEditor = null;
 
@@ -1157,7 +1122,7 @@ public class IndexEditor {
          *         received and server disconnected the connection
          * @throws Exception
          */
-        protected boolean processCommand() throws Exception 
+        protected boolean processCommand() throws Exception
         {
             mAppender = null;
             try {
@@ -1321,10 +1286,10 @@ public class IndexEditor {
                 } else if (command.equals("s")) {
                     spanTest(mailboxId);
                 } else if (command.equals("delete_index")) {
-                    if (confirm("Are you sure you want to delete the index for mailbox "+ mailboxId+"?")) 
+                    if (confirm("Are you sure you want to delete the index for mailbox "+ mailboxId+"?"))
                     {
                         deleteIndex(mailboxId);
-                    } 
+                    }
                 } else if (command.equals("dumpmi")) {
                     outputStream.print("Enter Mail-Item-ID:");
                     String midStr = inputReader.readLine();
@@ -1336,11 +1301,9 @@ public class IndexEditor {
                 } else if (command.equals("dumpall")) {
                     dumpAll(mailboxId);
                 } else if (command.equals("unit")) {
-                    UnitTests.runTests();
+                    TestSearch.runTests();
 //                  } else if (command.equals("archive")) {
 //                  archive(mailboxId);
-                } else if (command.equals("hack")) {
-                    hack(mailboxId);
                 } else if (command.equals("verify")) {
                     checkIndex(mailboxId, false);
                 } else if (command.equals("repair")) {
@@ -1393,7 +1356,7 @@ public class IndexEditor {
         return 0;
     }
 
-    public void logLevel() 
+    public void logLevel()
     {
         String logLevel = null;
         try {
@@ -1416,13 +1379,13 @@ public class IndexEditor {
             } else if (logLevel.equalsIgnoreCase("ERROR")) {
                 newLevel = Level.ERROR;
             } else if (logLevel.equalsIgnoreCase("FATAL")) {
-                newLevel = Level.FATAL;            
+                newLevel = Level.FATAL;
             } else if (logLevel.equalsIgnoreCase("INFO")) {
-                newLevel = Level.INFO;            
+                newLevel = Level.INFO;
             } else if (logLevel.equalsIgnoreCase("OFF")) {
-                newLevel = Level.OFF;            
+                newLevel = Level.OFF;
             } else if (logLevel.equalsIgnoreCase("WARN")) {
-                newLevel = Level.WARN;            
+                newLevel = Level.WARN;
             }
 
             if (newLevel == null) {
@@ -1431,7 +1394,7 @@ public class IndexEditor {
             }
 
             root.setLevel(newLevel);
-        }            
+        }
         Level cur = root.getLevel();
         outputStream.println("Current level is: "+cur);
     }
@@ -1444,9 +1407,9 @@ public class IndexEditor {
         mHandler = null;
     }
 
-    public static void main(String[] args) 
+    public static void main(String[] args)
     {
-        Zimbra.toolSetup("DEBUG");
+        CliUtil.toolSetup("DEBUG");
 
         IndexEditor editor = new IndexEditor();
         editor.run();

@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 3117 $
+ * $Date: 2005-11-25 22:57:29 -0300 (Fri, 25 Nov 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.group;
 
 import org.jivesoftware.util.*;
@@ -83,7 +70,6 @@ public class GroupManager {
         }
         catch (Exception e) {
             Log.error("Error loading group provider: " + className, e);
-            provider = new DefaultGroupProvider();
         }
 
         GroupEventDispatcher.addListener(new GroupEventListener() {
@@ -126,31 +112,31 @@ public class GroupManager {
             }
         });
 
-        // Pre-load shared groups. This will provide a faster response
-        // time to the first client that logs in.
-        // TODO: use a task engine instead of creating a thread directly.
-        Runnable task = new Runnable() {
-            public void run() {
-                Collection<Group> groups = getSharedGroups();
-                // Load each group into cache.
-                for (Group group : groups) {
-                    // Load each user in the group into cache.
-                    for (JID jid : group.getMembers()) {
-                        try {
-                            if (XMPPServer.getInstance().isLocal(jid)) {
-                                UserManager.getInstance().getUser(jid.getNode());
-                            }
-                        }
-                        catch (UserNotFoundException unfe) {
-                            // Ignore.
-                        }
-                    }
-                }
-            }
-        };
-        Thread thread = new Thread(task);
-        thread.setDaemon(true);
-        thread.start();
+//        // Pre-load shared groups. This will provide a faster response
+//        // time to the first client that logs in.
+//        // TODO: use a task engine instead of creating a thread directly.
+//        Runnable task = new Runnable() {
+//            public void run() {
+//                Collection<Group> groups = getSharedGroups();
+//                // Load each group into cache.
+//                for (Group group : groups) {
+//                    // Load each user in the group into cache.
+//                    for (JID jid : group.getMembers()) {
+//                        try {
+//                            if (XMPPServer.getInstance().isLocal(jid)) {
+//                                UserManager.getInstance().getUser(jid.toBareJID());
+//                            }
+//                        }
+//                        catch (UserNotFoundException unfe) {
+//                            // Ignore.
+//                        }
+//                    }
+//                }
+//            }
+//        };
+//        Thread thread = new Thread(task);
+//        thread.setDaemon(true);
+//        thread.start();
     }
 
     /**
@@ -232,7 +218,7 @@ public class GroupManager {
      * @param user the deleted user from the system.
      */
     public void deleteUser(User user) {
-        JID userJID = XMPPServer.getInstance().createJID(user.getUsername(), null);
+        JID userJID = new JID(user.getUsername());
         for (Group group : getGroups(userJID)) {
             if (group.getAdmins().contains(userJID)) {
                 if (group.getAdmins().remove(userJID)) {
@@ -340,7 +326,7 @@ public class GroupManager {
      * @return all groups the user belongs to.
      */
     public Collection<Group> getGroups(User user) {
-        return getGroups(XMPPServer.getInstance().createJID(user.getUsername(), null));
+        return getGroups(new JID(user.getUsername()));
     }
 
     /**

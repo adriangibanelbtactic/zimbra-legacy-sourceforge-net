@@ -28,9 +28,11 @@
  */
 package com.zimbra.cs.mailbox;
 
-import javax.mail.Address;
+import java.util.List;
 
 import com.zimbra.common.service.ServiceException;
+
+import javax.mail.Address;
 
 
 /**
@@ -54,27 +56,35 @@ public class MailServiceException extends ServiceException {
 	public static final String NO_SUCH_DOC     = "mail.NO_SUCH_DOC";
     public static final String NO_SUCH_TAG     = "mail.NO_SUCH_TAG";
     public static final String NO_SUCH_UPLOAD  = "mail.NO_SUCH_UPLOAD";
+    public static final String NO_SUCH_WAITSET = "mail.NO_SUCH_WAITSET";
+    
+    public static final String ALREADY_EXISTS  = "mail.ALREADY_EXISTS";
+
+    public static final String INVALID_ID      = "mail.INVALID_ID";
+    public static final String INVALID_SYNC_TOKEN = "mail.INVALID_SYNC_TOKEN";
+    public static final String INVALID_NAME    = "mail.INVALID_NAME";
+    public static final String INVALID_TYPE    = "mail.INVALID_TYPE";
+    public static final String INVALID_CONTENT_TYPE = "mail.INVALID_CONTENT_TYPE";
+    public static final String IS_NOT_CHILD    = "mail.IS_NOT_CHILD";
+    public static final String CANNOT_CONTAIN  = "mail.CANNOT_CONTAIN";
+    public static final String CANNOT_COPY     = "mail.CANNOT_COPY";
+    public static final String CANNOT_TAG      = "mail.CANNOT_TAG";
+    public static final String CANNOT_PARENT   = "mail.CANNOT_PARENT";
+    public static final String CANNOT_RENAME   = "mail.CANNOT_RENAME";
+    public static final String CANNOT_SUBSCRIBE = "mail.CANNOT_SUBSCRIBE";
+    public static final String IMMUTABLE_OBJECT = "mail.IMMUTABLE_OBJECT";
+    public static final String WRONG_MAILBOX   = "mail.WRONG_MAILBOX";
+    public static final String MODIFY_CONFLICT = "mail.MODIFY_CONFLICT";
+    public static final String TRY_AGAIN       = "mail.TRY_AGAIN";
+
     public static final String SCAN_ERROR      = "mail.SCAN_ERROR";
     public static final String UPLOAD_REJECTED = "mail.UPLOAD_REJECTED";
     public static final String TOO_MANY_TAGS   = "mail.TOO_MANY_TAGS";
     public static final String TOO_MANY_UPLOADS  = "mail.TOO_MANY_UPLOADS";
     public static final String TOO_MANY_CONTACTS = "mail.TOO_MANY_CONTACTS";
-    public static final String UNABLE_TO_IMPORT_CONTACTS = "mail.UNABLE_TO_IMPORT_CONTACTS";    
+    public static final String UNABLE_TO_IMPORT_CONTACTS = "mail.UNABLE_TO_IMPORT_CONTACTS";
+    public static final String UNABLE_TO_IMPORT_APPOINTMENTS = "mail.UNABLE_TO_IMPORT_APPOINTMENTS";    
     public static final String QUOTA_EXCEEDED  = "mail.QUOTA_EXCEEDED";
-    public static final String INVALID_ID      = "mail.INVALID_ID";
-    public static final String INVALID_NAME    = "mail.INVALID_NAME";
-    public static final String INVALID_TYPE    = "mail.INVALID_TYPE";
-    public static final String INVALID_CONTENT_TYPE = "mail.INVALID_CONTENT_TYPE";
-	public static final String WRONG_MAILBOX   = "mail.WRONG_MAILBOX";
-    public static final String CANNOT_SUBSCRIBE = "mail.CANNOT_SUBSCRIBE";
-	public static final String CANNOT_CONTAIN  = "mail.CANNOT_CONTAIN";
-    public static final String CANNOT_COPY     = "mail.CANNOT_COPY";
-	public static final String CANNOT_TAG      = "mail.CANNOT_TAG";
-    public static final String CANNOT_PARENT   = "mail.CANNOT_PARENT";
-	public static final String IS_NOT_CHILD    = "mail.IS_NOT_CHILD";
-	public static final String MODIFY_CONFLICT = "mail.MODIFY_CONFLICT";
-	public static final String IMMUTABLE_OBJECT  = "mail.IMMUTABLE_OBJECT";
-	public static final String ALREADY_EXISTS    = "mail.ALREADY_EXISTS";
 	public static final String QUERY_PARSE_ERROR = "mail.QUERY_PARSE_ERROR";
     public static final String MESSAGE_PARSE_ERROR = "mail.MESSAGE_PARSE_ERROR";
     public static final String ADDRESS_PARSE_ERROR = "mail.ADDRESS_PARSE_ERROR";
@@ -85,11 +95,14 @@ public class MailServiceException extends ServiceException {
     public static final String SEND_ABORTED_ADDRESS_FAILURE = "mail.SEND_ABORTED_ADDRESS_FAILURE";
     public static final String SEND_PARTIAL_ADDRESS_FAILURE = "mail.SEND_PARTIAL_ADDRESS_FAILURE";
     public static final String SEND_FAILURE = "mail.SEND_FAILURE";
-    public static final String TRY_AGAIN = "mail.TRY_AGAIN";
-    public static final String TOO_MANY_QUERY_TERMS_EXPANDED = "mail.TOO_MANY_QUERY_TERMS_EXPANDED"; 
-    public static final String MESSAGE_TOO_BIG = "mail.MESSAGE_TOO_BIG";
-    
-    
+    public static final String TOO_MANY_QUERY_TERMS_EXPANDED = "mail.TOO_MANY_QUERY_TERMS_EXPANDED";
+
+
+    public static final String INVALID_COMMIT_ID = "mail.INVALID_COMMIT_ID";
+    public static final String TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT = "mail.TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT";
+
+    public static final String ID              = "id";
+    public static final String TOKEN           = "token";
     public static final String ITEM_ID         = "itemId";
     public static final String NAME            = "name"; 
     public static final String PATH            = "path"; 
@@ -180,12 +193,16 @@ public class MailServiceException extends ServiceException {
         return new NoSuchItemException("no such appointment or task: " + id, NO_SUCH_CALITEM, SENDERS_FAULT, new Argument(ITEM_ID, id, Argument.Type.IID));
     }
 
+    public static MailServiceException NO_SUCH_CALITEM(int id, String msg) {
+        return new NoSuchItemException("no such appointment or task: " + id + "; " + msg, NO_SUCH_CALITEM, SENDERS_FAULT, new Argument(ITEM_ID, id, Argument.Type.IID));
+    }
+
     public static MailServiceException NO_SUCH_CALITEM(String uid) {
         return new NoSuchItemException("no such appointment or task: " + uid, NO_SUCH_CALITEM, SENDERS_FAULT, new Argument(UID, uid, Argument.Type.STR));
     }
 
     public static MailServiceException NO_SUCH_CALITEM(String uid, String msg) {
-        return new MailServiceException("no such appointment or task: "+uid+" "+msg, NO_SUCH_CALITEM, SENDERS_FAULT, new Argument(UID, uid, Argument.Type.STR));
+        return new MailServiceException("no such appointment or task: " + uid + "; " + msg, NO_SUCH_CALITEM, SENDERS_FAULT, new Argument(UID, uid, Argument.Type.STR));
     }
     
     public static MailServiceException NO_SUCH_APPT(int id) {
@@ -227,6 +244,10 @@ public class MailServiceException extends ServiceException {
     public static MailServiceException NO_SUCH_UPLOAD(String uploadId) {
         return new MailServiceException("upload not found: " + uploadId, NO_SUCH_UPLOAD, SENDERS_FAULT, new Argument(UPLOAD_ID, uploadId, Argument.Type.STR));
     }
+    
+    public static MailServiceException NO_SUCH_WAITSET(String id) {
+        return new MailServiceException("WaitSet not found: " + id, NO_SUCH_WAITSET, SENDERS_FAULT, new Argument(ID, id, Argument.Type.STR));
+    }
 
     public static MailServiceException SCAN_ERROR(String file) {
         return new MailServiceException("upload could not be scanned: file '" + file + "'", SCAN_ERROR, RECEIVERS_FAULT, new Argument(NAME, file, Argument.Type.STR));
@@ -252,12 +273,20 @@ public class MailServiceException extends ServiceException {
         return new MailServiceException(msg, UNABLE_TO_IMPORT_CONTACTS, false, t);
     }
 
+    public static MailServiceException UNABLE_TO_IMPORT_APPOINTMENTS(String msg, Throwable t) {
+        return new MailServiceException(msg, UNABLE_TO_IMPORT_APPOINTMENTS, false, t);
+    }
+
     public static MailServiceException QUOTA_EXCEEDED(long limit) {
         return new MailServiceException("mailbox exceeded quota of " + limit + " bytes", QUOTA_EXCEEDED, SENDERS_FAULT, new Argument(LIMIT, limit, Argument.Type.NUM));
     }
 
     public static MailServiceException INVALID_ID(int id) {
         return new MailServiceException("item id out of range: " + id, INVALID_ID, SENDERS_FAULT, new Argument(ITEM_ID, id, Argument.Type.IID));
+    }
+    
+    public static MailServiceException INVALID_SYNC_TOKEN(String s) {
+        return new MailServiceException("Invalid Sync Token: " + s, INVALID_SYNC_TOKEN, SENDERS_FAULT, new Argument(TOKEN, s, Argument.Type.STR));
     }
 
     public static MailServiceException INVALID_NAME(String name) {
@@ -294,6 +323,10 @@ public class MailServiceException extends ServiceException {
 
     public static MailServiceException CANNOT_PARENT() {
         return new MailServiceException("cannot make object a child of that parent", CANNOT_PARENT, SENDERS_FAULT);
+    }
+
+    public static MailServiceException CANNOT_RENAME(byte type) {
+        return new MailServiceException("cannot set the name on a " + MailItem.getNameForType(type), CANNOT_RENAME, SENDERS_FAULT);
     }
 
     public static MailServiceException IS_NOT_CHILD() {
@@ -394,8 +427,19 @@ public class MailServiceException extends ServiceException {
     public static MailServiceException TOO_MANY_QUERY_TERMS_EXPANDED(String msg, String token, int max) {
         return new MailServiceException(msg, TOO_MANY_QUERY_TERMS_EXPANDED, SENDERS_FAULT, new Argument("TOKEN", token, Argument.Type.STR), new Argument("MAX", max, Argument.Type.NUM));
     }
-    public static MailServiceException MESSAGE_TOO_BIG(long maxSize) {
-        Argument arg = new Argument("maxSize", maxSize, Argument.Type.NUM);
-        return new MailServiceException("Message exceeded allowed size", MESSAGE_TOO_BIG, false, arg);
+
+    public static MailServiceException INVALID_COMMIT_ID(String commitId) {
+        return new MailServiceException("CommitId " + commitId + " not found in redo logs", INVALID_COMMIT_ID, SENDERS_FAULT);
     }
+
+    public static MailServiceException TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT(String msg, String accountId, List<String> existingWaitSetId) {
+        Argument[] args = new Argument[existingWaitSetId.size()+1];
+        int i = 0;
+        args[i++] = new Argument("ACCOUNT", accountId, Argument.Type.STR); 
+        for (String s : existingWaitSetId) {
+            args[i++] = new Argument("EXISTING_WAITSET", s, Argument.Type.STR);
+        }
+        return new MailServiceException(msg, TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT, SENDERS_FAULT, args); 
+    }
+    
 }

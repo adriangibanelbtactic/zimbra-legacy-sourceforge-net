@@ -23,7 +23,7 @@
  * ***** END LICENSE BLOCK *****
  */
 
-function ZmCalViewMgr(parent, controller, dropTgt) {
+ZmCalViewMgr = function(parent, controller, dropTgt) {
 
 	DwtComposite.call(this, parent, "ZmCalViewMgr", Dwt.ABSOLUTE_STYLE);
 	this.addControlListener(new AjxListener(this, this._controlListener));
@@ -236,3 +236,8 @@ function(ev) {
 		return;
 	this.notifyListeners(DwtEvent.DATE_RANGE, ev);
 }
+
+ZmCalViewMgr.prototype.getPrintHtml =
+function(preferHtml, callback) {
+	return ZmCalViewMgr.getPrintHtml(this);
+};

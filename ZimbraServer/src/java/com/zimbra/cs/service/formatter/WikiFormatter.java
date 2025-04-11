@@ -27,11 +27,15 @@ package com.zimbra.cs.service.formatter;
 import java.io.IOException;
 import java.io.InputStream;
 
+import javax.servlet.http.HttpServletResponse;
+
 import com.zimbra.cs.mailbox.Document;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.WikiItem;
-import com.zimbra.cs.operation.Operation;
+import com.zimbra.cs.mailbox.MailServiceException.NoSuchItemException;
+import com.zimbra.cs.mime.ParsedDocument;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet.Context;
 import com.zimbra.common.service.ServiceException;
@@ -44,13 +48,6 @@ import com.zimbra.cs.wiki.WikiTemplate;
 
 public class WikiFormatter extends Formatter {
 
-    public static class Format {};
-    public static class Save {};
-    static int sFormatLoad = Operation.setLoad(WikiFormatter.Format.class, 10);
-    static int sSaveLoad = Operation.setLoad(WikiFormatter.Save.class, 10);
-    int getFormatLoad() { return  sFormatLoad; }
-    int getSaveLoad() { return sSaveLoad; }
-    
 	@Override
 	public String getType() {
 		return "wiki";
@@ -98,13 +95,13 @@ public class WikiFormatter extends Formatter {
     private static final String TOC = "_Index";
     private static final String CHROME = "_Template";
     
-    private WikiTemplate getTemplate(Context context, WikiItem item) throws IOException, ServiceException {
+    private WikiTemplate getTemplate(Context context, WikiItem item) throws ServiceException {
     	return getTemplate(context, item.getMailbox().getAccountId(), item.getFolderId(), item.getWikiWord());
     }
-    private WikiTemplate getTemplate(Context context, Folder folder, String name) throws IOException, ServiceException {
+    private WikiTemplate getTemplate(Context context, Folder folder, String name) throws ServiceException {
     	return getTemplate(context, folder.getMailbox().getAccountId(), folder.getId(), name);
     }
-    private WikiTemplate getTemplate(Context context, String accountId, int folderId, String name) throws IOException, ServiceException {
+    private WikiTemplate getTemplate(Context context, String accountId, int folderId, String name) throws ServiceException {
     	WikiContext wctxt = createWikiContext(context);
     	Wiki wiki = Wiki.getInstance(wctxt, accountId, Integer.toString(folderId));
     	return wiki.getTemplate(wctxt, name);
@@ -168,20 +165,20 @@ public class WikiFormatter extends Formatter {
 	}
     
 	@Override
-	public void formatCallback(Context context, MailItem item) throws UserServletException, ServiceException, IOException {
+	public void formatCallback(Context context) throws UserServletException, ServiceException, IOException {
 		if (!context.targetAccount.getBooleanAttr("zimbraFeatureNotebookEnabled", false))
 			throw UserServletException.badRequest("Notebook is not enabled for user "+context.targetAccount.getName());
 		//long t0 = System.currentTimeMillis();
-        if (item instanceof Folder && context.itemId == null && !context.itemPath.endsWith("/")) {
+        if (context.target instanceof Folder && context.itemId == null && !context.itemPath.endsWith("/")) {
         	context.resp.sendRedirect(context.req.getRequestURI() + "/");
         	return;
         }
-        if (item instanceof WikiItem) {
-            handleWiki(context, (WikiItem) item);
-        } else if (item instanceof Document) {
-            handleDocument(context, (Document) item);
-        } else if (item instanceof Folder) {
-            handleWikiFolder(context, (Folder) item);
+        if (context.target instanceof WikiItem) {
+            handleWiki(context, (WikiItem) context.target);
+        } else if (context.target instanceof Document) {
+            handleDocument(context, (Document) context.target);
+        } else if (context.target instanceof Folder) {
+            handleWikiFolder(context, (Folder) context.target);
         } else {
             throw UserServletException.notImplemented("can only handle Wiki messages and Documents");
         }
@@ -190,8 +187,23 @@ public class WikiFormatter extends Formatter {
 	}
 
 	@Override
-	public void saveCallback(byte[] body, Context context, Folder folder) throws UserServletException {
-        throw UserServletException.notImplemented("saving documents via POST not yet supported.");
-	}
+	public void saveCallback(byte[] body, Context context, String contentType, Folder folder, String filename) throws UserServletException, ServiceException {
+        Mailbox mbox = folder.getMailbox();
 
+        String creator = (context.authAccount == null ? null : context.authAccount.getName());
+        ParsedDocument pd = new ParsedDocument(body, filename, WikiItem.WIKI_CONTENT_TYPE, System.currentTimeMillis(), creator);
+        try {
+            MailItem item = mbox.getItemByPath(context.opContext, filename, folder.getId());
+            // XXX: should we just overwrite here instead?
+            if (!(item instanceof WikiItem))
+                throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "cannot overwrite existing object at that path");
+
+            mbox.addDocumentRevision(context.opContext, item.getId(), item.getType(), pd);
+        } catch (NoSuchItemException nsie) {
+            mbox.createDocument(context.opContext, folder.getId(), pd, MailItem.TYPE_WIKI);
+        }
+
+        // clear the wiki cache because we just went straight to the Mailbox
+        Wiki.expireNotebook(folder);
+	}
 }

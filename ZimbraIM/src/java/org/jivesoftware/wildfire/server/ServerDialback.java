@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: ServerDialback.java,v $
+ * $Revision: 3188 $
+ * $Date: 2005-12-12 00:28:19 -0300 (Mon, 12 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.server;
 
 import org.dom4j.DocumentException;
@@ -36,6 +23,7 @@ import org.jivesoftware.wildfire.net.DNSUtil;
 import org.jivesoftware.wildfire.net.MXParser;
 import org.jivesoftware.wildfire.net.ServerTrafficCounter;
 import org.jivesoftware.wildfire.net.SocketConnection;
+import org.jivesoftware.wildfire.net.StdSocketConnection;
 import org.jivesoftware.wildfire.spi.BasicStreamIDFactory;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -138,7 +126,7 @@ class ServerDialback {
 
     ServerDialback() {
     }
-
+    
     /**
      * Creates a new connection from the Originating Server to the Receiving Server for
      * authenticating the specified domain.
@@ -165,7 +153,7 @@ class ServerDialback {
                     RemoteServerManager.getSocketTimeout());
             Log.debug("OS - Connection to " + hostname + ":" + port + " successful");
             connection =
-                    new SocketConnection(XMPPServer.getInstance().getPacketDeliverer(), socket,
+                    new StdSocketConnection(XMPPServer.getInstance().getPacketDeliverer(), socket,
                             false);
             // Get a writer for sending the open stream tag
             // Send to the Receiving Server a stream header
@@ -268,6 +256,7 @@ class ServerDialback {
             sb.append(" to=\"").append(hostname).append("\">");
             sb.append(key);
             sb.append("</db:result>");
+            Log.debug("Dialback result: "+sb.toString());
             connection.deliverRawText(sb.toString());
 
             // Process the answer from the Receiving Server
@@ -312,7 +301,29 @@ class ServerDialback {
             }
         }
     }
-
+    
+    /**
+     * NIO conversion hackery:
+     * 
+     * We can't actually create the real IncomingServerSession immediately: we need to get
+     * some data from the remote server first.  So we create a dummy session, the 
+     * "DialbackCreatorSession" temporarily until we get the info we need.  ServerSocketReader.process()
+     * has a special hook which calls the DialbackCreatorSession and lets it run. 
+     * 
+     * Pretty ugly, need to fix this, make the S2S connect pathways truly state-machine oriented
+     * 
+     * @param streamElt
+     * @return
+     */
+    DialbackCreatorSession getDialbackCreatorSession(Element streamElt) {
+        StreamID streamID = sessionManager.nextStreamID();
+        DialbackCreatorSession toRet =  new DialbackCreatorSession("unknown", connection, streamID, this);
+        if (toRet.handleStreamHeader(streamElt))
+            return toRet;
+        else
+            return null;
+    }
+    
     /**
      * Returns a new {@link IncomingServerSession} with a domain validated by the Authoritative
      * Server. New domains may be added to the returned IncomingServerSession after they have
@@ -330,11 +341,11 @@ class ServerDialback {
      * @throws IOException if an I/O error occurs while communicating with the remote server.
      * @throws XmlPullParserException if an error occurs while parsing XML packets.
      */
-    public IncomingServerSession createIncomingSession(XMPPPacketReader reader) throws IOException,
+    public IncomingServerSession createIncomingSession(Element streamElt, Element secondElt) throws IOException,
             XmlPullParserException {
-        XmlPullParser xpp = reader.getXPPParser();
+//        XmlPullParser xpp = reader.getXPPParser();
         StringBuilder sb;
-        if ("jabber:server:dialback".equals(xpp.getNamespace("db"))) {
+        if ("jabber:server:dialback".equals(streamElt.getNamespaceForPrefix("db"))) {
 
             StreamID streamID = sessionManager.nextStreamID();
 
@@ -348,14 +359,14 @@ class ServerDialback {
             connection.deliverRawText(sb.toString());
 
             try {
-                Element doc = reader.parseDocument().getRootElement();
+                Element doc = secondElt;
                 if ("db".equals(doc.getNamespacePrefix()) && "result".equals(doc.getName())) {
                     if (validateRemoteDomain(doc, streamID)) {
                         String hostname = doc.attributeValue("from");
                         String recipient = doc.attributeValue("to");
                         // Create a server Session for the remote server
                         IncomingServerSession session = sessionManager.
-                                createIncomingServerSession(connection, streamID);
+                            createIncomingServerSession(connection, recipient, streamID);
                         // Set the first validated domain as the address of the session
                         session.setAddress(new JID(null, hostname, null));
                         // Add the validated domain as a valid domain
@@ -365,8 +376,7 @@ class ServerDialback {
                         session.setLocalDomain(recipient);
                         return session;
                     }
-                }
-                else if ("db".equals(doc.getNamespacePrefix()) && "verify".equals(doc.getName())) {
+                } else if ("db".equals(doc.getNamespacePrefix()) && "verify".equals(doc.getName())) {
                     // When acting as an Authoritative Server the Receiving Server will send a
                     // db:verify packet for verifying a key that was previously sent by this
                     // server when acting as the Originating Server
@@ -377,8 +387,7 @@ class ServerDialback {
                     String id = doc.attributeValue("id");
                     Log.debug("AS - Connection closed for host: " + verifyFROM + " id: " + id);
                     return null;
-                }
-                else {
+                } else {
                     // The remote server sent an invalid/unknown packet
                     connection.deliverRawText(
                             new StreamError(StreamError.Condition.invalid_xml).toXML());
@@ -393,9 +402,7 @@ class ServerDialback {
                 connection.close();
                 return null;
             }
-
-        }
-        else {
+        } else {
             // Include the invalid-namespace stream error condition in the response
             connection.deliverRawText(
                     new StreamError(StreamError.Condition.invalid_namespace).toXML());
@@ -501,22 +508,38 @@ class ServerDialback {
         }
     }
 
-    private boolean isHostUnknown(String recipient) {
-        boolean host_unknown = !serverName.equals(recipient);
-        // If the recipient does not match the serverName then check if it matches a subdomain. This
-        // trick is useful when subdomains of this server are registered in the DNS so remote
-        // servers may establish connections directly to a subdomain of this server
-        if (host_unknown && recipient.contains(serverName)) {
-            RoutableChannelHandler route = routingTable.getRoute(new JID(recipient));
-            if (route == null || route instanceof OutgoingSessionPromise) {
-                host_unknown = true;
-            }
-            else {
-                host_unknown = false;
-            }
+//    private boolean isHostUnknown(String recipient) {
+//        boolean host_unknown = !serverName.equals(recipient);
+//        // If the recipient does not match the serverName then check if it matches a subdomain. This
+//        // trick is useful when subdomains of this server are registered in the DNS so remote
+//        // servers may establish connections directly to a subdomain of this server
+//        if (host_unknown && recipient.contains(serverName)) {
+//            ChannelHandler route = routingTable.getRoute(new JID(recipient));
+//            if (route == null || route instanceof OutgoingSessionPromise) {
+//                host_unknown = true;
+//            }
+//            else {
+//                host_unknown = false;
+//            }
+//        }
+//        return host_unknown;
+//    }
+    
+    private boolean isHostUnknown(String host) {
+        if (XMPPServer.getInstance().isLocalDomain(host)) {
+            // requested host matched the server name
+            return false;
         }
-        return host_unknown;
+        
+        // Check if the host matches a subdomain of this host
+        ChannelHandler route = routingTable.getRoute(new JID(host));
+        if (route == null || route instanceof OutgoingSessionPromise) {
+            return true;
+        } else {
+            return false;
+        }
     }
+    
 
     /**
      * Verifies the key with the Authoritative Server.
@@ -560,7 +583,7 @@ class ServerDialback {
                 eventType = xpp.next();
             }
             if ("jabber:server:dialback".equals(xpp.getNamespace("db"))) {
-                Log.debug("RS - Asking AS to verify dialback key for id" + streamID);
+                Log.debug("RS - Asking AS to verify dialback key for id " + streamID);
                 // Request for verification of the key
                 StringBuilder sb = new StringBuilder();
                 sb.append("<db:verify");
@@ -674,7 +697,8 @@ class ServerDialback {
         // Verify the received key
         // Created the expected key based on the received ID value and the shared secret
         String expectedKey = AuthFactory.createDigest(id, secretKey);
-        boolean verified = expectedKey.equals(key);
+       boolean verified = expectedKey.equals(key);
+//        boolean verified = true;
 
         // Send the result of the key verification
         StringBuilder sb = new StringBuilder();

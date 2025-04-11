@@ -27,11 +27,7 @@ package com.zimbra.cs.account;
 
 import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.ByteUtil;
-import com.zimbra.common.util.StringUtil;
-import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.ldap.LdapUtil;
-import com.zimbra.cs.util.Zimbra;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.GnuParser;
@@ -39,8 +35,7 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import com.zimbra.common.util.Log;
-import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.*;
 import org.dom4j.Attribute;
 import org.dom4j.Document;
 import org.dom4j.DocumentException;
@@ -83,8 +78,8 @@ public class AttributeManager {
     private static final String A_TYPE = "type";
     private static final String A_ORDER = "order";
     private static final String A_VALUE = "value";
-    private static final String A_MAX = "max";
-    private static final String A_MIN = "min";
+    static final String A_MAX = "max";
+    static final String A_MIN = "min";
     private static final String A_CALLBACK = "callback";
     private static final String A_ID = "id";
     private static final String A_PARENT_OID = "parentOid";
@@ -213,8 +208,8 @@ public class AttributeManager {
             AttributeType type = null;
             AttributeOrder order = null;
             String value = null;
-            long min = Long.MIN_VALUE;
-            long max = Long.MAX_VALUE;
+            String min = null;
+            String max = null;
             boolean immutable = false;
 //            boolean ignore = false;
             int id = -1;
@@ -242,9 +237,9 @@ public class AttributeManager {
                 } else if (aname.equals(A_IMMUTABLE)) {
                     immutable = "1".equals(attr.getValue());
                 } else if (aname.equals(A_MAX)) {
-                    max = AttributeInfo.parseLong(attr.getValue(), Integer.MAX_VALUE);
+                    max = attr.getValue();
                 } else if (aname.equals(A_MIN)) {
-                    min = AttributeInfo.parseLong(attr.getValue(), Integer.MIN_VALUE);
+                    min = attr.getValue();
                 } else if (aname.equals(A_TYPE)) {
                     type = AttributeType.getType(attr.getValue());
                     if (type == null) {
@@ -423,23 +418,23 @@ public class AttributeManager {
     private Map<AttributeClass, Set<String>> mClassToLowerCaseAttrsMap = new HashMap<AttributeClass, Set<String>>();
 
     private void initClassToAttrsMap() {
-       for (AttributeClass klass : AttributeClass.values()) {
-           mClassToAttrsMap.put(klass, new HashSet<String>());
-           mClassToLowerCaseAttrsMap.put(klass, new HashSet<String>());
-       }
-     }
-    
+        for (AttributeClass klass : AttributeClass.values()) {
+            mClassToAttrsMap.put(klass, new HashSet<String>());
+            mClassToLowerCaseAttrsMap.put(klass, new HashSet<String>());
+        }
+    }
+
     /*
      * Support for lookup by flag
      */
     private Map<AttributeFlag, Set<String>> mFlagToAttrsMap = new HashMap<AttributeFlag, Set<String>>();
-    
+
     private void initFlagsToAttrsMap() {
-       for (AttributeFlag flag : AttributeFlag.values()) {
-           mFlagToAttrsMap.put(flag, new HashSet<String>());
-       }
-     }
-    
+        for (AttributeFlag flag : AttributeFlag.values()) {
+            mFlagToAttrsMap.put(flag, new HashSet<String>());
+        }
+    }
+
     public boolean isAccountInherited(String attr) {
  	   return mFlagToAttrsMap.get(AttributeFlag.accountInherited).contains(attr);
     }
@@ -447,11 +442,11 @@ public class AttributeManager {
     public boolean isDomainInherited(String attr) {
  	   return mFlagToAttrsMap.get(AttributeFlag.domainInherited).contains(attr);
     }
-    
+
     public boolean isServerInherited(String attr) {
  	   return mFlagToAttrsMap.get(AttributeFlag.serverInherited).contains(attr);
     }
-    
+
     public boolean isDomainAdminModifiable(String attr) {
  	   return mFlagToAttrsMap.get(AttributeFlag.domainAdminModifiable).contains(attr);
     }
@@ -462,11 +457,34 @@ public class AttributeManager {
     
     public Set<String> getAttrsInClass(AttributeClass klass) {
         return mClassToAttrsMap.get(klass);
-     }
+    }
     
     public Set<String> getLowerCaseAttrsInClass(AttributeClass klass) {
         return mClassToLowerCaseAttrsMap.get(klass);
-     }
+    }
+
+    public Set<String> getImmutableAttrs() {
+        Set<String> immutable = new HashSet<String>();
+        for (AttributeInfo info : mAttrs.values()) {
+            if (info != null && info.isImmutable())
+                immutable.add(info.getName());
+        }
+        return immutable;
+    }
+
+    public Set<String> getImmutableAttrsInClass(AttributeClass klass) {
+        Set<String> immutable = new HashSet<String>();
+        for (String attr : mClassToAttrsMap.get(klass)) {
+            AttributeInfo info = mAttrs.get(attr.toLowerCase());
+            if (info != null) {
+                if (info.isImmutable())
+                    immutable.add(attr);
+            } else {
+                ZimbraLog.misc.warn("getImmutableAttrsInClass: no attribute info for: " + attr);
+            }
+        }
+        return immutable;
+    }
 
     /**
      * @param type
@@ -597,8 +615,8 @@ public class AttributeManager {
 
     private enum Action { generateLdapSchema, generateGlobalConfigLdif, generateDefaultCOSLdif, dump }
     
-    public static void main(String[] args) throws IOException, DocumentException, ServiceException {
-        Zimbra.toolSetup();
+    public static void main(String[] args) throws IOException, ServiceException {
+        CliUtil.toolSetup();
         CommandLine cl = parseArgs(args);
 
         if (!cl.hasOption('a')) usage("no action specified");
@@ -656,8 +674,6 @@ public class AttributeManager {
         pw.println("objectclass: organizationalRole");
         pw.println("cn: config");
         pw.println("objectclass: zimbraGlobalConfig");
-        
-        String[] attrs;
         
         List<String> out = new LinkedList<String>();
         for (AttributeInfo attr : mAttrs.values()) {
@@ -752,7 +768,7 @@ public class AttributeManager {
                 ATTRIBUTE_DEFINITIONS.append("attributetype ( " + ai.getName() + "\n");
                 ATTRIBUTE_DEFINITIONS.append("\tNAME ( '" + ai.getName() + "' )\n");
                 ATTRIBUTE_DEFINITIONS.append("\tDESC '" + ai.getDescription() + "'\n");
-                String syntax = null, substr = null, equality = null; 
+                String syntax = null, substr = null, equality = null, ordering = null;
                 switch (ai.getType()) {
                 case TYPE_BOOLEAN:
                     syntax = "1.3.6.1.4.1.1466.115.121.1.7";
@@ -768,6 +784,7 @@ public class AttributeManager {
                 case TYPE_GENTIME:
                 	syntax = "1.3.6.1.4.1.1466.115.121.1.24";
                     equality = "generalizedTimeMatch";
+                    ordering = "generalizedTimeOrderingMatch ";
                     break;
 
                 case TYPE_ID:
@@ -854,7 +871,10 @@ public class AttributeManager {
                 if (substr != null) {
                     ATTRIBUTE_DEFINITIONS.append("\n\tSUBSTR " + substr);
                 }
-                if (ai.getOrder() != null) {
+                
+                if (ordering != null) {
+                    ATTRIBUTE_DEFINITIONS.append("\n\tORDERING " + ordering);
+                } else if (ai.getOrder() != null) {
                     ATTRIBUTE_DEFINITIONS.append("\n\tORDERING " + ai.getOrder());
                 }
                 

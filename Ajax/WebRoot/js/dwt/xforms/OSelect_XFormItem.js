@@ -20,7 +20,7 @@
 * @constructor
 * @author Owen Williams, Greg Solovyev
 **/
-function OSelect1_XFormItem(){ this._enabled = true; }
+OSelect1_XFormItem = function(){ this._enabled = true; }
 XFormItemFactory.createItemType("_OSELECT1_", "oselect1", OSelect1_XFormItem, Select1_XFormItem);
 
 OSelect1_XFormItem._mouseWheelEventAttached = false;
@@ -76,7 +76,12 @@ OSelect1_XFormItem.prototype.updateElement = function (newValue) {
 
 	if (el) {
 		if(this.getInheritedProperty("editable")) {
+			if((!newValue || newValue=="") && el.value != newValue) {
+				var i=0;
+			}
 			el.value = newValue;
+			DBG.println(AjxDebug.DBG1, AjxBuffer.concat(this.getId(),".value = ",newValue));
+
 		} else {
 			el.innerHTML = newValue;
 		}
@@ -181,6 +186,7 @@ OSelect1_XFormItem.prototype.showMenu = function() {
 			menu.style.width = parseInt(bounds.width)+2;					
 			menu.style.overflow="auto";	
 			menu.getElementsByTagName("table")[0].className = this.getChoiceScrollTableCssClass();
+			menu.getElementsByTagName("table")[0].width="100%";
 		} 
 	} else {
 		menu.getElementsByTagName("table")[0].style.width = parseInt(bounds.width);
@@ -245,11 +251,14 @@ OSelect1_XFormItem.prototype.oMouseUp = function (ev) {
     if (ev) {
 		// figure out if we are over the menu that is up
 		var htmlEl = DwtUiEvent.getTarget(ev);
+		var inputId = this.getId()+"_display";
 	//	DBG.println(AjxDebug.DBG1, AjxBuffer.concat("oMouseUp; htmlEl.nodeName=",htmlEl.nodeName," htmlEl.localName = ", htmlEl.nodeName));
 		//check if the user clicked on the scrollbar
 			if(htmlEl.localName == "scrollbar" && ( (htmlEl.parentNode && htmlEl.parentNode.id=="___OSELECT_MENU___") || (htmlEl.id && htmlEl.id=="___OSELECT_MENU___"))) { 
 				found = true;
 			} else if (htmlEl.id && htmlEl.id == "___OSELECT_MENU___"){
+				found = true;
+			} else if (htmlEl.id && htmlEl.id == inputId){
 				found = true;
 			}
 	}
@@ -512,6 +521,7 @@ OSelect1_XFormItem.prototype.outputHTML = function (HTMLoutput, updateScript, in
 				"<table ", this.getTableCssString(), ">", 
 					"<tr><td width=100%><input type=text id=", id, "_display class=", this.getDisplayCssClass(), " value='VALUE' ", 
 					" onchange=\"",ref, ".onValueTyped(this.value, event||window.event)\"",
+					" onmouseup=\"", this.getFormGlobalRef(), ".getItemById('",this.getId(),"').showMenu(this, event)\"",
 					" onkeyup=\"",ref, ".onKeyUp(this.value, event||window.event)\"", "size=",inputSize,
 					"></td>",
 						"<td>", this.getArrowButtonHTML(),"</td>", 
@@ -623,7 +633,7 @@ OSelect1_XFormItem.prototype.setElementEnabled = function(enabled) {
 //
 //	OSelect class -- lightning fast SELECT type widget
 //
-function OSelect_XFormItem() {}
+OSelect_XFormItem = function() {}
 XFormItemFactory.createItemType("_OSELECT_", "oselect", OSelect_XFormItem, OSelect1_XFormItem);
 // override the default SELECT type
 //XFormItemFactory.registerItemType("_SELECT_", "select", OSelect_XFormItem)
@@ -787,7 +797,7 @@ OSelect_XFormItem.prototype.setValue = function (newValue, clearOldValues, inclu
 
 
 
-function OSelect_Check_XFormItem() {}
+OSelect_Check_XFormItem = function() {}
 XFormItemFactory.createItemType("_OSELECT_CHECK_", "oselect_check", OSelect_Check_XFormItem, OSelect_XFormItem)
 OSelect_Check_XFormItem.prototype.cssClass = "oselect_check";
 OSelect_Check_XFormItem.prototype.getChoiceHTML = function (itemNum, value, label, cssClass, indent) {

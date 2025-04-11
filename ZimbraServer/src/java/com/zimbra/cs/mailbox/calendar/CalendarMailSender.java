@@ -63,6 +63,7 @@ import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ICalTok;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.mime.Mime;
+import com.zimbra.cs.service.util.ItemId;
 import com.zimbra.cs.util.AccountUtil;
 import com.zimbra.cs.util.JMSession;
 import com.zimbra.cs.util.L10nUtil;
@@ -314,7 +315,7 @@ public class CalendarMailSender {
         return createCalendarMessage(null, null, null, subject, text, uid, cal);
     }
 
-    private static MimeMessage createCalendarMessage(
+    public static MimeMessage createCalendarMessage(
             Address fromAddr, Address senderAddr, List<Address> toAddrs,
             String subject, String text,
             String uid, ZCalendar.ZVCalendar cal)
@@ -408,8 +409,7 @@ public class CalendarMailSender {
         Invite reply =
             new Invite(oldInv.getItemType(), ICalTok.REPLY.toString(),
                        new TimeZoneMap(
-                               Provisioning.getInstance().getTimeZone(onBehalfOf ? authAcct : acct)),
-                               oldInv.isOrganizer());
+                               ICalTimeZone.getAccountTimeZone(onBehalfOf ? authAcct : acct)));
 
         reply.getTimeZoneMap().add(oldInv.getTimeZoneMap());
 
@@ -495,14 +495,9 @@ public class CalendarMailSender {
         }
     }
 
-    public static int sendReply(OperationContext octxt,
-                                Mailbox mbox,
-                                boolean saveToSent,
-                                Verb verb,
-                                String additionalMsgBody,
-                                CalendarItem calItem,
-                                Invite inv,
-                                MimeMessage mmInv)
+    public static ItemId sendReply(OperationContext octxt, Mailbox mbox, boolean saveToSent,
+                                   Verb verb, String additionalMsgBody, CalendarItem calItem,
+                                   Invite inv, MimeMessage mmInv)
     throws ServiceException {
         boolean onBehalfOf = false;
         Account acct = mbox.getAccount();
@@ -529,7 +524,7 @@ public class CalendarMailSender {
         MimeMessage mm = createDefaultReply(acct, authAcct, onBehalfOf, calItem, inv, mmInv,
                                             replySubject, verb, additionalMsgBody, iCal);
 
-        int replyMsgId = mbox.getMailSender().sendMimeMessage(octxt, mbox, saveToSent, mm, null, null,
+        ItemId replyMsgId = mbox.getMailSender().sendMimeMessage(octxt, mbox, saveToSent, mm, null, null,
                                                               inv.getMailItemId(), replyType, null, false, true);
         return replyMsgId;
     }

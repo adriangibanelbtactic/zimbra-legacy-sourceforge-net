@@ -1,31 +1,33 @@
 /*
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1
- * 
+ *
  * The contents of this file are subject to the Mozilla Public License
  * Version 1.1 ("License"); you may not use this file except in
  * compliance with the License. You may obtain a copy of the License at
  * http://www.zimbra.com/license
- * 
+ *
  * Software distributed under the License is distributed on an "AS IS"
  * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
  * the License for the specific language governing rights and limitations
  * under the License.
- * 
+ *
  * The Original Code is: Zimbra Collaboration Suite Server.
- * 
+ *
  * The Initial Developer of the Original Code is Zimbra, Inc.
  * Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
  * All Rights Reserved.
- * 
- * Contributor(s): 
- * 
+ *
+ * Contributor(s):
+ *
  * ***** END LICENSE BLOCK *****
  */
 package com.zimbra.cs.taglib.bean;
 
+import com.zimbra.common.calendar.TZIDMapper;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.taglib.ZJspSession;
+import com.zimbra.cs.zclient.ZAppointmentHit;
 import com.zimbra.cs.zclient.ZEmailAddress;
 import com.zimbra.cs.zclient.ZFilterAction;
 import com.zimbra.cs.zclient.ZFilterAction.ZDiscardAction;
@@ -44,8 +46,17 @@ import com.zimbra.cs.zclient.ZFilterCondition.ZHeaderCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZHeaderExistsCondition;
 import com.zimbra.cs.zclient.ZFilterCondition.ZSizeCondition;
 import com.zimbra.cs.zclient.ZFolder;
+import com.zimbra.cs.zclient.ZFolder.Color;
+import com.zimbra.cs.zclient.ZFolder.View;
+import com.zimbra.cs.zclient.ZInvite.ZWeekDay;
+import com.zimbra.cs.zclient.ZInvite.ZAttendee;
+import com.zimbra.cs.zclient.ZInvite.ZComponent;
 import com.zimbra.cs.zclient.ZMailbox;
+import com.zimbra.cs.zclient.ZSimpleRecurrence;
+import com.zimbra.cs.zclient.ZSimpleRecurrence.ZSimpleRecurrenceType;
 import com.zimbra.cs.zclient.ZTag;
+import com.zimbra.cs.zclient.ZInvite;
+import com.zimbra.cs.zclient.ZShare;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -61,8 +72,8 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TimeZone;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,13 +83,13 @@ public class BeanUtils {
         if (email == null) return;
         if (sb.length() > 0) sb.append(", ");
         if (size > 1 && email.getDisplay() != null)
-            sb.append(email.getDisplay());        
+            sb.append(email.getDisplay());
         else if (email.getPersonal() != null)
             sb.append(email.getPersonal());
         else if (email.getAddress() != null)
             sb.append(email.getAddress());
     }
-    
+
     public static String getAddrs(List<ZEmailAddress> addrs) {
         if ( addrs == null) return null;
         int len = addrs.size();
@@ -87,7 +98,7 @@ public class BeanUtils {
             addAddr(sb, addr, len);
         }
         String result = sb.toString();
-        return result.length() == 0 ? null : result; 
+        return result.length() == 0 ? null : result;
     }
 
     public static String joinLines(String lines, String sep) {
@@ -100,7 +111,7 @@ public class BeanUtils {
         }
         return result.toString();
     }
-    
+
     public static String getHeaderAddrs(List<ZEmailAddress> addrs, String type) {
         if ( addrs == null) return null;
         StringBuilder sb = new StringBuilder();
@@ -119,7 +130,7 @@ public class BeanUtils {
             }
         }
         String result = sb.toString();
-        return result.length() == 0 ? null : result; 
+        return result.length() == 0 ? null : result;
     }
 
     public static String getAddr(ZEmailAddress addr) {
@@ -131,7 +142,7 @@ public class BeanUtils {
             result = addr.getAddress();
         else
             return null;
-        return result.length() == 0 ? null : result;         
+        return result.length() == 0 ? null : result;
     }
 
     private static String escapeDollarSign(String value) {
@@ -164,7 +175,7 @@ public class BeanUtils {
     private static final Pattern sTAB = Pattern.compile("\\t", Pattern.MULTILINE);
     private static final Pattern sLT = Pattern.compile("<", Pattern.MULTILINE);
     private static final Pattern sGT = Pattern.compile(">", Pattern.MULTILINE);
-    private static final Pattern sDBLQT = Pattern.compile("\"", Pattern.MULTILINE);    
+    private static final Pattern sDBLQT = Pattern.compile("\"", Pattern.MULTILINE);
     private static final Pattern sNL = Pattern.compile("\\r?\\n", Pattern.MULTILINE);
     private static final Pattern sSTART = Pattern.compile("^", Pattern.MULTILINE);
     private static final Pattern sURL = Pattern.compile(
@@ -175,7 +186,7 @@ public class BeanUtils {
         return replaceAll(content, sSTART, prefix);
     }
 
-    private static String htmlEncode(String text) {
+    public static String htmlEncode(String text) {
         if (text == null || text.length() == 0) return "";
         String s = replaceAll(text, sAMP, "&amp;");
         s = replaceAll(s, sLT, "&lt;");
@@ -230,12 +241,12 @@ public class BeanUtils {
         if (lastIndex < text.length()) {
             sb.append(internalTextToHtml(text.substring(lastIndex)));
         }
-        return sb.toString(); 
+        return sb.toString();
     }
 
     /**
      * truncat given text at length, then walk back until you hit a whitespace.
-     *  
+     *
      * @param text text to truncate
      * @param length length to truncate too
      * @param ellipses whether or not to add ellipses
@@ -243,7 +254,7 @@ public class BeanUtils {
      */
     public static String truncate(String text, int length, boolean ellipses) {
         if (text.length() < length) return text;
-        if (length <= 0) return ellipses ? "..." : ""; 
+        if (length <= 0) return ellipses ? "..." : "";
         int n = Math.min(length, text.length());
         for (int i=n-1; i > 0; i--) {
             if (Character.isWhitespace(text.charAt(i))) {
@@ -252,7 +263,7 @@ public class BeanUtils {
         }
         return text.subSequence(0, length)+(ellipses ? " ..." : "");
     }
-    
+
     public static String displaySize(long size) {
         return displaySize(size, 0);
     }
@@ -289,7 +300,7 @@ public class BeanUtils {
     }
 
     private enum DateTimeFmt { DTF_TIME_SHORT, DTF_DATE_MEDIUM, DTF_DATE_SHORT }
-   
+
     private static DateFormat getDateFormat(PageContext pc, DateTimeFmt fmt) {
         DateFormat df = (DateFormat) pc.getAttribute(fmt.name(), PageContext.REQUEST_SCOPE);
         if (df == null) {
@@ -348,14 +359,14 @@ public class BeanUtils {
         List<String> val = mbox.getAccountInfo(false).getAttrs().get(attr);
         return (val.size() > 0) ? val.get(0) : null;
     }
- 
+
     public static String repeatString(String string, int count) {
         if (count==0) return "";
         StringBuilder sb = new StringBuilder(string.length()*count);
         while(count-- > 0) sb.append(string);
         return sb.toString();
     }
-    
+
     private static final Pattern sCOMMA = Pattern.compile(",");
 
     // todo: add some per-requeset caching?
@@ -407,11 +418,32 @@ public class BeanUtils {
         }
     }
 
+    public static ZTagBean getTag(PageContext pc, String id) throws JspException {
+        try {
+            ZMailbox mbox = ZJspSession.getZMailbox(pc);
+            if (id == null) return null;
+            ZTag tag = mbox.getTagById(id);
+            return tag == null ? null : new ZTagBean(tag);
+        } catch (ServiceException e) {
+            throw new JspTagException(e);
+        }
+    }
+
+
+    public static ZFolderBean getFolder(PageContext pc, String id) throws JspException, ServiceException {
+        ZMailbox mbox = ZJspSession.getZMailbox(pc);
+        if (id == null) return null;
+        ZFolder f = mbox.getFolderById(id);
+        return f == null ? null : new ZFolderBean(f);
+    }
+
     public static String getFolderName(PageContext pc, String id) throws JspException, ServiceException {
         ZMailbox mbox = ZJspSession.getZMailbox(pc);
         if (id == null) return null;
         ZFolder f = mbox.getFolderById(id);
-        return f == null ? null : f.getName();
+        if (f == null) return null;
+        String lname = LocaleSupport.getLocalizedMessage(pc, "FOLDER_LABEL_"+f.getId());
+        return (lname == null || lname.startsWith("???")) ? f.getName() : lname;
     }
 
     private static long sUrlRandSalt = 0;
@@ -545,11 +577,369 @@ public class BeanUtils {
         return isRedirect(action) ? (ZRedirectAction) action : null;
     }
 
+    public static Calendar getCalendarMidnight(long time, TimeZone tz) {
+        Calendar cal = tz == null ? Calendar.getInstance() : Calendar.getInstance(tz);
+        cal.setTimeInMillis(time);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        return cal;
+    }
+
+    public static Calendar getCalendar(long time, TimeZone tz) {
+        Calendar cal = tz == null ? Calendar.getInstance() : Calendar.getInstance(tz);
+        cal.setTimeInMillis(time);
+        return cal;
+    }
+
+    public static Calendar getToday(TimeZone tz) {
+        Calendar cal = tz == null ? Calendar.getInstance() : Calendar.getInstance(tz);
+        cal.setTimeInMillis(System.currentTimeMillis());
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        return cal;
+    }
+
+    public static Calendar getTodayHour(int hour, TimeZone tz) {
+        Calendar cal = tz == null ? Calendar.getInstance() : Calendar.getInstance(tz);
+        cal.setTimeInMillis(System.currentTimeMillis());
+        cal.set(Calendar.HOUR_OF_DAY, hour);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        return cal;
+    }
+
+    public static Calendar getFirstDayOfMonthView(java.util.Calendar date, long prefFirstDayOfWeek) {
+         prefFirstDayOfWeek++; // pref goes 0-6, Calendar goes 1-7
+         Calendar cal = Calendar.getInstance(date.getTimeZone());
+         cal.setTimeInMillis(date.getTimeInMillis());
+         cal.set(Calendar.HOUR_OF_DAY, 0);
+         cal.set(Calendar.MINUTE, 0);
+         cal.set(Calendar.SECOND, 0);
+         cal.set(Calendar.MILLISECOND, 0);
+         cal.set(Calendar.DAY_OF_MONTH, 1);
+         int dow = cal.get(Calendar.DAY_OF_WEEK);
+         if (dow == prefFirstDayOfWeek) {
+             cal.add(Calendar.DAY_OF_MONTH, -7);
+         } else {
+             cal.add(Calendar.DAY_OF_MONTH, - ((dow+(7-((int)prefFirstDayOfWeek)))%7));
+         }
+         return cal;
+     }
+
+    public static Calendar getFirstDayOfMultiDayView(java.util.Calendar date, long prefFirstDayOfWeek, String view) {
+
+         Calendar cal = Calendar.getInstance(date.getTimeZone());
+         cal.setTimeInMillis(date.getTimeInMillis());
+         cal.set(Calendar.HOUR_OF_DAY, 0);
+         cal.set(Calendar.MINUTE, 0);
+         cal.set(Calendar.SECOND, 0);
+         cal.set(Calendar.MILLISECOND, 0);
+         int dow = cal.get(Calendar.DAY_OF_WEEK);
+
+        // pref goes 0-6, Calendar goes 1-7
+        if ("workWeek".equalsIgnoreCase(view)) {
+                if (dow == Calendar.SUNDAY)
+                    cal.add(Calendar.DAY_OF_MONTH, 1);
+                else if (dow != Calendar.MONDAY)
+                    cal.add(Calendar.DAY_OF_MONTH, - (dow - Calendar.MONDAY));
+        } else if ("week".equalsIgnoreCase(view)) {
+                if (dow != prefFirstDayOfWeek)
+                    cal.add(Calendar.DAY_OF_MONTH, - (((dow-1) + (7- (int)prefFirstDayOfWeek)) % 7));
+        }
+         return cal;
+     }
+
+    public static void getNextDay(Calendar cal) {
+        cal.add(Calendar.DAY_OF_MONTH, 1);
+    }
+
+    public static void setDayOfWeek(Calendar cal, int dow) {
+        cal.set(Calendar.DAY_OF_WEEK, dow);
+    }
+
+    public static void setMonth(Calendar cal, int month) {
+        cal.set(Calendar.MONTH, month);
+    }
+
+    public static Calendar addDay(Calendar cal, int incr) {
+        Calendar other = Calendar.getInstance(cal.getTimeZone());
+        other.setTimeInMillis(cal.getTimeInMillis());
+        other.add(Calendar.DAY_OF_MONTH, incr);
+        return other;
+    }
+
+    public static Calendar addMonth(Calendar cal, int incr) {
+        Calendar other = Calendar.getInstance(cal.getTimeZone());
+        other.setTimeInMillis(cal.getTimeInMillis());
+        other.add(Calendar.MONTH, incr);
+        return other;
+    }
+
+    public static Calendar addYear(Calendar cal, int incr) {
+        Calendar other = Calendar.getInstance(cal.getTimeZone());
+        other.setTimeInMillis(cal.getTimeInMillis());
+        other.add(Calendar.YEAR, incr);
+        return other;
+    }
+
+    public static Calendar relativeDay(Calendar cal, int offset) {
+        Calendar other = Calendar.getInstance(cal.getTimeZone());
+        other.setTimeInMillis(cal.getTimeInMillis());
+        other.add(Calendar.DAY_OF_MONTH, offset);
+        return other;
+    }
+
+    public static boolean isSameDate(Calendar day1, Calendar day2) {
+        return day1.get(Calendar.YEAR) ==  day2.get(Calendar.YEAR) &&
+                day1.get(Calendar.MONTH) ==  day2.get(Calendar.MONTH) &&
+                day1.get(Calendar.DAY_OF_MONTH) ==  day2.get(Calendar.DAY_OF_MONTH);
+    }
+
+    public static boolean isSameMonth(Calendar day1, Calendar day2) {
+        return day1.get(Calendar.YEAR) ==  day2.get(Calendar.YEAR) &&
+                day1.get(Calendar.MONTH) ==  day2.get(Calendar.MONTH);
+
+    }
+
+    public static int getYear(Calendar cal) { return cal.get(Calendar.YEAR); }
+    public static int getMonth(Calendar cal) { return cal.get(Calendar.MONTH); }
+    public static int getDay(Calendar cal) { return cal.get(Calendar.DAY_OF_MONTH); }
+    public static int getDayOfWeek(Calendar cal) { return cal.get(Calendar.DAY_OF_WEEK); }
+
+
+    public static String getCheckedCalendarFolderIds(ZMailboxBean mailbox) throws ServiceException {
+        StringBuilder sb = new StringBuilder();
+        getCheckedCalendarFoldersRecursive(mailbox.getMailbox().getUserRoot(), sb);
+        return sb.toString();
+    }
+
+    private static void getCheckedCalendarFoldersRecursive(ZFolder f, StringBuilder sb) {
+        if (f.getDefaultView() == View.appointment && f.isCheckedInUI()) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(f.getId());
+        }
+        for (ZFolder child : f.getSubFolders()) {
+            getCheckedCalendarFoldersRecursive(child, sb);
+        }
+    }
+
+    public static boolean hasAnyAppointments(ZApptSummariesBean summary, long start, long end) {
+        for (ZAppointmentHit appt : summary.getAppointments()) {
+            if (appt.isInRange(start, end)) return true;
+        }
+        return false;
+    }
+
+    private static final long MSECS_PER_MINUTE = 1000*60;
+    private static final long MSECS_PER_HOUR = MSECS_PER_MINUTE * 60;
+
+    public static long MSECS_PER_MINUTE() { return MSECS_PER_MINUTE; }
+    public static long MSECS_PER_HOUR() { return MSECS_PER_HOUR; }
+
+    public static String getWindowsId(TimeZone tz) {
+        return TZIDMapper.toWindows(tz.getID());
+    }
+
+    public static String getCanonicalTimeZoneId(String id) {
+        return TZIDMapper.canonicalize(id);
+    }
+
+    public static String getFolderStyleColor(String color, String view) throws ServiceException {
+        return ZFolderBean.getStyleColor(Color.fromString(color), View.fromString(view));
+    }
+
     public static boolean actionSet(Map param, String action) {
         return param.containsKey(action) || param.containsKey(action+".x");
     }
 
-    public static boolean containsAddress(Set<String> aliases, String email) {
-        return aliases.contains(email);
+    public static boolean isSameTimeZone(String tz1, String tz2) {
+        return (tz1 == null || tz2 == null) ? tz1 == tz2 :
+                TZIDMapper.canonicalize(tz1).equals(TZIDMapper.canonicalize(tz2));
     }
+
+    public static ZAttendee getMyAttendee(ZInvite invite, ZMailboxBean mailbox) throws ServiceException {
+        ZComponent comp = invite.getComponent();
+        List<ZAttendee> attendees = comp.getAttendees();
+        if (attendees != null) {
+            Set<String> myAddrs = mailbox.getAccountInfo().getEmailAddresses();
+            for (ZAttendee attendee : attendees) {
+                if (myAddrs.contains(attendee.getAddress()) || myAddrs.contains(attendee.getUrl()))
+                    return attendee;
+            }
+        }
+        return null;
+    }
+
+    public static String getRepeatBlurb(ZSimpleRecurrence repeat, PageContext pc, TimeZone timeZone, Date startDate) {
+        String r = "";
+        Calendar cal;
+
+        switch (repeat.getType()) {
+            case NONE:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurNone");
+                break;
+            case DAILY:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurDailyEveryDay");
+                break;
+            case DAILY_WEEKDAY:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurDailyEveryWeekday");
+                break;
+            case DAILY_INTERVAL:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurDailyEveryNumDays", new Object[] {repeat.getDailyInterval()});
+                break;
+            case WEEKLY:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurDailyEveryWeek");
+                break;
+            case WEEKLY_BY_DAY:
+                cal = getToday(timeZone);
+                setDayOfWeek(cal, repeat.getWeeklyByDay().ordinal()+1);
+                r = LocaleSupport.getLocalizedMessage(pc, "recurWeeklyEveryWeekday", new Object[] {cal.getTime()});
+                break;
+            case WEEKLY_CUSTOM:
+                StringBuilder wc = new StringBuilder();
+                cal = getToday(timeZone);
+                wc.append(LocaleSupport.getLocalizedMessage(pc, "recurWeeklyEveryNumWeeks", new Object[] {repeat.getWeeklyInterval()}));
+                wc.append(" ");
+                int wci = 1, wcmax = repeat.getWeeklyIntervalDays().size();
+                for (ZWeekDay day : repeat.getWeeklyIntervalDays()) {
+                    if (wci != 1 && wci != wcmax) wc.append(LocaleSupport.getLocalizedMessage(pc, "recurWeeklyEveryNumWeeksSep")).append(" ");
+                    if (wci != 1 && wci == wcmax) wc.append(" ").append(LocaleSupport.getLocalizedMessage(pc, "recurWeeklyEveryNumWeeksLastSep")).append(" ");
+                    setDayOfWeek(cal, day.getOrdinal()+1);
+                    wc.append(LocaleSupport.getLocalizedMessage(pc, "recurWeeklyEveryNumWeeksDay", new Object[] {cal.getTime()}));
+                    wci++;
+                }
+                r = wc.toString();
+                break;
+            case MONTHLY:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurMonthly");
+                break;
+            case MONTHLY_BY_MONTH_DAY:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurMonthlyEveryNumMonthsDate",
+                        new Object[] {repeat.getMonthlyMonthDay(), repeat.getMonthlyInterval()});
+                break;
+            case MONTHLY_RELATIVE:
+                cal = getToday(timeZone);
+                setDayOfWeek(cal, repeat.getMonthlyRelativeDay().getDay().getOrdinal()+1);
+                r = LocaleSupport.getLocalizedMessage(pc, "recurMonthlyEveryNumMonthsNumDay",
+                        new Object[] {
+                                repeat.getMonthlyRelativeDay().getWeekOrd(),
+                                cal.getTime(),
+                                repeat.getMonthlyInterval()
+                        });
+                break;
+            case YEARLY:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurYearly");
+                break;
+            case YEARLY_BY_DATE:
+                cal = getToday(timeZone);
+                setMonth(cal, repeat.getYearlyByDateMonth()-1);
+                r = LocaleSupport.getLocalizedMessage(pc, "recurYearlyEveryDate",
+                        new Object[] { cal.getTime(), repeat.getYearlyByDateMonthDay()});
+                break;
+            case YEARLY_RELATIVE:
+                cal = getToday(timeZone);
+                setDayOfWeek(cal, repeat.getYearlyRelativeDay().getDay().getOrdinal()+1);
+                setMonth(cal, repeat.getYearlyRelativeMonth()-1);
+                r = LocaleSupport.getLocalizedMessage(pc, "recurYearlyEveryMonthNumDay",
+                        new Object[] {
+                                repeat.getYearlyRelativeDay().getWeekOrd(),
+                                cal.getTime(),
+                                cal.getTime()
+                        });
+                break;
+            default:
+                r = LocaleSupport.getLocalizedMessage(pc, "recurComplex");
+                break;
+        }
+
+        if (repeat.getType() == ZSimpleRecurrenceType.NONE)
+            return r;
+
+        String e = "";
+
+        switch (repeat.getEnd()) {
+            case NEVER:
+                e = LocaleSupport.getLocalizedMessage(pc, "recurEndNone");
+                break;
+            case COUNT:
+                e = LocaleSupport.getLocalizedMessage(pc, "recurEndNumber", new Object[] {repeat.getCount()});
+                break;
+            case UNTIL:
+                DateFormat untilDf = DateFormat.getDateInstance(DateFormat.MEDIUM, pc.getRequest().getLocale());
+                if (timeZone != null) untilDf.setTimeZone(timeZone);
+                String untilDate = untilDf.format(repeat.getUntilDate().getDate());
+                e = LocaleSupport.getLocalizedMessage(pc, "recurEndByDate", new Object[] { untilDate});
+                break;
+        }
+
+        String s = "";
+        if (startDate != null) {
+            DateFormat startDf = DateFormat.getDateInstance(DateFormat.MEDIUM, pc.getRequest().getLocale());
+            if (timeZone != null) startDf.setTimeZone(timeZone);
+            s = LocaleSupport.getLocalizedMessage(pc, "recurStart", new Object[] { startDf.format(startDate)});
+
+        }
+
+        return LocaleSupport.getLocalizedMessage(pc, "repeatBlurb", new Object[] { r, e, s});
+    }
+
+    public static String getApptDateBlurb(PageContext pc, TimeZone timeZone, long startTime, long endTime, boolean allDay) {
+        Calendar startCal = getCalendar(startTime, timeZone);
+        Calendar endCal = getCalendar(endTime, timeZone);
+
+        DateFormat df = DateFormat.getDateInstance(DateFormat.FULL, pc.getRequest().getLocale());
+        DateFormat tf = DateFormat.getTimeInstance(DateFormat.SHORT, pc.getRequest().getLocale());
+        
+        if (timeZone != null) {
+            df.setTimeZone(timeZone);
+            tf.setTimeZone(timeZone);
+        }
+
+        boolean sameDate = isSameDate(startCal, endCal);
+
+        if (allDay && sameDate) {
+                return LocaleSupport.getLocalizedMessage(pc, "apptDateBlurbAllDay",
+                        new Object[] {df.format(startCal.getTime())});
+        } else if (allDay) {
+                return LocaleSupport.getLocalizedMessage(pc, "apptDateBlurbAllDayDiffEndDay",
+                        new Object[] {df.format(startCal.getTime()), df.format(endCal.getTime())});
+        } else if (sameDate) {
+                return LocaleSupport.getLocalizedMessage(pc, "apptDateBlurb",
+                        new Object[] {
+                                df.format(startCal.getTime()),
+                                tf.format(startCal.getTime()),
+                                tf.format(endCal.getTime())
+                        });
+        } else {
+                return LocaleSupport.getLocalizedMessage(pc, "apptDateBlurbDiffEndDay",
+                        new Object[] {
+                                df.format(startCal.getTime()),
+                                tf.format(startCal.getTime()),
+                                df.format(endCal.getTime()),
+                                tf.format(endCal.getTime())
+                        });
+        }
+    }
+
+    public static void clearMessageCache(ZMailboxBean mailbox) {
+        mailbox.getMailbox().clearMessageCache();
+    }
+
+    public static boolean hasShareMountPoint(ZMailboxBean mailbox, ZMessageBean message) {
+        ZShare share = message.getShare();
+        if (share == null) return false;
+
+        try {
+            ZFolder folder = mailbox.getMailbox().getFolderById(share.getGrantor().getId()+":"+share.getLink().getId());
+            return folder != null;
+        } catch (ServiceException e) {
+            return false;
+        }
+    }
+
 }

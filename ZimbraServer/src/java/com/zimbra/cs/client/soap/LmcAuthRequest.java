@@ -28,12 +28,11 @@ package com.zimbra.cs.client.soap;
 import org.dom4j.DocumentHelper;
 import org.dom4j.Element;
 
-import com.zimbra.soap.DomUtil;
+import com.zimbra.common.soap.DomUtil;
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.account.AccountService;
-import com.zimbra.cs.service.admin.AdminService;
-import com.zimbra.cs.service.admin.GetAccount;
-import com.zimbra.soap.ZimbraSoapContext;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.HeaderConstants;
 import com.zimbra.cs.client.*;
 
 public class LmcAuthRequest extends LmcSoapRequest {
@@ -59,10 +58,10 @@ public class LmcAuthRequest extends LmcSoapRequest {
 	} 
 
 	protected Element getRequestXML() {
-		Element request = DocumentHelper.createElement(AccountService.AUTH_REQUEST);
-		Element a = DomUtil.add(request, AccountService.E_ACCOUNT, mUsername);
-        DomUtil.addAttr(a, AdminService.A_BY, AdminService.BY_NAME); // XXX should use a constant
-		DomUtil.add(request, AccountService.E_PASSWORD, mPassword);
+		Element request = DocumentHelper.createElement(AccountConstants.AUTH_REQUEST);
+		Element a = DomUtil.add(request, AccountConstants.E_ACCOUNT, mUsername);
+        DomUtil.addAttr(a, AdminConstants.A_BY, AdminConstants.BY_NAME); // XXX should use a constant
+		DomUtil.add(request, AccountConstants.E_PASSWORD, mPassword);
 		return request;
 	}
 
@@ -70,9 +69,9 @@ public class LmcAuthRequest extends LmcSoapRequest {
 			throws ServiceException 
     {
 		// get the auth token out, no default, must be present or a service exception is thrown
-		String authToken = DomUtil.getString(responseXML, AccountService.E_AUTH_TOKEN);
+		String authToken = DomUtil.getString(responseXML, AccountConstants.E_AUTH_TOKEN);
 		// get the session id, if not present, default to null
-		String sessionId = DomUtil.getString(responseXML, ZimbraSoapContext.E_SESSION_ID, null);
+		String sessionId = DomUtil.getString(responseXML, HeaderConstants.E_SESSION_ID, null);
 
 		LmcAuthResponse responseObj = new LmcAuthResponse();
 		LmcSession sess = new LmcSession(authToken, sessionId);

@@ -31,13 +31,14 @@ package com.zimbra.cs.service.account;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.httpclient.URLUtil;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -47,9 +48,9 @@ public class GetAccountInfo extends AccountDocumentHandler  {
 
     public Element handle(Element request, Map<String, Object> context) throws ServiceException {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
-   
-        Element a = request.getElement(AccountService.E_ACCOUNT);
-        String key = a.getAttribute(AccountService.A_BY);
+
+        Element a = request.getElement(AccountConstants.E_ACCOUNT);
+        String key = a.getAttribute(AccountConstants.A_BY);
         String value = a.getText();
 
         Provisioning prov = Provisioning.getInstance();
@@ -58,13 +59,12 @@ public class GetAccountInfo extends AccountDocumentHandler  {
         if (account == null)
             throw AccountServiceException.NO_SUCH_ACCOUNT(value);
 
-        Element response = lc.createElement(AccountService.GET_ACCOUNT_INFO_RESPONSE);
-        response.addElement(AccountService.E_NAME).setText(account.getName());
-        addAttr(response, Provisioning.A_zimbraId, account.getId());
-        addAttr(response, Provisioning.A_zimbraMailHost, account.getAttr(Provisioning.A_zimbraMailHost));
- 
+        Element response = lc.createElement(AccountConstants.GET_ACCOUNT_INFO_RESPONSE);
+        response.addAttribute(AccountConstants.E_NAME, account.getName(), Element.Disposition.CONTENT);
+        response.addKeyValuePair(Provisioning.A_zimbraId, account.getId(), AccountConstants.E_ATTR, AccountConstants.A_NAME);
+        response.addKeyValuePair(Provisioning.A_zimbraMailHost, account.getAttr(Provisioning.A_zimbraMailHost), AccountConstants.E_ATTR, AccountConstants.A_NAME);
         addUrls(response, account);
-        
+
         return response;
     }
 
@@ -73,23 +73,14 @@ public class GetAccountInfo extends AccountDocumentHandler  {
         if (server == null) return;
         String hostname = server.getAttr(Provisioning.A_zimbraServiceHostname);        
         if (hostname == null) return;
-        
+
         String http = URLUtil.getSoapURL(server, false);
         String https = URLUtil.getSoapURL(server, true);
 
         if (http != null)
-            response.addElement(AccountService.E_SOAP_URL).setText(http);
-        
+            response.addAttribute(AccountConstants.E_SOAP_URL, http, Element.Disposition.CONTENT);
+
         if (https != null && !https.equalsIgnoreCase(http))
-            response.addElement(AccountService.E_SOAP_URL).setText(https);
-
-    }
-
-    private static void addAttr(Element response, String name, String value) {
-        if (value != null && !value.equals("")) {
-            Element e = response.addElement(AccountService.E_ATTR);
-            e.addAttribute(AccountService.A_NAME, name);
-            e.setText(value);
-        }
+            response.addAttribute(AccountConstants.E_SOAP_URL, https, Element.Disposition.CONTENT);
     }
 }

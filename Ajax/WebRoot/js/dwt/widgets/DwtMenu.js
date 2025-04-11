@@ -37,7 +37,7 @@
 * @param posStyle	positioning style
 * @param dialog 	Dialog that this menu is a part of (if any)
 */
-function DwtMenu(parent, style, className, posStyle, dialog) {
+DwtMenu = function(parent, style, className, posStyle, dialog) {
 	if (arguments.length == 0) return;
 	if (parent) {
 		if (parent instanceof DwtMenuItem || parent instanceof DwtButton) {
@@ -89,7 +89,7 @@ function DwtMenu(parent, style, className, posStyle, dialog) {
  	if ((this.parent instanceof DwtMenuItem && this.parent.parent._style == DwtMenu.BAR_STYLE) ||
  		!(this.parent instanceof DwtMenuItem))
 	{
-		this._outsideListener = new AjxListener(this, this._outsideMouseDownListener);
+		this._outsideListener = new AjxListener(null, DwtMenu._outsideMouseDownListener);
 	}
 
 	this._numCheckedStyleItems = 0;	
@@ -127,6 +127,7 @@ DwtMenu.GENERIC_WIDGET_STYLE = 6;
 
 DwtMenu._activeMenuUp = false;
 DwtMenu._activeMenuIds = new AjxVector();
+DwtMenu._activeMenus = new AjxVector() ;
 
 DwtMenu.prototype.addPopupListener = 
 function(listener) {
@@ -353,9 +354,10 @@ function(field, value, skipNotify) {
     var items = this._children.getArray();
     for (var i = 0; i < items.length; i++) {
     	var item = items[i];
-		if (item._style != DwtMenuItem.CHECK_STYLE && item._style != DwtMenuItem.RADIO_STYLE)
+		if (!(item.isStyle(DwtMenuItem.CHECK_STYLE) || item.isStyle(DwtMenuItem.RADIO_STYLE))) {
 			continue;
-		var val = item.getData(field);
+        }
+        var val = item.getData(field);
      	if (val == value)
     		item.setChecked(true, skipNotify);
     }
@@ -382,7 +384,7 @@ function(which) {
 		currItem = this._children.get(which);
 	}
 	// While the current item is not enabled or is a separator, try another
-	while (currItem && (currItem.getStyle() == DwtMenuItem.SEPARATOR_STYLE || !currItem.getEnabled())) {
+	while (currItem && (currItem.isStyle(DwtMenuItem.SEPARATOR_STYLE) || !currItem.getEnabled())) {
 		currItem = (which === false) ? this._children.getPrev(currItem) : this._children.getNext(currItem);
 	}
 	if (!currItem) return;
@@ -416,7 +418,7 @@ function(child) {
 		// If item we're removing is check/radio style, and its last such item 
 		// in the menu, then we must instruct our other children to delete a 
 		// "checked column" to ensure that things line up
-		if (sz > 1 && (child._style == DwtMenuItem.CHECK_STYLE || child._style == DwtMenuItem.RADIO_STYLE)) {
+		if (sz > 1 && (child.isStyle(DwtMenuItem.CHECK_STYLE) || child.isStyle(DwtMenuItem.RADIO_STYLE))) {
 			if (this._numCheckedStyleItems == 1) {
 				var a = this._children.getArray();
 				for (var i = 0; i < sz; i++) {
@@ -443,7 +445,8 @@ function(child) {
 // Override DwtComposite.addChild to do nothing
 DwtMenu.prototype.addChild = 
 function(child) {
-	// Color pickers and calendars are not menu aware so we have to deal with
+    DwtComposite.prototype.addChild.apply(this, arguments);
+    // Color pickers and calendars are not menu aware so we have to deal with
 	// them acordingly
 	if ((child instanceof DwtColorPicker) || (child instanceof DwtCalendar) ||
 	    (this._style == DwtMenu.GENERIC_WIDGET_STYLE))
@@ -456,21 +459,15 @@ function(item, index) {
 	    this._style == DwtMenu.CALENDAR_PICKER_STYLE ||
 	    this._style == DwtMenu.GENERIC_WIDGET_STYLE)
 	{
-		// Item better be a color picker & we better not have any children
-		if (this._children.size() > 0 || !(item.parent instanceof DwtMenu) 
-		    || ((this._style == DwtMenu.COLOR_PICKER_STYLE && !(item instanceof DwtColorPicker)) ||
-			(this._style == DwtMenu.CALENDAR_PICKER_STYLE && !(item instanceof DwtCalendar)) ||
-			(this._style == DwtMenu.GENERIC_WIDGET_STYLE && !(item instanceof DwtControl))))
-		{
-			throw new DwtException("Invalid child", DwtException.INVALID_PARAM, "DwtMenu.prototype._addItem");
-		}
-		this._children.add(item);
-		item.reparentHtmlElement(this.getHtmlElement());
-	} else {
+        // All children are added now, including menu items. Previously, it wasn't
+        // reparenting and that was preventing the menu items from using templates
+        // because they need to be in the DOM in order to get access to elements
+        // within the template.
+    } else {
 		var row;
 		var col;
 		if (this._style == DwtMenu.BAR_STYLE) {
-			var rows = this._table.rows;
+            var rows = this._table.rows;
 			row = (rows.length != 0) ? rows[0]: this._table.insertRow(0);
 			if (index == null || index > row.cells.length)
 				index = rows.cells.length;
@@ -481,18 +478,19 @@ function(item, index) {
 			spc.nowrap = true;
 			spc.width = "7px"
 		} else {
-			// If item we're adding is check/radio style, and its the first such 
+            // If item we're adding is check/radio style, and its the first such
 			// item in the menu, then we must instruct our other children to add 
 			// a "checked column" to ensure that things line up
-			if (item._style == DwtMenuItem.CHECK_STYLE || item._style == DwtMenuItem.RADIO_STYLE) { 
+            if (item.isStyle && (item.isStyle(DwtMenuItem.CHECK_STYLE) || item.isStyle(DwtMenuItem.RADIO_STYLE))) {
 				if (this._numCheckedStyleItems == 0) {
 					var sz = this._children.size();
 					if (sz > 0) {
 						var a = this._children.getArray();
 						for (var i = 0; i < sz; i++) {
-							if (a[i]._style != DwtMenuItem.CHECK_STYLE && a[i]._style != DwtMenuItem.RADIO_STYLE)
+							if (!(a[i].isStyle(DwtMenuItem.CHECK_STYLE) || a[i].isStyle(DwtMenuItem.RADIO_STYLE))) {
 								a[i]._checkItemAdded();
-						}
+                            }
+                        }
 					}
 				}
 				this._numCheckedStyleItems++;
@@ -504,7 +502,7 @@ function(item, index) {
 		}
 		col.noWrap = true;
 		col.appendChild(item.getHtmlElement());
-		this._children.add(item, index);
+//		this._children.add(item, index);
 	}
 }
 
@@ -514,10 +512,8 @@ function(child, skipNotify) {
 	var sz = this._children.size();
 	var a = this._children.getArray();
 	for (var i = 0; i < sz; i++) {
-		if (a[i] != child &&
-			a[i]._style == DwtMenuItem.RADIO_STYLE &&
-			a[i]._radioGroupId == radioGroupId &&
-			a[i]._itemChecked)
+		if (a[i] != child && a[i].isStyle(DwtMenuItem.RADIO_STYLE) &&
+			a[i]._radioGroupId == radioGroupId && a[i]._itemChecked)
 		{
 			a[i].setChecked(false, skipNotify);
 			break;
@@ -545,17 +541,25 @@ function() {
 DwtMenu.prototype._menuItemHasIcon =
 function(item) {
 	if (!this._menuItemsHaveIcons) {
-		var sz = this._children.size();
-		if (sz > 0) {
-			var a = this._children.getArray();
-			for (var i = 0; i < sz; i++) {
-				if (a[i] != item)
-					a[i]._addIconCell();
-			}
-		}
+        var a = this._children.getArray();
+        for (var i = 0; i < a.length; i++) {
+            if (a[i] != item)
+                a[i]._addIconCell();
+        }
 	}
 	this._menuItemsHaveIcons = true;
 }
+
+DwtMenu.prototype._menuItemHasCheck = function(item) {
+    if (!this._menuItemsHaveChecks) {
+        var a = this._children.getArray();
+        for (var i = 0; i < a.length; i++) {
+            if (a[i] != item)
+                a[i]._addCheckCell();
+        }
+    }
+    this._menuItemsHaveChecks = true;
+};
 
 DwtMenu.prototype._submenuItemAdded =
 function() {
@@ -578,6 +582,14 @@ function() {
 	}
 	this._menuItemsWithSubmenus--;
 }
+
+DwtMenu.prototype._popdownSubmenus = function() {
+    var sz = this._children.size();
+    var a = this._children.getArray();
+    for (var i = 0; i < sz; i++) {
+        a[i]._popdownMenu();
+    }
+};
 
 DwtMenu.prototype.dontStealFocus =
 function(val) {
@@ -615,9 +627,9 @@ function(x, y, kbGenerated) {
 		for (var i = numRows - 1; i >= 0; i--) {
 			var row = rows[i];
 			// bug fix #6904 - safari returns zero for row heights 
-			// (see http://bugzilla.opendarwin.org/show_bug.cgi?id=7242), 
+			// (see http://bugs.webkit.org/show_bug.cgi?id=7242), 
 			// so hardcode for now
-			height -= AjxEnv.isSafari ? 15 : Dwt.getSize(row).y;
+			height -= AjxEnv.isSafari && !AjxEnv.isSafariNightly ? 15 : Dwt.getSize(row).y;
 			if (height < space) {
 				break;
 			}
@@ -688,6 +700,7 @@ function(x, y, kbGenerated) {
 
 	DwtMenu._activeMenuIds.add(this._htmlElId);
 	DwtMenu._activeMenuIds.sort();	
+	DwtMenu._activeMenus.add (this);
 	
 	// Capture events only if we are not a sub-menu. Event capturing is to catch mouse-events outside
 	// of our framework (esp. vital when DWT is being used in existing HTML content)
@@ -733,7 +746,7 @@ function() {
 	var a = this._children.getArray();
 	var s = this._children.size();
 	for (var i = 0; i < s; i++) {
-		if ((a[i] instanceof DwtMenuItem) && a[i]._style != DwtMenuItem.SEPARATOR_STYLE)
+		if ((a[i] instanceof DwtMenuItem) && !(a[i].isStyle(DwtMenuItem.SEPARATOR_STYLE)))
 			a[i]._popdownMenu();
 	}
 	this.setZIndex(Dwt.Z_HIDDEN);
@@ -755,6 +768,7 @@ function() {
 		DwtEventManager.removeListener(DwtEvent.ONMOUSEWHEEL, DwtMenu._outsideMouseDownListener);
 	}
 	DwtMenu._activeMenuIds.remove(this._htmlElId);
+	DwtMenu._activeMenus.remove(this);
 	this._popdownActionId = -1;
 	this._isPoppedup = false;
 	
@@ -840,6 +854,13 @@ function(ev) {
 		// If we've gotten here, the mousedown happened outside the active
 		// menu, so we hide it.
 		menu.popdown();
+		
+		//it should remove all the active menus 
+		var cMenu = null ;
+		do {
+			cMenu = DwtMenu._activeMenus.getLast() ;
+			if (cMenu!= null && cMenu instanceof DwtMenu) cMenu.popdown();
+		} while (cMenu != null) ;
 	}
 	// propagate the event
 	ev._stopPropagation = false;

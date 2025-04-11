@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 1632 $
+ * $Date: 2005-07-15 02:49:00 -0300 (Fri, 15 Jul 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.audit.spi;
 
 import org.jivesoftware.util.JiveGlobals;
@@ -289,8 +276,8 @@ public class AuditManagerImpl extends BasicModule implements AuditManager {
                 // Ignore packets sent or received by users that are present in the ignore list
                 JID from = packet.getFrom();
                 JID to = packet.getTo();
-                if ((from == null || !ignoreList.contains(from.getNode())) &&
-                        (to == null || !ignoreList.contains(to.getNode()))) {
+                if ((from == null || !ignoreList.contains(from.toBareJID())) &&
+                        (to == null || !ignoreList.contains(to.toBareJID()))) {
                     auditor.audit(packet, session);
                 }
             }

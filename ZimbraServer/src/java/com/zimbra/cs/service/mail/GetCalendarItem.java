@@ -31,12 +31,14 @@ import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.CalendarItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.cs.session.PendingModifications.Change;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -45,7 +47,7 @@ import com.zimbra.soap.ZimbraSoapContext;
 public class GetCalendarItem extends CalendarRequest {
     private static Log sLog = LogFactory.getLog(GetCalendarItem.class);
 
-    private static final String[] TARGET_ITEM_PATH = new String[] { MailService.A_ID };
+    private static final String[] TARGET_ITEM_PATH = new String[] { MailConstants.A_ID };
     private static final String[] RESPONSE_ITEM_PATH = new String[] { };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_ITEM_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return false; }
@@ -55,8 +57,9 @@ public class GetCalendarItem extends CalendarRequest {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(lc);
         OperationContext octxt = lc.getOperationContext();
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 
-        boolean sync = request.getAttributeBool(MailService.A_SYNC, false);
+        boolean sync = request.getAttributeBool(MailConstants.A_SYNC, false);
         ItemId iid = new ItemId(request.getAttribute("id"), lc);
         sLog.info("<GetCalendarItem id=" + iid.getId() + "> " + lc);
 
@@ -68,7 +71,7 @@ public class GetCalendarItem extends CalendarRequest {
         Element response = getResponseElement(lc);
         synchronized(mbox) {
             CalendarItem appointment = mbox.getCalendarItemById(octxt, iid.getId());
-            ToXML.encodeCalendarItemSummary(response, lc, appointment, fields);
+            ToXML.encodeCalendarItemSummary(response, ifmt, appointment, fields, true);
         }
 
         return response;

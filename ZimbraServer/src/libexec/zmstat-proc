@@ -31,65 +31,18 @@ use Zimbra::Mon::Zmstat;
 
 zmstatInit();
 
+local $SIG{__WARN__} = \&Carp::cluck;
+
 my ($CONSOLE, $LOGFH, $LOGFILE, $HEADING, $ROTATE_DEFER, $ROTATE_NOW);
-my $ZIMBRA_USER = getZimbraUser();
-my $POSTFIX_USER = 'postfix';
-my $isMac = isMac();
 
 sub logerr($) {
     my $msg = shift;
     print STDERR getTstamp() . ": ERROR: $msg\n";
 }
 
-sub getEnabledProcs() {
-    my $hostname = getZimbraServerHostname();
-
-    my @procs;
-    my $svc;
-    my @enabledServices = `zmprov -l gs $hostname | grep zimbraServiceEnabled`;
-    foreach $svc (@enabledServices) {
-        if ($svc =~ /mailbox/) {
-            push(@procs, 'mailbox');
-            push(@procs, 'mysql');
-            push(@procs, 'convertd');
-            last;
-        }
-    }
-
-    foreach $svc (@enabledServices) {
-        if ($svc =~ /ldap/) {
-            push(@procs, 'ldap');
-            last;
-        }
-    }
-
-    foreach $svc (@enabledServices) {
-        if ($svc =~ /mta/) {
-            push(@procs, 'postfix');
-            last;
-        }
-    }
-
-    foreach $svc (@enabledServices) {
-        if ($svc =~ /antispam/ || $svc =~ /antivirus/) {
-            push(@procs, 'amavis');
-            push(@procs, 'clam');
-            last;
-        }
-    }
-
-    push(@procs, 'stats');
-    return @procs;
-}
-
 sub getHeading(@) {
     my @procs = @_;
-    my @cols;
-    if (!$isMac) {
-        @cols = ('timestamp', 'system', 'user', 'sys', 'idle', 'iowait');
-    } else {
-        @cols = ('timestamp');
-    }
+    my @cols = ('timestamp', 'system', 'user', 'sys', 'idle', 'iowait');
     foreach my $p (@procs) {
         my $proc = $p->{'name'};
         push(@cols, $proc, "$proc-total-cpu", "$proc-utime", "$proc-stime", "$proc-totalMB", "$proc-rssMB", "$proc-sharedMB", "$proc-process-count");
@@ -97,159 +50,89 @@ sub getHeading(@) {
     return join(', ', @cols);
 }
 
-my @PS_COLS = ('user', 'pid', 'ppid', 'pcpu', 'vsz', 'rss', 'command');
-my $PS_CMD = "ps axww -o " . join(',', @PS_COLS);
-my $POSTFIX_MASTER_PATTERN = '/libexec/master ';
-
-my @PROCS;  # list of all processes (a snapshot)
-
-sub procFromPs($) {
-    my $aref = shift;  # reference to 7-element array
-    my $i = 0;
-    my $ps = {};
-    foreach my $field (@PS_COLS) {
-        $ps->{$field} = $aref->[$i];
-        $i++;
-    }
-    return $ps;
-}
-
-sub snapshotProcs() {
-    @PROCS = ();
-    my @users = ($ZIMBRA_USER, 'postfix');
-    if (open(PS, "$PS_CMD |")) {
-        <PS>;  # discard heading line
-        my $line;
-        my $numCols = scalar(@PS_COLS);
-        while (defined($line = readLine(*PS, 1))) {
-            my @cols = split(/\s+/, $line, $numCols);
-            if (scalar(@cols) < $numCols) {
-                next;
-            }
-            my $proc =  procFromPs(\@cols);
-            my $user = $proc->{'user'};
-            my $rightUser = 0;
-            foreach my $u (@users) {
-                if ($u eq $user) {
-                    $rightUser = 1;
-                    last;
-                }
-            }
-            if (!$rightUser) {
-                # special case: check if command is postfix master process
-                if ($proc->{'command'} =~ '$POSTFIX_MASTER_PATTERN') {
-                    # pretend this was run by postfix user
-                    $proc->{'user'} = $POSTFIX_USER;
-                } else {
-                    # wrong user and not postfix master; ignore this process
-                    next;
-                }
-            }
-            push(@PROCS, $proc);
-        }
-        close(PS);
-    }
-}
-
-sub filterProcs(;$$$) {
-    # $user = username; undef to not filter on username
-    # $contains = ref to array of regex to match in command
-    # $notContains = ref to array of regex to not match in command
-    my ($user, $contains, $notContains) = @_;
-    my @ret;
-    PROCESS_LOOP: foreach my $proc (@PROCS) {
-        if (defined($user)) {
-            if ($proc->{'user'} ne $user) {
-                next;
-            }
-        }
-        my $cmd = $proc->{'command'};
-        if (defined($contains)) {
-            foreach my $regex (@$contains) {
-                if ($cmd !~ /$regex/) {
-                    next PROCESS_LOOP;
-                }
-            }
-        }
-        if (defined($notContains)) {
-            foreach my $regex (@$notContains) {
-                if ($cmd =~ /$regex/) {
-                    next PROCESS_LOOP;
-                }
-            }
-        }
-        push(@ret, $proc);
-    }
-    return @ret;
-}
-
 sub getMailboxProcess() {
-    my @regex = ('(mailboxd|jetty)/start\.jar');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex);
-    if (scalar(@ret) == 0) {
-        @regex = ('(com\.zimbra\.cs\.launcher\.TomcatLauncher|org\.apache\.catalina\.startup\.Bootstrap)');
-        @ret = filterProcs($ZIMBRA_USER, \@regex);
+    my $ps = `ps -ef | grep ^zimbra | grep java | grep 'mailboxd/start.jar' | grep -v grep | awk '{print \$2}'` || '';
+    chomp($ps);
+    if (!$ps) {
+        $ps = `ps -ef | grep ^zimbra | grep java | egrep '(com.zimbra.cs.launcher.TomcatLauncher|org.apache.catalina.startup.Bootstrap)' | grep -v grep | awk '{print \$2}'` || '';
+        chomp($ps);
     }
+    my @ret = ($ps);
     return @ret;
 }
 
 # Use this if mysqld is a single multi-threaded process. (dynamically linked build)
 sub getMysqlProcess() {
-    if (!$isMac) {
-        my $zimbraHome = getZimbraHome();
-        my $ps = `cat $zimbraHome/db/mysql.pid`;
-        chomp($ps) if (defined($ps));
-        my @ret = ({'pid' => $ps});
-        return @ret;
-    } else {
-        return getMysqlProcessList();
-    }
+    my $zimbraHome = getZimbraHome();
+    my $ps = `cat $zimbraHome/db/mysql.pid`;
+    chomp($ps) if (defined($ps));
+    my @ret = ($ps);
+    return @ret;
 }
 
 # Use this if mysqld runs as multiple processes. (statically linked build)
 sub getMysqlProcessList() {
-    my @regex = ('/(libexec|bin)/mysqld ', '/my\.cnf');
-    my @regexNot = ('logger');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex, \@regexNot);
-    return @ret;
+    my @ps =
+        `ps -ef | grep '/libexec/mysqld ' | grep -v logger | grep 'my\.cnf' | grep -v grep | awk '{print \$2}'`;
+    my @list;
+    foreach my $pid (@ps) {
+        chomp($pid);
+        push(@list, $pid);
+    }
+    return @list;
 }
 
 sub getConvertdProcess() {
-    my @regex = ('TransformationServer');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex);
+    my $ps = `ps -ef | grep ^zimbra | grep TransformationServer | grep -v grep | awk '{print \$2}'` || '';
+    chomp($ps);
+    my @ret = ($ps);
     return @ret;
 }
 
 sub getLDAPProcess() {
-    my @regex = ('slapd');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex);
+    my $ps = `ps -ef | grep ^zimbra | grep slapd | grep -v grep | awk '{print \$2}'` || '';
+    chomp($ps);
+    my @ret = ($ps);
     return @ret;
 }
 
 sub getPostfixProcessList() {
-    my @ret = filterProcs($POSTFIX_USER);
-    return @ret;
+    my @list;
+    my @master = `ps -ef | grep ^root | grep libexec/master | grep -v grep | awk '{print \$2}'` || '';
+    foreach my $pid (@master) {
+        chomp($pid);
+        push(@list, $pid) if ($pid ne '');
+    }
+
+    my @ps = `ps -ef | grep ^postfix | grep -v grep | awk '{print \$2}'`;
+    foreach my $pid (@ps) {
+        chomp($pid);
+        push(@list, $pid);
+    }
+    return @list;
 }
 
-sub getAmavisProcessList() {
-    my @regex = ('amavisd');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex);
-    return @ret;
+sub getAmavisdProcessList() {
+    my @list;
+    my @ps = `ps -ef | grep ^zimbra | grep amavisd | grep -v grep | awk '{print \$2}'`;
+    foreach my $pid (@ps) {
+        chomp($pid);
+        push(@list, $pid);
+    }
+    return @list;
 }
 
 sub getClamAVProcessList() {
-    my @regex = ('(freshclam|clamd)');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex);
-    return @ret;
+    my @list;
+    my @ps = `ps -ef | grep ^zimbra | egrep '(freshclam|clamd)' | grep -v grep | awk '{print \$2}'`;
+    foreach my $pid (@ps) {
+        chomp($pid);
+        push(@list, $pid);
+    }
+    return @list;
 }
 
-sub getStatsProcessList() {
-    my @regex = ('(zmstat-|iostat|vmstat|vm_stat|postqueue)');
-    my @ret = filterProcs($ZIMBRA_USER, \@regex);
-    return @ret;
-}
-
-my @DEFAULT_PROCS = ('mailbox', 'mysql', 'convertd', 'ldap', 'postfix', 'amavis', 'clam', 'zmstat');
+my @DEFAULT_PROCS = ('mailbox', 'mysql', 'convertd', 'ldap', 'postfix', 'amavisd', 'clam');
 my %ps_subs =
     (
      'mailbox' => \&getMailboxProcess,
@@ -257,9 +140,8 @@ my %ps_subs =
      'convertd', \&getConvertdProcess,
      'ldap', \&getLDAPProcess,
      'postfix', \&getPostfixProcessList,
-     'amavis', \&getAmavisProcessList,
-     'clam', \&getClamAVProcessList,
-     'zmstat', \&getStatsProcessList
+     'amavisd', \&getAmavisdProcessList,
+     'clam', \&getClamAVProcessList
     );
 
 
@@ -280,45 +162,31 @@ sub computeDelta($$) {
 #
 
 sub _getProcessStat($) {
-    my $proc = shift;
-    my $pid = $proc->{'pid'};
-    if (!defined($pid)) {
-        logerr('Undefined pid');
+    my $pid = shift;
+    if (!open(STAT, "< /proc/$pid/stat")) {
+        logerr("No such process: '$pid'");
         return (0, 0, 0, 0, 0, 0);
     }
-    if ($isMac) {
-        return ($proc->{'pcpu'},        # user CPU time (already in percent)
-                0,                      # sys time: always report 0%
-                $proc->{'vsz'} / 1024,  # virtual size in MB
-                $proc->{'rss'} / 1024,  # resident size in MB
-                0,                      # shared size in MB: always report 0
-                1);                     # process count
-    } else {
-        if (!open(STAT, "< /proc/$pid/stat")) {
-            logerr("No such process: '$pid'");
-            return (0, 0, 0, 0, 0, 0);
-        }
-        my $line = <STAT>;
-        close(STAT);
-        chomp($line);
-        my @stat_cols = split(' ', $line);
+    my $line = <STAT>;
+    close(STAT);
+    chomp($line);
+    my @stat_cols = split(' ', $line);
 
-        if (!open(STATM, "< /proc/$pid/statm")) {
-            logerr("No such process: '$pid'");
-            return (0, 0, 0, 0, 0, 0);
-        }
-        $line = <STATM>;
-        close(STATM);
-        chomp($line);
-        my @statm_cols = split(' ', $line);
-
-        return ($stat_cols[13],              # utime
-                $stat_cols[14],              # stime
-                $statm_cols[0] * 4 / 1024,   # total process size in MB
-                $statm_cols[1] * 4 / 1024,   # resident size in memory in MB
-                $statm_cols[2] * 4 / 1024,   # shared size in MB
-                1);                          # process count
+    if (!open(STATM, "< /proc/$pid/statm")) {
+        logerr("No such process: '$pid'");
+        return (0, 0, 0, 0, 0, 0);
     }
+    $line = <STATM>;
+    close(STATM);
+    chomp($line);
+    my @statm_cols = split(' ', $line);
+
+    return ($stat_cols[13],              # utime
+            $stat_cols[14],              # stime
+            $statm_cols[0] * 4 / 1024,   # total process size in MB
+            $statm_cols[1] * 4 / 1024,   # resident size in memory in MB
+            $statm_cols[2] * 4 / 1024,   # shared size in MB
+            1);                          # process count
 }
 
 # Get stats for a group of related processes.  For memory size
@@ -327,13 +195,13 @@ sub _getProcessStat($) {
 # adds small stack and connection buffer, and that additional
 # size should be under 200KB, which is negligible.)
 sub _getProcessListStat {
-    my @procs = @_;
+    my @pids = @_;
     my @sum = (0, 0, 0, 0, 0, 0);
     my $count = 0;
-    foreach my $proc (@procs) {
-        next if (!$proc);
+    foreach my $pid (@pids) {
+        next if (!$pid);
         $count++;
-        my @p = _getProcessStat($proc);
+        my @p = _getProcessStat($pid);
         foreach my $i (0, 1) {
             $sum[$i] += $p[$i];
         }
@@ -346,39 +214,32 @@ sub _getProcessListStat {
 }
 
 sub newProcessStat($$) {
-    my ($name, $procfunc) = @_;
-    my @procs = &$procfunc();
-    my @current = _getProcessListStat(@procs);
+    my ($name, $pidfunc) = @_;
+    my @pids = &$pidfunc();
+    my @current = _getProcessListStat(@pids);
     my @delta = (0, 0, 0, 0, 0, 0);
     my $entry = {'name' => $name,
                  'current' => \@current,
                  'delta'   => \@delta,
-                 'procfunc' => $procfunc};
+                 'pidfunc' => $pidfunc};
     return $entry;
 }
 
 sub updateProcessStat($$) {
     my ($entry, $elapsed_jiffies) = @_;
-    my $procfunc = $entry->{'procfunc'};
-    my @procs = &$procfunc();
-    my @newstat = _getProcessListStat(@procs);
+    my $pidfunc = $entry->{'pidfunc'};
+    my @pids = &$pidfunc();
+    my @newstat = _getProcessListStat(@pids);
     my $current = $entry->{'current'};
     my $delta = $entry->{'delta'};
 
     # utime, stime as percentage
-    if (!$isMac) {
-        foreach my $col (0, 1) {
-            my $d;
-            ($current->[$col], $d) =
-                computeDelta($current->[$col], $newstat[$col]);
-            $d = $elapsed_jiffies > 0 ? $d * 100 / $elapsed_jiffies : 0;
-            $delta->[$col] = $d;
-        }
-    } else {
-        # Mac has the CPU numbers in percentage already, albeit not very accurate.
-        foreach my $col (0, 1) {
-            $current->[$col] = $delta->[$col] = $newstat[$col];
-        }
+    foreach my $col (0, 1) {
+        my $d;
+        ($current->[$col], $d) =
+            computeDelta($current->[$col], $newstat[$col]);
+        $d = $elapsed_jiffies > 0 ? $d * 100 / $elapsed_jiffies : 0;
+        $delta->[$col] = $d;
     }
     # vsize, rss, shared
     foreach my $col (2, 3, 4, 5) {
@@ -432,7 +293,6 @@ sub _getSystemStat() {
 }
 
 sub newSystemStat() {
-    return undef if ($isMac);
     my @current = _getSystemStat();
     my @delta = (0, 0, 0, 0, 0);
     my $entry = {'current' => \@current,
@@ -442,7 +302,6 @@ sub newSystemStat() {
 
 sub updateSystemStat($) {
     my $entry = shift;
-    return undef if ($isMac);
     my $current = $entry->{'current'};
     my $delta = $entry->{'delta'};
     my @stat = _getSystemStat();
@@ -456,7 +315,6 @@ sub updateSystemStat($) {
 
 sub getSystemStat($) {
     my $entry = shift;
-    return undef if ($isMac);
     my $delta = $entry->{'delta'};
     my ($pct_user, $pct_sys, $pct_idle, $pct_iowait);
     my $total = $delta->[4];
@@ -474,8 +332,8 @@ sub getSystemStat($) {
 sub usage() {
     print STDERR <<_USAGE_;
 Usage: zmstat-proc [options]
-Monitor various ZCS processes
--i, --interval: output a line every N seconds
+Minotor various ZCS processes
+-i, --interval: output a line every N seconds (default is 10)
 -l, --log:      log file (default is /opt/zimbra/zmstat/proc.csv)
 -c, --console:  output to stdout
 
@@ -504,7 +362,7 @@ sub sighup {
 
 $| = 1; # Flush immediately
 
-my $interval = getZmstatInterval();
+my $interval = 10;
 my $opts_good = GetOptions(
     'interval=i' => \$interval,
     'log=s' => \$LOGFILE,
@@ -526,8 +384,6 @@ if ($CONSOLE) {
 
 createPidFile('zmstat-proc.pid');
 
-local $SIG{__WARN__} = \&Carp::cluck;
-
 $SIG{HUP} = \&sighup;
 
 my $date = getDate();
@@ -541,13 +397,8 @@ my @all;
 if (scalar(@ARGV) > 0) {
     @all = @ARGV;
 } else {
-    @all = getEnabledProcs();
-    if (scalar(@all) == 0) {
-        # something wrong?  let's monitor them all
-        @all = @DEFAULT_PROCS;
-    }
+    @all = @DEFAULT_PROCS;
 }
-snapshotProcs();
 foreach my $proc (@all) {
     my $ps_sub = $ps_subs{$proc};
     if (!defined($ps_sub)) {
@@ -562,7 +413,6 @@ $HEADING = getHeading(@procs);
 $LOGFH = openLogFile($LOGFILE, $HEADING);
 
 while (1) {
-    snapshotProcs();
     my $tstamp = getTstamp();
     my $currDate = getDate();
     if ($currDate ne $date) {
@@ -576,9 +426,7 @@ while (1) {
     }
 
     my @vals = ($tstamp);
-    if (!$isMac) {
-        push(@vals, getSystemStat($system));
-    }
+    push(@vals, getSystemStat($system));
     foreach my $proc (@procs) {
         push(@vals, getProcessStat($proc));
     }

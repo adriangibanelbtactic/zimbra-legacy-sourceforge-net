@@ -131,7 +131,7 @@ Com_Zimbra_Date.prototype.menuItemSelected = function(itemId) {
 
 Com_Zimbra_Date.prototype.toolTipPoppedUp =
 function(spanElement, contentObjText, matchContext, canvas) {
-	var cc = this._appCtxt.getApp(ZmZimbraMail.CALENDAR_APP).getCalController();
+	var cc = AjxDispatcher.run("GetCalController");
 	canvas.innerHTML = cc.getDayToolTipText(matchContext ? matchContext.date : new Date());
 };
 
@@ -143,15 +143,27 @@ function(html, idx, obj, context) {
 
 Com_Zimbra_Date.prototype._dayViewListener =
 function() {
-	var calApp = this._appCtxt.getApp(ZmZimbraMail.CALENDAR_APP);
+	var loadCallback = new AjxCallback(this, this._handleLoadDayView);
+	AjxDispatcher.require(["CalendarCore", "Calendar"], false, loadCallback, null, true);
+};
+
+Com_Zimbra_Date.prototype._handleLoadDayView =
+function() {
+	var calApp = this._appCtxt.getApp(ZmApp.CALENDAR);
 	calApp.activate(true, ZmController.CAL_DAY_VIEW, Com_Zimbra_Date._actionContext.date);
 };
 
 Com_Zimbra_Date.prototype._newApptListener =
 function() {
-	var cc = this._appCtxt.getApp(ZmZimbraMail.CALENDAR_APP).getCalController();
-	// TODO support ev
-	cc.newAppointmentHelper(Com_Zimbra_Date._actionContext.date, null, null/*. ev.shiftKey */);
+	var loadCallback = new AjxCallback(this, this._handleLoadNewAppt);
+	AjxDispatcher.require(["CalendarCore", "Calendar"], false, loadCallback, null, true);
+};
+
+Com_Zimbra_Date.prototype._handleLoadNewAppt =
+function() {
+	// TODO support ev.shiftKey
+	this._appCtxt.getAppViewMgr().popView(true, ZmController.LOADING_VIEW);	// pop "Loading..." page
+	AjxDispatcher.run("GetCalController").newAppointmentHelper(Com_Zimbra_Date._actionContext.date);
 };
 
 Com_Zimbra_Date.prototype._searchMailListener =
@@ -161,7 +173,7 @@ function() {
 
 Com_Zimbra_Date.prototype.clicked =
 function(spanElement, contentObjText, matchContext, canvas) {
-	var calApp = this._appCtxt.getApp(ZmZimbraMail.CALENDAR_APP);
+	var calApp = this._appCtxt.getApp(ZmApp.CALENDAR);
 	calApp.activate(true, null, matchContext.date);
 };
 

@@ -16,7 +16,7 @@
 # The Original Code is: Zimbra Collaboration Suite Server.
 # 
 # The Initial Developer of the Original Code is Zimbra, Inc.
-# Portions created by Zimbra are Copyright (C) 2004, 2005, 2006, 2007 Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2004, 2005, 2006 Zimbra, Inc.
 # All Rights Reserved.
 # 
 # Contributor(s):
@@ -29,23 +29,28 @@ my $id = `id -u -n`;
 chomp $id;
 if ($id ne "zimbra") {die "Run as the zimbra user!\n";}
 
-our $zimbra_home = "/opt/zimbra";
+BEGIN {
+	our $Basedir = "/opt/zimbra/zimbramon";
+};
+our $Basedir = "/opt/zimbra/zimbramon";
+
+my $configfile = "$Basedir/zimbra.cf";
 
 use lib "/opt/zimbra/zimbramon/lib";
 use Zimbra::Util::Common;
 use Zimbra::Mon::Logger;
 
 use Getopt::Std;
-use File::Temp qw/ tempfile /;
-my (undef, $zmcontrolLogfile) = tempfile("zmcontrol.out.XXXXX", DIR=>"/tmp",  OPEN=>0);
 
-my $timeout = 180;
-$SIG{ALRM} = sub { print "Timeout after $timeout seconds\n"; exit(1) };
-my $now = time();
-my $cache_file = "${zimbra_home}/log/.zmcontrol.cache";
+my $TIMEOUT = 180;
+$SIG{ALRM} = sub { print "Timeout after $TIMEOUT seconds\n"; exit(1) };
+
 my $localHostName = getHostName();
+
 my $ldapMasterHere = isLdapMaster();
+
 my $services;
+
 my %startorder = ( 
 	"ldap" 		=> 0,
 	"logger" 	=> 1,
@@ -56,20 +61,18 @@ my %startorder = (
 	"snmp" 		=> 6,
 	"spell" 	=> 7,
 	"mta" 		=> 8,
-	"stats"		=> 9,
 );
 
 my %allservices = ( 
 	"antivirus" => "/opt/zimbra/bin/zmantivirusctl", 
 	"antispam" => "/opt/zimbra/bin/zmantispamctl", 
 	"mta" => "/opt/zimbra/bin/zmmtactl", 
-	"mailbox" => "/opt/zimbra/bin/zmmailboxctl", 
+	"mailbox" => "/opt/zimbra/bin/zmstorectl", 
 	"logger" => "/opt/zimbra/bin/zmloggerctl", 
 	"snmp" => "/opt/zimbra/bin/zmswatchctl", 
 	"ldap" => "/opt/zimbra/bin/ldap",
 	"spell" => "/opt/zimbra/bin/zmspellctl",
 	"imapproxy" => "/opt/zimbra/bin/zmperditionctl",
-	"stats" => "/opt/zimbra/bin/zmstatctl",
 );
 
 my %rewrites = ( 
@@ -109,30 +112,6 @@ my %REMOTECOMMANDS = (
 	"status" => "status",
 );
 
-
-$| = 1;
-
-unless ( getopts( 'vhH:', \%GlobalOpts ) ) { usage(); }
-
-if ( ! $GlobalOpts{H} ) { $GlobalOpts{H} = $localHostName; chomp $GlobalOpts{H}; }
-
-if ( $GlobalOpts{h} ) { usage(); }
-if ( $GlobalOpts{v} ) { displayVersion(); exit 1;}
-
-# Commands: start, stop, maintenance and status
-my $command = $ARGV[0];
-
-unless (defined ($COMMANDS{$command})) {usage();}
-
-if ($GlobalOpts{H} ne $localHostName) {
-	exit (runRemoteCommand ($command));
-}
-
-exit (&{$COMMANDS{$command}}($ARGV[1]));
-
-#
-# Functions
-#
 sub runRemoteCommand {
 	my $cmd = shift;
 	my $cstr = "HOST:$GlobalOpts{H} $REMOTECOMMANDS{$cmd}";
@@ -155,9 +134,7 @@ sub runRemoteCommand {
 
 sub doStatus {
 	$services = getEnabledServices();
-  alarm($timeout);
-  my (undef, $statusfile) = tempfile("zmcontrol.status.XXXXX", DIR=>"/tmp",  OPEN=>0);
-  my (undef, $errfile) = tempfile("zmcontrol.error.XXXXX", DIR=>"/tmp",  OPEN=>0);
+  alarm($TIMEOUT);
 	if (scalar(keys %$services) == 0) {
 		print "Cannot determine services - exiting\n";
 		return 1;
@@ -165,7 +142,7 @@ sub doStatus {
 	my $status = 0;
 	print "Host $localHostName\n";
 	foreach (sort keys %{$services}) {
-		my $rc = 0xffff & system ("$allservices{$_} status > $statusfile 2> $errfile");
+		my $rc = 0xffff & system ("$allservices{$_} status >/tmp/zmcontrol_status.$$ 2>/tmp/zmcontrol_err.$$");
 		$rc = $rc >> 8;
 		if ($rc) {
       # this is an any ugly hack for 11266
@@ -175,22 +152,22 @@ sub doStatus {
 		my $stat = sprintf "\t%-20s %10s\n",$_,($rc)?"Stopped":"Running";
 		print "$stat";
 		if ($rc) {
-			open (ST, "$statusfile") or next;
+			open (ST, "/tmp/zmcontrol_status.$$") or next;
 			foreach my $s (<ST>) {
 				print "\t\t$s";
 			}
 			close ST;
 		}
 	}
-	unlink($statusfile);
-	unlink($errfile);
+	unlink ("/tmp/zmcontrol_status.$$");
+	unlink ("/tmp/zmcontrol_err.$$");
   alarm(0);
 	return $status;
 }
 
 sub startLdap {
 	print "\tStarting ldap...";
-	my $rc = 0xffff & system("/opt/zimbra/bin/ldap start > $zmcontrolLogfile 2>&1");
+	my $rc = 0xffff & system("/opt/zimbra/bin/ldap start > /tmp/zmcontrol.out.$$ 2>&1");
 	$rc = $rc >> 8;
 	print "Done.\n";
 	return $rc;
@@ -202,7 +179,7 @@ sub doRewrite {
 		$rew .= " $rewrites{$_}";
 	}
 	Zimbra::Mon::Logger::Log ("info", "Rewriting configs $rew");
-	my $rc = 0xffff & system("/opt/zimbra/libexec/zmmtaconfig $rew > $zmcontrolLogfile 2>&1");
+	my $rc = 0xffff & system("/opt/zimbra/libexec/zmmtaconfig $rew > /tmp/zmcontrol.out.$$ 2>&1");
 	$rc = $rc >> 8;
 	return $rc;
 }
@@ -220,12 +197,12 @@ sub doStartup {
 	}
 	if ($rrc) {
 		$rc = 1;
-		my $out = `cat $zmcontrolLogfile`;
+		my $out = `cat /tmp/zmcontrol.out.$$`;
 		print "FAILED\n";
 		print "$out\n\n";
 		exit (1);
 	}
-	unlink($zmcontrolLogfile);
+	unlink "/tmp/zmcontrol.out.$$";
 	$services = getEnabledServices();
 	if (scalar(keys %$services) == 0) {
 		return 1;
@@ -239,7 +216,7 @@ sub doStartup {
 	}
 	if ($rrc) {
 		$rc = 1;
-		my $out = `cat $zmcontrolLogfile`;
+		my $out = `cat /tmp/zmcontrol.out.$$`;
 		print "FAILED\n";
 		print "$out\n\n";
 		exit (1);
@@ -251,17 +228,17 @@ sub doStartup {
 		if ($_ eq "ldap") {next;}
 		Zimbra::Mon::Logger::Log ("info", "Starting $_");
 		print "\tStarting $_...";
-		$rrc = 0xffff & system ("$allservices{$_} start norewrite > $zmcontrolLogfile 2>&1");
+		$rrc = 0xffff & system ("$allservices{$_} start norewrite > /tmp/zmcontrol.out.$$ 2>&1");
 		$rrc = $rrc >> 8;
 		if ($rrc) {
 			$rc = 1;
-			my $out = `cat $zmcontrolLogfile`;
+			my $out = `cat /tmp/zmcontrol.out.$$`;
 			print "FAILED\n";
 			print "$out\n\n";
 		} else {
 			print "Done.\n";
 		}
-		unlink($zmcontrolLogfile);
+		unlink "/tmp/zmcontrol.out.$$";
 	}
 	return $rc;
 }
@@ -271,25 +248,24 @@ sub doShutdown {
 	print "Host $localHostName\n";
 	my $rc = 0;
 	my $rrc = 0;
-  my $postfix_version = getLocalConfig("postfix_version");
 	foreach (sort {$startorder{$b} <=> $startorder{$a}} keys %allservices) {
 		Zimbra::Mon::Logger::Log ("info", "Stopping $_");
 		if ($_ eq "ldap" && !(-d "/opt/zimbra/openldap/libexec") ) { next; }
-		if ($_ eq "mta" && !(-d "/opt/zimbra/postfix-${postfix_version}/libexec") ) { next; }
+		if ($_ eq "mta" && !(-d "/opt/zimbra/postfix-2.2.9/libexec") ) { next; }
 		if ($_ eq "snmp" && !(-f "/opt/zimbra/bin/zmswatchctl") ) { next; }
 		if ($_ eq "mailbox" && !(-d "/opt/zimbra/db/data") ) { next; }
 		print "\tStopping $_...";
-		$rrc = 0xffff & system ("$allservices{$_} stop > $zmcontrolLogfile 2>&1");
+		$rrc = 0xffff & system ("$allservices{$_} stop > /tmp/zmcontrol.out.$$ 2>&1");
 		$rrc = $rrc >> 8;
 		if ($rrc) {
 			$rc = 1;
-			my $out = `cat $zmcontrolLogfile`;
+			my $out = `cat /tmp/zmcontrol.out.$$`;
 			print "FAILED\n";
 			print "$out\n\n";
 		} else {
 			print "Done\n";
 		}
-		unlink($zmcontrolLogfile);
+		unlink "/tmp/zmcontrol.out.$$";
 	}
 	return $rc;
 }
@@ -303,7 +279,7 @@ sub getLocalConfig {
 	if (defined ($ENV{zmsetvars})) {
 		return $ENV{$key};
 	}
-	open CONF, "/opt/zimbra/bin/zmlocalconfig -x -s -q -m shell |" or
+	open CONF, "/opt/zimbra/bin/zmlocalconfig -q -m shell |" or
 		die "Can't open zmlocalconfig: $!";
 	my @conf = <CONF>;
 	close CONF;
@@ -321,51 +297,23 @@ sub getLocalConfig {
 	return $ENV{$key};
 }
 
-sub getCachedServices {
-
-  my %s = ();
-	if (-f $cache_file && -M $cache_file <= 1) {
-    open(CACHE, "<$cache_file");
-    my @lines = <CACHE>;
-    close CACHE;
-    foreach (@lines) {
-      chomp;
-      $s{$_} = $_;
-    }
-  } else {
-    print "Unable to determine enabled services. Cache is out of date or doesn't exist.\n"; 
-    exit 1;
-  }
-  warn "Enabled services read from cache. Service list may be inaccurate.\n"
-    if (scalar keys %s > 0 );
-  return \%s;
-}
-
 sub getEnabledServices {
-	unless (open (ZMPROV, "/opt/zimbra/bin/zmprov -l gs $localHostName 2>/dev/null |")) {
-    warn "Unable to determine enabled services from ldap.\n";
-    return getCachedServices();
-  }
-  my @lines = <ZMPROV>;
-  unless (close ZMPROV) {
-    warn "Unable to determine enabled services from ldap.\n";
-    return getCachedServices();
-  }
+	if (open (ZMPROV, "/opt/zimbra/bin/zmprov -l gs $localHostName 2>/dev/null |")) {
+		my @lines = <ZMPROV>;
+		close ZMPROV;
 
-  my %s = ();
-  foreach (@lines) {
-    if (m/^zimbraServiceEnabled: (.*)/) {
-      $s{$1} = $1;
-    }
-  }
-  if (scalar keys %s > 0) {
-    open (CACHE, ">$cache_file");
-    foreach my $service (keys %s) {
-      print CACHE "$service\n";
-    }
-    close(CACHE);
-  }
-  return \%s;
+		my %s = ();
+		foreach (@lines) {
+			if (m/^zimbraServiceEnabled: (.*)/) {
+				#print "Found service: $1\n";
+				$s{$1} = $1;
+			}
+		}
+		return \%s;
+	} else {
+		print "Can't contact ldap!\n";
+		exit 1;
+	}
 }
 
 sub isLdapMaster {
@@ -423,3 +371,23 @@ sub usage {
 	print "\n";
 	exit 1;
 }
+
+$| = 1;
+
+unless ( getopts( 'vhH:', \%GlobalOpts ) ) { usage(); }
+
+if ( ! $GlobalOpts{H} ) { $GlobalOpts{H} = $localHostName; chomp $GlobalOpts{H}; }
+
+if ( $GlobalOpts{h} ) { usage(); }
+if ( $GlobalOpts{v} ) { displayVersion(); exit 1;}
+
+# Commands: start, stop, maintenance and status
+my $command = $ARGV[0];
+
+unless (defined ($COMMANDS{$command})) {usage();}
+
+if ($GlobalOpts{H} ne $localHostName) {
+	exit (runRemoteCommand ($command));
+}
+
+exit (&{$COMMANDS{$command}}($ARGV[1]));

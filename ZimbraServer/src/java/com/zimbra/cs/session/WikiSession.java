@@ -25,7 +25,6 @@
 package com.zimbra.cs.session;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.im.IMNotification;
 import com.zimbra.cs.mailbox.Document;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.Mailbox;
@@ -43,10 +42,20 @@ public class WikiSession extends Session {
 	}
 	private static WikiSession sSession;
 	
-    private WikiSession(String accountId) throws ServiceException {
-    	super(accountId, "wiki-session", SessionCache.SESSION_WIKI);
+    private WikiSession(String accountId) {
+    	super(accountId, Session.Type.WIKI);
     }
-    
+
+    @Override
+    protected boolean isMailboxListener() {
+        return true;
+    }
+
+    @Override
+    protected boolean isRegisteredInCache() {
+        return false;
+    }
+
 	@Override
 	protected void cleanup() {
 	}
@@ -57,11 +66,7 @@ public class WikiSession extends Session {
 	}
 
 	@Override
-	public void notifyIM(IMNotification imn) {
-	}
-
-	@Override
-	public void notifyPendingChanges(PendingModifications pns) {
+	public void notifyPendingChanges(int changeId, PendingModifications pns) {
 		
 		if (pns.modified != null && pns.modified.size() > 0) {
 			for (PendingModifications.Change value : pns.modified.values()) {
@@ -74,11 +79,6 @@ public class WikiSession extends Session {
 				expireItem(value);
 			}
 		}
-	}
-
-	@Override
-	protected boolean shouldRegisterWithIM() {
-		return false;
 	}
 
 	private void expireItem(Object obj) {

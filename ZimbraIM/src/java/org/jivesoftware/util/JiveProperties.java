@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 5572 $
+ * $Date: 2006-09-30 00:02:52 +0000 (Sat, 30 Sep 2006) $
+ *
+ * Copyright (C) 1999-2004 Jive Software. All rights reserved.
+ *
+ * This software is the proprietary information of Jive Software.
+ * Use is subject to license terms.
  */
+
 package org.jivesoftware.util;
 
 import java.util.*;
@@ -35,7 +22,7 @@ import org.jivesoftware.database.DbConnectionManager;
  *
  * @author Matt Tucker
  */
-public class JiveProperties implements Map<String, String> {
+public class JiveProperties {
 
     private static final String LOAD_PROPERTIES = "SELECT name, propValue FROM jiveProperty";
     private static final String INSERT_PROPERTY = "INSERT INTO jiveProperty(name, propValue) VALUES(?,?)";
@@ -69,7 +56,7 @@ public class JiveProperties implements Map<String, String> {
      * initialized. Thus, if there are existing properties in the database we will want to reload
      * this class after the setup process has been completed.
      */
-    public void init() {
+    private void init() {
         if (properties == null) {
             properties = new ConcurrentHashMap<String, String>();
         }
@@ -80,45 +67,45 @@ public class JiveProperties implements Map<String, String> {
         loadProperties();
     }
 
-    public int size() {
+    private int size() {
         return properties.size();
     }
 
-    public void clear() {
+    private void clear() {
         throw new UnsupportedOperationException();
     }
 
-    public boolean isEmpty() {
+    private boolean isEmpty() {
         return properties.isEmpty();
     }
 
-    public boolean containsKey(Object key) {
+    private boolean containsKey(Object key) {
         return properties.containsKey(key);
     }
 
-    public boolean containsValue(Object value) {
+    private boolean containsValue(Object value) {
         return properties.containsValue(value);
     }
 
-    public Collection<String> values() {
+    private Collection<String> values() {
         return Collections.unmodifiableCollection(properties.values());
     }
 
-    public void putAll(Map<? extends String, ? extends String> t) {
+    private void putAll(Map<? extends String, ? extends String> t) {
         for (Map.Entry<? extends String, ? extends String> entry : t.entrySet() ) {
             put(entry.getKey(), entry.getValue());
         }
     }
 
-    public Set<Map.Entry<String, String>> entrySet() {
+    private Set<Map.Entry<String, String>> entrySet() {
         return Collections.unmodifiableSet(properties.entrySet());
     }
 
-    public Set<String> keySet() {
+    private Set<String> keySet() {
         return Collections.unmodifiableSet(properties.keySet());
     }
 
-    public String get(Object key) {
+    public synchronized String get(String key) {
         return properties.get(key);
     }
 
@@ -132,7 +119,7 @@ public class JiveProperties implements Map<String, String> {
      * @param parentKey the name of the parent property.
      * @return all child property names for the given parent.
      */
-    public Collection<String> getChildrenNames(String parentKey) {
+    private Collection<String> getChildrenNames(String parentKey) {
         Collection<String> results = new HashSet<String>();
         for (String key : properties.keySet()) {
             if (key.startsWith(parentKey + ".")) {
@@ -159,7 +146,7 @@ public class JiveProperties implements Map<String, String> {
      *
      * @return all property names.
      */
-    public Collection<String> getPropertyNames() {
+    private Collection<String> getPropertyNames() {
         return properties.keySet();
     }
 

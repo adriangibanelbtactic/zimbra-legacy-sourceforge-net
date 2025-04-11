@@ -48,6 +48,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 
 import com.zimbra.cs.convert.ConversionException;
+import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.index.TopLevelMessageHandler;
 import com.zimbra.cs.index.LuceneFields;
 import com.zimbra.cs.localconfig.DebugConfig;
@@ -145,7 +146,7 @@ public class ParsedMessage {
         setReceivedDate(receivedDate);
     }
 
-    private void parseRawData(byte[] rawData) throws MessagingException {
+    void parseRawData(byte[] rawData) throws MessagingException {
         ByteArrayInputStream bais = new ByteArrayInputStream(rawData);
         mMimeMessage = mExpandedMessage = new Mime.FixedMimeMessage(JMSession.getSession(), bais);
         try {
@@ -193,11 +194,11 @@ public class ParsedMessage {
      * @return <code>true</code> if the encapsulated message is unchanged,
      *         <code>false</code> if a mutator altered the content
      * @see MimeVisitor#registerMutator(Class) */
-    private boolean runMimeMutators() throws MessagingException {
+    boolean runMimeMutators() throws MessagingException {
         if (mMutatorsRun)
             return true;
         boolean rawInvalid = false;
-        for (Class vclass : MimeVisitor.getMutators())
+        for (Class vclass : MimeVisitor.getMutators()) {
             try {
                 rawInvalid |= ((MimeVisitor) vclass.newInstance()).accept(mMimeMessage);
                 if (mMimeMessage != mExpandedMessage)
@@ -207,8 +208,9 @@ public class ParsedMessage {
             } catch (Exception e) {
                 ZimbraLog.misc.warn("exception ignored running mutator; skipping", e);
             }
-            mMutatorsRun = true;
-            return !rawInvalid;
+        }
+        mMutatorsRun = true;
+        return !rawInvalid;
     }
 
     /** Applies all registered on-the-fly MIME converters to a copy of the
@@ -220,7 +222,7 @@ public class ParsedMessage {
      * @return <code>true</code> if the encapsulated message is unchanged,
      *         <code>false</code> if a converter forked and altered it
      * @see MimeVisitor#registerConverter(Class) */
-    private boolean runMimeConverters() {
+    boolean runMimeConverters() {
         // this callback copies the MimeMessage if a converter would want 
         //   to make a change, but doesn't alter the original MimeMessage
         MimeVisitor.ModificationCallback forkCallback = new MimeVisitor.ModificationCallback() {
@@ -228,22 +230,22 @@ public class ParsedMessage {
                 try { forkMimeMessage(); } catch (Exception e) { }  return false;
             } };
 
-            try {
-                // first, find out if *any* of the converters would be triggered (but don't change the message)
-                for (Class vclass : MimeVisitor.getConverters()) {
-                    if (mExpandedMessage == mMimeMessage)
-                        ((MimeVisitor) vclass.newInstance()).setCallback(forkCallback).accept(mMimeMessage);
-                    // if there are attachments to be expanded, expand them in the MimeMessage *copy*
-                    if (mExpandedMessage != mMimeMessage)
-                        ((MimeVisitor) vclass.newInstance()).accept(mExpandedMessage);
-                }
-            } catch (Exception e) {
-                // roll back if necessary
-                mExpandedMessage = mMimeMessage;
-                sLog.warn("exception while converting message; message will be analyzed unconverted", e);
+        try {
+            // first, find out if *any* of the converters would be triggered (but don't change the message)
+            for (Class vclass : MimeVisitor.getConverters()) {
+                if (mExpandedMessage == mMimeMessage)
+                    ((MimeVisitor) vclass.newInstance()).setCallback(forkCallback).accept(mMimeMessage);
+                // if there are attachments to be expanded, expand them in the MimeMessage *copy*
+                if (mExpandedMessage != mMimeMessage)
+                    ((MimeVisitor) vclass.newInstance()).accept(mExpandedMessage);
             }
+        } catch (Exception e) {
+            // roll back if necessary
+            mExpandedMessage = mMimeMessage;
+            sLog.warn("exception while converting message; message will be analyzed unconverted", e);
+        }
 
-            return mExpandedMessage == mMimeMessage;
+        return mExpandedMessage == mMimeMessage;
     }
 
     public ParsedMessage analyze() throws ServiceException {
@@ -303,6 +305,10 @@ public class ParsedMessage {
     public String getRawDigest() throws MessagingException, IOException {
         mimeToRaw();
         return mRawDigest;
+    }
+
+    public boolean isAttachmentIndexingEnabled() {
+        return mIndexAttachments;
     }
 
     public List<MPartInfo> getMessageParts() throws ServiceException {
@@ -572,9 +578,8 @@ public class ParsedMessage {
 
         // this is the first conversion error we encountered when analyzing all the parts
         // raise it at the end so that we have any calendar info parsed 
-        if (conversionError != null) {
+        if (conversionError != null)
             throw conversionError;
-        }
     }
 
     private void analyzePart(MPartInfo mpi, Set<MPartInfo> mpiBodies, TopLevelMessageHandler allTextHandler, boolean ignoreCalendar)
@@ -625,7 +630,7 @@ public class ParsedMessage {
                 Document doc = handler.getDocument();
                 if (doc != null) {
                     int partSize = mpi.getMimePart().getSize();
-                    doc.add(Field.Text(LuceneFields.L_SIZE, Integer.toString(partSize)));
+                    doc.add(new Field(LuceneFields.L_SIZE, Integer.toString(partSize), Field.Store.YES, Field.Index.NO));
                     mLuceneDocuments.add(doc);
                 }
             }
@@ -725,9 +730,10 @@ public class ParsedMessage {
         try {
             mNormalizedSubject = mSubject = mMimeMessage.getSubject();
         } catch (MessagingException e) { }
-        if (mSubject == null)
+
+        if (mSubject == null) {
             mNormalizedSubject = mSubject = "";
-        else {
+        } else {
             String originalSubject = mNormalizedSubject = StringUtil.stripControlCharacters(mNormalizedSubject).trim();
             mNormalizedSubject = trimPrefixes(mNormalizedSubject);
             if (mNormalizedSubject != originalSubject)
@@ -746,6 +752,8 @@ public class ParsedMessage {
             }
 
             mNormalizedSubject = compressWhitespace(mNormalizedSubject);
+            if (mNormalizedSubject.length() > DbMailItem.MAX_SUBJECT_LENGTH)
+                mNormalizedSubject = mNormalizedSubject.substring(0, DbMailItem.MAX_SUBJECT_LENGTH).trim();
         }
     }
 
@@ -758,6 +766,10 @@ public class ParsedMessage {
                     subject = subject.substring(0, endBracket + 1) + ' ' + trimPrefixes(subject.substring(endBracket + 1).trim());
             }
         }
-        return compressWhitespace(subject);
+        subject = compressWhitespace(subject);
+        if (subject != null && subject.length() > DbMailItem.MAX_SUBJECT_LENGTH)
+            subject = subject.substring(0, DbMailItem.MAX_SUBJECT_LENGTH).trim();
+
+        return subject;
     }
 }

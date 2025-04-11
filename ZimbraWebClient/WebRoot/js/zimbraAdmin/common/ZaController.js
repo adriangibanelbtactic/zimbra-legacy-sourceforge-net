@@ -32,7 +32,7 @@
 * @see ZaDomainListController
 * @see ZaXFormViewController
 */
-function ZaController(appCtxt, container, app, iKeyName) {
+ZaController = function(appCtxt, container, app, iKeyName) {
 
 	if (arguments.length == 0) return;
 	this._evtMgr = new AjxEventMgr();
@@ -46,7 +46,8 @@ function ZaController(appCtxt, container, app, iKeyName) {
 	
 	this._shell = appCtxt.getShell();
 	this._appViews = new Object();   
-	this._currentView = null;                            
+	this._currentView = null;   
+	this._contentView = null; //the view object associated with the current controller instance                         
 	
 	this._authenticating = false;
 
@@ -118,6 +119,11 @@ function(view) {
 	this._currentView = view;
 }
 
+ZaController.prototype.getContentViewId =
+function () {
+	return this._contentView.__internalId ;
+}
+
 ZaController.prototype.setEnabled = 
 function(enable) {
 	//abstract
@@ -152,16 +158,12 @@ function(msg, ex, noExecReset,style)  {
 		    detailStr += ex.detail;
 		    detailStr += "\n";			    
 		}
+		
 		if(!detailStr || detailStr == "") {
 			for (var ix in ex) {
 				detailStr += ix;
 				detailStr += ": ";
-				try {
-					detailStr += ex[ix].toString();
-				} catch (e) {
-					//Continue reporting the error, we probably got a permission denied accessing the property
-					detailStr += "N/A";
-				}
+				detailStr += ex[ix].toString();
 				detailStr += "\n";
 			}
 		}
@@ -213,7 +215,14 @@ function (nextViewCtrlr, func, params) {
 * @private
 **/
 ZaController.prototype._setView =
-function(entry) {
+function(entry, openInNewTab) {
+	if (openInNewTab) { //check whether the tab limit exceeds
+		var cSize = ZaAppTabGroup._TABS.size () ;
+		if (cSize >= ZaAppTabGroup.TAB_LIMIT) {
+			this.popupMsgDialog(ZaMsg.too_many_tabs);
+			return ;
+		}
+	}
 	//Instrumentation code start
 	if(ZaController.setViewMethods[this._iKeyName]) {
 		var methods = ZaController.setViewMethods[this._iKeyName];
@@ -229,6 +238,37 @@ function(entry) {
 		}
 	}	
 	//Instrumentation code end	
+	/*
+	if (openInNewTab) {
+		var tab = new ZaAppTab (this._app.getTabGroup(), this._app, 
+				entry.name, entry.getTabIcon() , null, null, true, true, this._app._currentViewId) ;
+		tab.setToolTipContent( entry.getTabToolTip()) ;
+	}*/
+}
+
+//Switch to the main tab and display the current view.
+/*
+ZaController.prototype.updateMainTab =
+function (icon, titleLabel, tabId ) {
+	titleLabel = titleLabel || this._contentView.getTitle () ;
+	tabId = tabId || this._app._currentViewId ;
+	var tabGroup = this._app.getTabGroup() ;
+	var mainTab = tabGroup.getMainTab() ;
+	mainTab.setToolTipContent (titleLabel) ;
+	mainTab.resetLabel (titleLabel) ;
+	mainTab.setImage (icon) ;
+	mainTab.setTabId (tabId) ;
+	tabGroup.selectTab(mainTab);
+}*/
+
+ZaController.prototype.getMainTab =
+function () {
+	return this._app.getTabGroup().getMainTab () ;
+}
+
+ZaController.prototype.getSearchTab =
+function () {
+	return this._app.getTabGroup().getSearchTab () ;
 }
 
 //Listeners for default toolbar buttons (close, save, delete)
@@ -260,12 +300,15 @@ ZaController.prototype._showLoginDialog =
 function(bReloginMode) {
 	ZaZimbraAdmin._killSplash();
 	this._authenticating = true;
-	this._loginDialog.setVisible(true, false);
+	this._loginDialog.setVisible(true, false,bReloginMode);
 	try {
-		var uname = "";
-		if(this.auth)
-			uname = this.auth.uname;
-		this._loginDialog.setFocus(uname,bReloginMode);
+		if(bReloginMode && ZLoginFactory.get(ZLoginFactory.USER_ID) && ZLoginFactory.get(ZLoginFactory.USER_ID).value=="")
+			bReloginMode = false; //lost login name, enable the user name field
+			
+		if(!bReloginMode) {
+			var uname = "";
+			this._loginDialog.setFocus(uname);
+		} 
 	} catch (ex) {
 		// something is out of whack... just make the user relogin
 		ZaZimbraAdmin.logOff();
@@ -295,6 +338,7 @@ function(ex, method, params, restartOnError, obj) {
 				this._execFrame = {obj: obj, func: method, args: params, restartOnError: restartOnError};
 				this._loginDialog.registerCallback(this.loginCallback, this);
 				this._loginDialog.setError(ZaMsg.ERROR_SESSION_EXPIRED);
+//				this._loginDialog.disableUnameField();
 				this._loginDialog.clearPassword();
 			} else {
 				this._loginDialog.setError(null);
@@ -371,22 +415,22 @@ function(username, password) {
 		this.auth = new ZaAuthenticate(this._appCtxt);
 		this.auth.execute(username, password,callback);
 	} catch (ex) {
-		this._showLoginDialog();
-		if (ex.code == ZmCsfeException.ACCT_AUTH_FAILED 
-		   //HC: this code doesn't exist || ex.code == ZmCsfeException.INVALID_REQUEST
-		   ) 
-		{
+		if (ex.code == ZmCsfeException.ACCT_AUTH_FAILED) {
+			this._showLoginDialog(false);
 			this._loginDialog.setError(ZaMsg.ERROR_AUTH_FAILED);
 			return;
 		} else if(ex.code == ZmCsfeException.SVC_PERM_DENIED) {
+			this._showLoginDialog(false);
 			this._loginDialog.setError(ZaMsg.ERROR_AUTH_NO_ADMIN_RIGHTS);
 			return;
 		} else if (ex.code == ZmCsfeException.ACCT_CHANGE_PASSWORD) {
+			this._showLoginDialog(true);
 			this._loginDialog.disablePasswordField(true);
 			this._loginDialog.disableUnameField(true);
 			this._loginDialog.showNewPasswordFields();
 			this._loginDialog.registerCallback(this.changePwdCallback, this);
 		} else {
+			this._showLoginDialog(false);
 			this.popupMsgDialog(ZaMsg.SERVER_ERROR, ex); 
 		}
 	}
@@ -398,7 +442,6 @@ function(clear) {
 	if(clear) {
 		this._loginDialog.setError(null);
 		this._loginDialog.clearPassword();
-//		this._loginDialog.clearKeyHandlers();
 	}
 }
 
@@ -412,35 +455,41 @@ function (resp) {
 	 ZaController.changePwdCommand = null;
 	//if login failed - hide splash screen, show login dialog
 	if(resp.isException && resp.isException()) {
-		this._showLoginDialog();
 		var ex = resp.getException();
-		if (ex.code == ZmCsfeException.ACCT_AUTH_FAILED 
-		    //HC: this code doesn't exist || ex.code == ZmCsfeException.INVALID_REQUEST 
-		   ) 
+		if (ex.code == ZmCsfeException.ACCT_AUTH_FAILED) 
 		{
+			this._showLoginDialog(false);
 			this._loginDialog.setError(ZaMsg.ERROR_AUTH_FAILED);
 			this._loginDialog.clearPassword();
 			return;
 		} else if(ex.code == ZmCsfeException.SVC_PERM_DENIED) {
+			this._showLoginDialog(false);			
 			this._loginDialog.setError(ZaMsg.ERROR_AUTH_NO_ADMIN_RIGHTS);
 			this._loginDialog.clearPassword();
 			return;
 		} else if (ex.code == ZmCsfeException.ACCT_CHANGE_PASSWORD) {
+			this._showLoginDialog(true);			
 			this._loginDialog.disablePasswordField(true);
 			this._loginDialog.disableUnameField(true);
 			this._loginDialog.showNewPasswordFields();
 			this._loginDialog.registerCallback(this.changePwdCallback, this);
 		} else if (ex.code == ZmCsfeException.PASSWORD_RECENTLY_USED ||
 			ex.code == ZmCsfeException.PASSWORD_CHANGE_TOO_SOON) {
+			this._showLoginDialog(true);
 			var msg = ex.code == ZmCsfeException.ACCT_PASS_RECENTLY_USED ? ZaMsg.errorPassRecentlyUsed : (ZaMsg.errorPassChangeTooSoon);
 			this._loginDialog.setError(msg);
 			this._loginDialog.clearPassword();
 			this._loginDialog.setFocus();
 		} else if (ex.code == ZmCsfeException.PASSWORD_LOCKED) {
+			this._showLoginDialog(true);
 			// re-enable username and password fields
 			this._loginDialog.disablePasswordField(false);
 			this._loginDialog.disableUnameField(false);
 			this._loginDialog.setError(ZaMsg.errorPassLocked);
+		} else if(ex.code == ZmCsfeException.MAINTENANCE_MODE) {
+			this._showLoginDialog(false);
+			this._loginDialog.setError(ZaMsg.ERROR_ACC_IN_MAINTENANCE_MODE);
+			this._loginDialog.clearPassword();
 		} else {
 			this.popupMsgDialog(ZaMsg.SERVER_ERROR, ex); 
 		}
@@ -749,3 +798,64 @@ function (event) {
 	var tooltip = shell.getToolTip();
 	tooltip.popdown();
 }
+
+ZaController.prototype.selectExistingTabByItemId =
+function (itemId, tabConstructor) {
+	var tabGroup = this._app.getTabGroup ();
+	var tab = tabGroup.getTabByItemId (itemId, tabConstructor ? tabConstructor : this.tabConstructor) ;
+	if (tab) {
+		tabGroup.selectTab (tab) ;
+		return true ;
+	}else{
+		return false ;
+	}
+}
+
+ZaController.prototype.closeTabsInRemoveList =
+function (){
+	var tabGroup = this._app.getTabGroup();
+	for (var i=0; i< this._itemsInTabList.length ; i ++) {
+		var item = this._itemsInTabList[i];
+		tabGroup.removeTab (tabGroup.getTabByItemId(item.id)) ;
+		//add the item to the _removeList
+		this._removeList.push(item);
+	}
+}
+
+
+ZaController.prototype._showAccountsView = function (defaultType, ev) {
+
+	var viewId = null;  
+	if(defaultType == ZaItem.DL) {
+		viewId=ZaZimbraAdmin._DISTRIBUTION_LISTS_LIST_VIEW;
+	} else if (defaultType == ZaItem.RESOURCE){
+		viewId=ZaZimbraAdmin._RESOURCE_LIST_VIEW;
+	} else if(defaultType == ZaItem.ALIAS) {
+		viewId=ZaZimbraAdmin._ALIASES_LIST_VIEW;
+	} else {
+		viewId=ZaZimbraAdmin._ACCOUNTS_LIST_VIEW;
+	}	
+	var acctListController = this._app.getAccountListController(viewId);
+	
+
+		
+	acctListController.setPageNum(1);	
+	acctListController.setQuery("");
+	acctListController.setSortOrder("1");
+	acctListController.setSortField(ZaAccount.A_name);
+	acctListController.setSearchTypes([ZaSearch.TYPES[defaultType]]);
+	acctListController.setDefaultType(defaultType);
+	if(defaultType == ZaItem.DL) {
+		acctListController.setFetchAttrs(ZaDistributionList.searchAttributes);
+	} else if (defaultType == ZaItem.RESOURCE){
+		acctListController.setFetchAttrs(ZaResource.searchAttributes);
+	} else {
+		acctListController.setFetchAttrs(ZaSearch.standardAttributes);
+	}	
+	
+	if(this._app.getCurrentController()) {
+		this._app.getCurrentController().switchToNextView(acctListController, ZaAccountListController.prototype.show,true);
+	} else {					
+		acctListController.show(true);
+	}
+};

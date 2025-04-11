@@ -20,7 +20,7 @@
 * @constructor
 **/
 
-function ButtonGrid(attributes) {
+ButtonGrid = function(attributes) {
 	XFG.assignUniqueId(this, "__BUTTON_GRID__");
 
 	// copy any props passed in into the object
@@ -42,7 +42,6 @@ BGP.cssClass = "xform_button_grid_medium";
 BGP.onChange = null;
 BGP.multiple = true;
 BGP.addBracketingCells = false;
-BGP.toggleMode = true;
 
 BGP.setOnChange = function (onChange) {
 	if (onChange && typeof onChange == "string") {
@@ -129,29 +128,9 @@ BGP.getButtonId = function (btnNum) {
 
 
 BGP.onButtonClick = function(choiceValue, element, event) {
-	if(this.toggleMode)  {
-		var newValue = this.toggleValue(choiceValue, element);
-		if (this.onChange) {
-			this.onChange(newValue, event);
-		}
-	} 
-}
-
-BGP.onMouseDown = function(choiceValue, element, event) {
-	if(!this.toggleMode)  {
-		if (element) 
-			XFG.showSelected(element);
-	}
-	
-}
-
-BGP.onMouseUp = function(choiceValue, element, event) {
-	if(!this.toggleMode)  {
-		if (this.onChange) 
-			this.onChange(choiceValue, event,element);
-			
-		if (element) 
-			XFG.hideSelected(element);
+	var newValue = this.toggleValue(choiceValue, element);
+	if (this.onChange) {
+		this.onChange(newValue, event);
 	}
 }
 
@@ -176,14 +155,10 @@ BGP.getHTML = function (indent) {
 			if (typeof choice == "string") {
 				choice = this.choices[i] = {value:choice, label:choice};
 			}
-			buffer.append(indent, "\t<td class=", this.cssClass + "_td ><div id=", this.getButtonId(i), " class=", buttonCssClass);
-			if(this.toggleMode) {
-				buffer.append(" onclick=\"XFG.cacheGet('", this.__id, "').onButtonClick('",choice.value,"',this,event);\"");
-			} else {
-				buffer.append(" onmousedown=\"XFG.cacheGet('", this.__id, "').onMouseDown('",choice.value,"',this,event);\"");	
-				buffer.append(" onmouseup=\"XFG.cacheGet('", this.__id, "').onMouseUp('",choice.value,"',this,event);\"");					
-			}
-			buffer.append(">",choice.label,"</div></td>\r");
+			buffer.append(indent, "\t<td class=", this.cssClass + "_td ><div id=", this.getButtonId(i), " class=", buttonCssClass, //(this.valueIsSelected(choice.value) ? "_selected" : ""),
+								" onclick=\"XFG.cacheGet('", this.__id, "').onButtonClick('",choice.value,"',this,event);\">", 
+								choice.label,
+						"</div></td>\r");
 			i++;
 			if (i >= this.choices.length) break;
 		}

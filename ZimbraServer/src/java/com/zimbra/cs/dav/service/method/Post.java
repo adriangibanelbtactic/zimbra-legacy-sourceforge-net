@@ -26,8 +26,13 @@ package com.zimbra.cs.dav.service.method;
 
 import java.io.IOException;
 
+import javax.servlet.http.HttpServletResponse;
+
+import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavException;
+import com.zimbra.cs.dav.resource.DavResource;
+import com.zimbra.cs.dav.resource.UrlNamespace;
 import com.zimbra.cs.dav.service.DavMethod;
 
 public class Post extends DavMethod {
@@ -35,6 +40,28 @@ public class Post extends DavMethod {
 	public String getName() {
 		return POST;
 	}
-	public void handle(DavContext ctxt) throws DavException, IOException {
+	public void handle(DavContext ctxt) throws DavException, IOException, ServiceException {
+		String user = ctxt.getUser();
+		String name = ctxt.getItem();
+		
+		if (user == null || name == null)
+			throw new DavException("invalid uri", HttpServletResponse.SC_NOT_FOUND);
+		
+		DavResource rs = null;
+		try {
+			rs = ctxt.getRequestedResource();
+		} catch (DavException e) {
+			/* hack for iCal build 9A321 */
+			DavResource parent = UrlNamespace.getCollectionAtUrl(ctxt, ctxt.getPath());
+			if (parent.getUri() == "/") {
+				String item = ctxt.getItem();
+				if (item.equals("outbox"))
+					item = "sent";
+				rs = UrlNamespace.getResourceAt(ctxt, user, item);
+			}
+		}
+		
+		rs.handlePost(ctxt);
+		sendResponse(ctxt);
 	}
 }

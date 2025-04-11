@@ -30,9 +30,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+
+import javax.servlet.http.HttpServletResponse;
 
 import org.dom4j.Element;
 import org.dom4j.QName;
@@ -71,18 +73,17 @@ public abstract class DavResource {
 		mOwner = owner;
 		mProps = new HashMap<QName,ResourceProperty>();
 		mUri = uri;
-		mDavCompliance = new HashSet<Compliance>();
+		mDavCompliance = new TreeSet<Compliance>();
 		mDavCompliance.add(Compliance.one);
 		mDavCompliance.add(Compliance.two);
-		//mDavCompliance.add(Compliance.three);
-		//mDavCompliance.add(Compliance.access_control);
-		//mDavCompliance.add(Compliance.update);
-		//mDavCompliance.add(Compliance.binding);
+		mDavCompliance.add(Compliance.three);
+		mDavCompliance.add(Compliance.access_control);
+		mDavCompliance.add(Compliance.calendar_access);
+		mDavCompliance.add(Compliance.calendar_schedule);
 		
-		ResourceProperty rs = new ResourceProperty(DavElements.E_RESOURCETYPE);
-		if (isCollection())
-			rs.addChild(DavElements.E_COLLECTION);
-		addProperty(rs);
+		ResourceProperty rtype = new ResourceProperty(DavElements.E_RESOURCETYPE);
+		addProperty(rtype);
+
 		ResourceProperty href = new ResourceProperty(DavElements.E_HREF);
 		href.setProtected(true);
 		try {
@@ -93,6 +94,8 @@ public abstract class DavResource {
 		addProperty(href);
 		if (hasEtag())
 			setProperty(DavElements.E_GETETAG, getEtag(), true);
+		if (isCollection())
+			addResourceType(DavElements.E_COLLECTION);
 	}
 	
 	protected static String getOwner(Account acct) throws ServiceException {
@@ -126,7 +129,7 @@ public abstract class DavResource {
 	}
 
 	public Set<QName> getAllPropertyNames() {
-		HashSet<QName> ret = new HashSet<QName>();
+		Set<QName> ret = new TreeSet<QName>();
 		for (QName key : mProps.keySet())
 			if (!mProps.get(key).isProtected())
 				ret.add(key);
@@ -142,7 +145,7 @@ public abstract class DavResource {
 		return mOwner;
 	}
 	
-	public boolean hasContent() {
+	public boolean hasContent(DavContext ctxt) {
 		try {
 			return (getContentLength() > 0);
 		} catch (NumberFormatException e) {
@@ -206,7 +209,7 @@ public abstract class DavResource {
 		return true;
 	}
 	
-	public abstract InputStream getContent() throws IOException, DavException;
+	public abstract InputStream getContent(DavContext ctxt) throws IOException, DavException;
 	
 	public abstract boolean isCollection();
 	
@@ -223,7 +226,20 @@ public abstract class DavResource {
 		return null;
 	}
 	
-	public void patchProperties(DavContext ctxt, Collection<Element> set, Collection<QName> remove) throws DavException {
+	public void patchProperties(DavContext ctxt, Collection<Element> set, Collection<QName> remove) throws DavException, IOException {
 		throw new DavException("PROPPATCH not supported on "+getUri(), DavProtocol.STATUS_FAILED_DEPENDENCY, null);
+	}
+	
+	protected void addResourceType(QName type) {
+		ResourceProperty rtype = getProperty(DavElements.E_RESOURCETYPE);
+		rtype.addChild(type);
+	}
+	
+	public void handlePost(DavContext ctxt) throws DavException, IOException, ServiceException {
+		throw new DavException("the resource does not handle POST", HttpServletResponse.SC_FORBIDDEN);
+	}
+	
+	public boolean isLocal() {
+		return true;
 	}
 }

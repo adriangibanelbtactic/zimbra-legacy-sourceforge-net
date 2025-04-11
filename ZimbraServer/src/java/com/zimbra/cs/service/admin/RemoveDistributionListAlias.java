@@ -27,13 +27,13 @@ package com.zimbra.cs.service.admin;
 
 import java.util.Map;
 
-import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.DistributionList;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.DistributionListBy;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.AdminConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 public class RemoveDistributionListAlias extends AdminDocumentHandler {
@@ -50,25 +50,27 @@ public class RemoveDistributionListAlias extends AdminDocumentHandler {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
 	    Provisioning prov = Provisioning.getInstance();
 
-	    String id = request.getAttribute(AdminService.E_ID);
-        String alias = request.getAttribute(AdminService.E_ALIAS);
+	    String id = request.getAttribute(AdminConstants.E_ID);
+        String alias = request.getAttribute(AdminConstants.E_ALIAS);
 
 	    DistributionList dl = prov.get(DistributionListBy.id, id);
-        if (dl == null)
-            throw AccountServiceException.NO_SUCH_DISTRIBUTION_LIST(id);
-
-        if (!canAccessEmail(lc, dl.getName()))
-            throw ServiceException.PERM_DENIED("can not access dl");
-
+            
+        String dlName = "";
+        if (dl != null) {
+            if (!canAccessEmail(lc, dl.getName()))
+                throw ServiceException.PERM_DENIED("can not access dl");
+            dlName = dl.getName();
+        }
+        
         if (!canAccessEmail(lc, alias)) // sanity check
             throw ServiceException.PERM_DENIED("can not access email: "+alias);
         
         prov.removeAlias(dl, alias);
         
         ZimbraLog.security.info(ZimbraLog.encodeAttrs(
-                new String[] {"cmd", "RemoveDistributionListAlias", "name", dl.getName(), "alias", alias})); 
+                new String[] {"cmd", "RemoveDistributionListAlias", "name", dlName, "alias", alias})); 
         
-	    Element response = lc.createElement(AdminService.REMOVE_DISTRIBUTION_LIST_ALIAS_RESPONSE);
+	    Element response = lc.createElement(AdminConstants.REMOVE_DISTRIBUTION_LIST_ALIAS_RESPONSE);
 	    return response;
 	}
 }

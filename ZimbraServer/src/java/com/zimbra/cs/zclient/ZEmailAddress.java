@@ -26,9 +26,9 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.mailbox.MailServiceException;
-import com.zimbra.cs.service.mail.MailService;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
@@ -59,10 +59,10 @@ public class ZEmailAddress {
     }
 
     public ZEmailAddress(Element e) throws ServiceException {
-        mAddress = e.getAttribute(MailService.A_ADDRESS, null);
-        mDisplay = e.getAttribute(MailService.A_DISPLAY, null);
-        mPersonal = e.getAttribute(MailService.A_PERSONAL, null);
-        mType = e.getAttribute(MailService.A_TYPE, "");
+        mAddress = e.getAttribute(MailConstants.A_ADDRESS, null);
+        mDisplay = e.getAttribute(MailConstants.A_DISPLAY, null);
+        mPersonal = e.getAttribute(MailConstants.A_PERSONAL, null);
+        mType = e.getAttribute(MailConstants.A_TYPE, "");
     }
 
     /**

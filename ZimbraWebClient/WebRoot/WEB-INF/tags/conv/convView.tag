@@ -5,11 +5,10 @@
 <%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
 <%@ taglib prefix="app" uri="com.zimbra.htmlclient" %>
 <%@ taglib prefix="zm" uri="com.zimbra.zm" %>
-
 <app:handleError>
+    <zm:getMailbox var="mailbox"/>
     <fmt:message var="emptyFragment" key="fragmentIsEmpty"/>
     <fmt:message var="emptySubject" key="noSubject"/>
-    <zm:getMailbox var="mailbox"/>
     <c:set var="csi" value="${param.csi}"/>
     
     <zm:searchConv var="convSearchResult" id="${not empty param.cid ? param.cid : context.currentItem.id}" context="${context}" fetch="${empty csi ? 'first': 'none'}" markread="true" sort="${param.css}"/>
@@ -38,12 +37,14 @@
             </c:if>
         </c:forEach>
     </c:if>
+    <fmt:message var="unknownSender" key="unknownSender"/>
+
 </app:handleError>
 
 <%-- get the message up front, so when we output the overview tree unread counts are correctly reflected --%>
 <c:set var="ads" value='${message.subject} ${message.fragment}'/>
 
-<app:view title="${message.subject}" selected='mail' context="${context}" folders="true" tags="true" searches="true" ads="${initParam.zimbraShowAds != 0 ? ads : ''}" keys="true">
+<app:view mailbox="${mailbox}" title="${message.subject}" selected='mail' context="${context}" folders="true" tags="true" searches="true" ads="${initParam.zimbraShowAds != 0 ? ads : ''}" keys="true">
     <zm:currentResultUrl var="currentUrl" value="search" action="view" cid="${convSummary.id}" context="${context}" csi="${param.csi}" cso="${param.cso}" css="${param.css}"/>
     <form action="${currentUrl}" method="post" name="zform">
         <table width=100% cellpadding=0 cellspacing=0>
@@ -110,7 +111,10 @@
                                                         <td class='Img'><app:miniTagImage ids="${hit.messageHit.tagIds}"/></td>
                                                     </c:if>
                                                     <td class='MsgStatusImg' align=center><app:img src="${(hit.messageHit.isUnread and hit.id == message.id) ? 'mail/MsgStatusRead.gif' : hit.messageHit.statusImage}" altkey="${(hit.messageHit.isUnread and hit.id == message.id) ? 'ALT_MSG_STATUS_READ' : hit.messageHit.statusImageAltKey}"/></td>
-                                                    <td nowrap><a href="${msgUrl}">${fn:escapeXml(hit.messageHit.displaySender)}</a></td>
+                                                    <td nowrap><a href="${msgUrl}">
+                                                        <c:set var="sender" value="${hit.messageHit.displaySender}"/>
+                                                            ${fn:escapeXml(empty sender ? unknownSender : sender)}
+                                                    </a></td>
                                                     <td class='Img' ><app:attachmentImage attachment="${hit.messageHit.hasAttachment}"/></td>
                                                     <td ><%-- allow this column to wrap --%>
                                                         <a href="${msgUrl}"><span style='overflow: hidden;'>${fn:escapeXml(empty hit.messageHit.fragment ? emptyFragment : zm:truncate(hit.messageHit.fragment,100, true))}</span></a>
@@ -118,11 +122,11 @@
                                                             <zm:computeNextPrevItem var="messCursor" searchResult="${convSearchResult}" index="${status.index}"/>
                                                             <c:if test="${messCursor.hasPrev}">
                                                                 <zm:currentResultUrl var="prevMsgUrl" value="search" action='view' context="${context}" cso="${messCursor.prevOffset}" csi="${messCursor.prevIndex}" css="${param.css}"/>
-                                                                <a href="${prevMsgUrl}" accesskey='k'></a>
+                                                                <a href="${prevMsgUrl}" accesskey='k' id="PREV_ITEM"></a>
                                                             </c:if>
                                                             <c:if test="${messCursor.hasNext}">
                                                                 <zm:currentResultUrl var="nextMsgUrl" value="search"  action="view" context="${context}" cso="${messCursor.nextOffset}" csi="${messCursor.nextIndex}" css="${param.css}"/>
-                                                                <a href="${nextMsgUrl}" accesskey='j'></a>
+                                                                <a href="${nextMsgUrl}" accesskey='j' id="NEXT_ITEM"></a>
                                                             </c:if>
                                                         </c:if>
                                                     </td>
@@ -160,4 +164,28 @@
             <input type="hidden" name="doMessageAction" value="1"/>
         </table>
     </form>
+
+<%--
+    <app:keyboard>
+        <zm:keyboardBindings>
+            <zm:bindKey key="C" id="TAB_COMPOSE"/>
+            <zm:bindKey key="N,M" id="TAB_COMPOSE"/>
+            <zm:bindKey key="G,C" id="TAB_CALENDAR"/>
+            <zm:bindKey key="G,A" id="TAB_ADDRESSBOOK"/>
+            <zm:bindKey key="G,M" id="TAB_MAIL"/>
+            <zm:bindKey key="G,O" id="TAB_OPTIONS"/>
+            <zm:bindKey key="R" id="OPREPLY"/>
+            <zm:bindKey key="A" id="OPREPLYALL"/>
+            <zm:bindKey key="F" id="OPFORW"/>
+            <zm:bindKey key="Esc; Z" id="CLOSE_ITEM"/>
+            <zm:bindKey key="Enter; O" id="CURR_ITEM"/>
+            <zm:bindKey key="Shift+ArrowUp; K" id="PREV_ITEM"/>
+            <zm:bindKey key="Shift+ArrowDown; J" id="NEXT_ITEM"/>
+            <zm:bindKey key="Shift+ArrowLeft; H" id="PREV_PAGE"/>
+            <zm:bindKey key="Shift+ArrowRight; L" id="NEXT_PAGE"/>
+            <zm:bindKey key="Ctrl+Shift+ArrowLeft; Shift+H" id="PREV_CONV"/>
+            <zm:bindKey key="Ctrl+Shift+ArrowRight; Shift+L" id="NEXT_CONV"/>
+        </zm:keyboardBindings>
+    </app:keyboard>
+    --%>
 </app:view>

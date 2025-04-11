@@ -183,6 +183,10 @@ Access: domain admin sufficient
 
 <DeleteAccountResponse/>
 
+Deletes the account with the given id.  If the request is sent
+to the server on which the mailbox resides, the mailbox is
+deleted as well.
+
 Access: domain admin sufficient
 
 -----------------------------
@@ -198,10 +202,21 @@ Access: domain admin sufficient
 
 -----------------------------
 
+<CheckPasswordStrengthRequest>
+  <id>{value-of-zimbraId}</id>
+  <password>...</password>
+</CheckPasswordStrengthRequest>
+
+<CheckPasswordStrengthResponse/>
+
+Access: domain admin sufficient
+
+-----------------------------
+
 <AddAccountAliasRequest>
   <id>{value-of-zimbraId}</id>
   <alias>...</alias>
-</AddAliasRequest>
+</AddAccountAliasRequest>
 
 <AddAccountAliasResponse/>
 
@@ -309,7 +324,7 @@ Notes: admin verison of mail equiv. Used for testing via zmprov.
   <account name="{name}" id="{id}">
     <a n="...">...</a>+
   </account>
-  <alias name="{name}" id="{id}">
+  <alias name="{name}" id="{id} type="account|distributionlist|resource" targetName={target-name}">
     <a n="...">...</a>+  
   </alias>
   <dl name="{name}" id="{id}>
@@ -742,12 +757,11 @@ significantly since the last table maintenance.
 
 Runs the server-side unit test suite.
 
-<UnitTestRequest/>
+<UnitTesstRequest/>
 
-</UnitTestResponse
-    numExecuted="{number of tests that were executed}"
-    numFailed="{number of failed tests}"
-    output="{test output}"/>
+<UnitTestsResponse numExecuted="{n}" numFailed="{n}">
+    { Summary of test execution times and success/failure status }
+</UnitTestsResponse>
 
 -----------------------------
 All the Check* SOAP calls potentially return the following two things:
@@ -1260,11 +1274,54 @@ Notes:
 
 -----------------------------
 
-<DumpSessionsRequest>
+<DumpSessionsRequest [listSessions="1"] [groupByAccount="1"]/>
 
-<DumpSessionsResponse>
-   Session State Dump
+<DumpSessionsResponse activeSessions="count">
+   <soap activeSessions="count" activeAccounts="count">
+   [ if listSessions set:
+      [
+        <s zid="accountId" name="accountName" sid="sessionId" cd="creationDate" ld="lastAccessedDate"
+           SOAP-SPECIFIC-PARAMETERS, e.g. [notify="0" if noNotify is set]...</s>
+      ]
+      OR (depends on groupByAccount setting)
+      [
+         <zid id="accountId" name="accountName">
+            <s sid="sessionId" cd="creationDate" ld="lastAccessedDate/>*
+         </zid>*
+      ]
+   ]
+   </soap>
+   
+   <imap>...</imap>
+   <admin>...</admin>
 </DumpSessionsResponse>
+
+If accountName is unvailable for some reason, it will be set to the same as accountId.
+
+-----------------------------
+
+<GetSessionsRequest type="{session-type}" refresh="0|1"
+  [limit="..."] [offset="..."] [sortBy="{sort-by}"]/>
+
+<GetSessionsResponse more="{more-flag}" [total="{total}"]>
+  <s zid="accountId" name="accountName" sid="sessionId" cd="creationDate" ld="lastAccessedDate"/>
+</GetSessionsResponse>
+
+Notes:
+
+GetSessionsRequest
+
+    type = soap|imap|admin
+    refresh = if 1, ignore any cached results and start fresh.
+	limit - the number of sessions to return per page (0 is default and means all)
+	offset - the starting offset (0, 25, etc)
+	sortBy - nameAsc, nameDesc, createdAsc, createdDesc, accessedAsc, accessedDesc
+
+    more-flag = true if more sessions left to return
+    total = total number of accounts that matched search (not affected by limit/offset)
+
+
+Access: domain admin sufficient (though a domain admin can't specify "domains" as a type)
 
 -----------------------------
 
@@ -1660,3 +1717,81 @@ Fix timezone definitions in appointments and tasks to reflect changes in
 daylight savings time rules in various timezones.
 
 ---------------------------
+
+The WaitSet APIs are now in the urn:zimbraMail namespace, and are documented
+in soap-waitset.txt
+
+***See soap-waitset.txt for WaitSet API documentation***
+
+---------------------------
+
+# returns admin saved searches.
+
+<GetAdminSavedSearchesRequest>
+  <search name="{search-name}"/>*
+</GetAdminSavedSearchesRequest>
+  
+  If no <search> is present server will return all saved searches.
+
+<GetAdminSavedSearchesResponse>
+  <search name="{search-name}">{{search-query}}</search>*
+</GetAdminSavedSearchesResponse>
+
+---------------------------
+
+# modifies admin saved searches.
+
+# returns the admin saved searches.
+<ModifyAdminSavedSearchesRequest>
+  {<search name="{search-name}">{search-query}</search>}+
+</ModifyAdminSavedSearchesRequest>
+
+  If {search-query} is empty => delete the search if it exists
+  If {search-name} already exists => replace with new {search-query}
+  If {search-name} does not exist => save as a new search
+
+<ModifyAdminSavedSearchesResponse/>
+
+-----------------------------
+
+# Changes logging settings on a per-account basis.
+
+<AddAccountLoggerRequest>
+  <account by="id|name">...</account>
+  <logger category="{category-name}" level="debug|info|warn|error"/>
+</AddAccountLoggerRequest>
+
+<AddAccountLoggerResponse/>
+
+  Adds a custom logger for the given account and log category.  The logger
+  stays in effect only during the lifetime of the current server instance.
+
+<RemoveAccountLoggerRequest>
+  <account by="id|name">...</account>
+  <logger category="{category-name}"/>
+</RemoveAccountLoggerRequest>
+
+<RemoveAccountLoggerResponse/>
+
+  Removes a custom logger from the given account.
+
+-----------------------------
+
+# Check existence of one or more directories and optionally create them.
+
+<CheckDirectoryRequest>
+  <directory path="{path}" [create="0|1"]/>+
+</CheckDirectoryRequest>
+
+  path = full path to the directory
+  create = default 0; if 1, create the directory if it doesn't exist
+
+<CheckDirectoryResponse>
+  <directory path="{path}"			// same path as in the request
+             exists="1|0"			// path exists, or not
+             isDirectory="1|0"		// path is a directory, or not
+             readable="1|0"			// path is readable, or not
+             writable="1|0"/>+		// path is writable, or not
+</CheckDirectoryResponse>
+
+-----------------------------

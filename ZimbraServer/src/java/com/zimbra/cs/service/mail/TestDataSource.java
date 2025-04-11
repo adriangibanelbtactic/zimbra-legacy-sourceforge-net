@@ -28,13 +28,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.DataSource;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Provisioning.DataSourceBy;
-import com.zimbra.cs.mailbox.DataSourceManager;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.cs.datasource.DataSourceManager;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -47,15 +48,16 @@ public class TestDataSource extends MailDocumentHandler {
         Provisioning prov = Provisioning.getInstance();
         Account account = getRequestedAccount(zsc);
         
-        if (!canAccessAccount(zsc, account))
-            throw ServiceException.PERM_DENIED("can not access account");
+        canModifyOptions(zsc, account);
 
         Map<String, Object> testAttrs = new HashMap<String, Object>();
         String testId = "TestId";
         
         // Parse request
-        Element ePop3 = request.getElement(MailService.E_DS_POP3);
-        String id = ePop3.getAttribute(MailService.A_ID, null);
+        Element eDataSource = CreateDataSource.getDataSourceElement(request);
+        DataSource.Type type = DataSource.Type.fromString(eDataSource.getName());
+
+        String id = eDataSource.getAttribute(MailConstants.A_ID, null);
         String password = null;
         if (id != null) {
             // Testing existing data source
@@ -72,23 +74,23 @@ public class TestDataSource extends MailDocumentHandler {
 
         // Get values from SOAP request.  If testing an existing data source,
         // values in the request override the persisted values.
-        String value = ePop3.getAttribute(MailService.A_DS_HOST, null);
+        String value = eDataSource.getAttribute(MailConstants.A_DS_HOST, null);
         if (value != null) {
             testAttrs.put(Provisioning.A_zimbraDataSourceHost, value);
         }
-        value = ePop3.getAttribute(MailService.A_DS_PORT, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_PORT, null);
         if (value != null) {
             testAttrs.put(Provisioning.A_zimbraDataSourcePort, value);
         }
-        value = ePop3.getAttribute(MailService.A_DS_CONNECTION_TYPE, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_CONNECTION_TYPE, null);
         if (value != null) {
             testAttrs.put(Provisioning.A_zimbraDataSourceConnectionType, value);
         }
-        value = ePop3.getAttribute(MailService.A_DS_USERNAME, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_USERNAME, null);
         if (value != null) {
             testAttrs.put(Provisioning.A_zimbraDataSourceUsername, value);
         }
-        value = ePop3.getAttribute(MailService.A_DS_PASSWORD, null);
+        value = eDataSource.getAttribute(MailConstants.A_DS_PASSWORD, null);
         if (value != null) {
             password = value;
         }
@@ -103,16 +105,20 @@ public class TestDataSource extends MailDocumentHandler {
         testAttrs.put(Provisioning.A_zimbraDataSourcePassword, DataSource.encryptData(testId, password));
         
         // Perform test and assemble response
-        DataSource ds = new DataSource(DataSource.Type.pop3, "Test", testId, testAttrs);
-        Element response = zsc.createElement(MailService.TEST_DATA_SOURCE_RESPONSE);
-        ePop3 = response.addElement(MailService.E_DS_POP3);
+        DataSource ds = new DataSource(type, "Test", testId, testAttrs);
+        Element response = zsc.createElement(MailConstants.TEST_DATA_SOURCE_RESPONSE);
+        if (type == DataSource.Type.imap) {
+            eDataSource = response.addElement(MailConstants.E_DS_IMAP);
+        } else {
+            eDataSource = response.addElement(MailConstants.E_DS_POP3);
+        }
         
         String error = DataSourceManager.test(ds);
         if (error == null) {
-            ePop3.addAttribute(MailService.A_DS_SUCCESS, true);
+            eDataSource.addAttribute(MailConstants.A_DS_SUCCESS, true);
         } else {
-            ePop3.addAttribute(MailService.A_DS_SUCCESS, false);
-            ePop3.addAttribute(MailService.A_DS_ERROR, error);
+            eDataSource.addAttribute(MailConstants.A_DS_SUCCESS, false);
+            eDataSource.addAttribute(MailConstants.A_DS_ERROR, error);
         }
         
         return response;

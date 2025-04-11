@@ -1,5 +1,4 @@
 # .bash_profile
-umask 0027
 
 # Get the aliases and functions
 if [ -f ~/.bashrc ]; then

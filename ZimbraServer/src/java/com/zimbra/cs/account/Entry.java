@@ -52,18 +52,18 @@ public abstract class Entry {
         mDefaults = defaults;
     }
     
-    public synchronized void setAttrs(Map<String,Object> attrs, Map<String,Object> defaults) {
+    public void setAttrs(Map<String,Object> attrs, Map<String,Object> defaults) {
         mAttrs = attrs;
         mDefaults = defaults;
         resetData();
     }
     
-    public synchronized void setAttrs(Map<String,Object> attrs) {
+    public void setAttrs(Map<String,Object> attrs) {
         mAttrs = attrs;
         resetData();
     }
     
-    public synchronized void setDefaults(Map<String,Object> defaults) {
+    public void setDefaults(Map<String,Object> defaults) {
         mDefaults = defaults;
         resetData();
     }

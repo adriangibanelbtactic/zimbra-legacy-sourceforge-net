@@ -26,13 +26,14 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.mail.MailService;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.zclient.event.ZModifyContactEvent;
 import com.zimbra.cs.zclient.event.ZModifyEvent;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
 
 public class ZContact implements ZItem {
 
@@ -60,6 +61,7 @@ public class ZContact implements ZItem {
     private String mRevision;
     private long mMetaDataChangedDate;
     private Map<String, String> mAttrs;
+    private boolean mGalContact;
 
     public enum Flag {
         flagged('f'),
@@ -91,16 +93,21 @@ public class ZContact implements ZItem {
         }
     }
 
+    public ZContact(Element e, boolean galContact) throws ServiceException {
+        this(e);
+        mGalContact = galContact;
+    }
+
     public ZContact(Element e) throws ServiceException {
-        mId = e.getAttribute(MailService.A_ID);
-        mFolderId = e.getAttribute(MailService.A_FOLDER, null);
-        mFlags = e.getAttribute(MailService.A_FLAGS, null);
-        mTagIds = e.getAttribute(MailService.A_TAGS, null);
-        mRevision = e.getAttribute(MailService.A_REVISION, null);
-        mMetaDataChangedDate = e.getAttributeLong(MailService.A_MODIFIED_DATE, 0) * 1000;
+        mId = e.getAttribute(MailConstants.A_ID);
+        mFolderId = e.getAttribute(MailConstants.A_FOLDER, null);
+        mFlags = e.getAttribute(MailConstants.A_FLAGS, null);
+        mTagIds = e.getAttribute(MailConstants.A_TAGS, null);
+        mRevision = e.getAttribute(MailConstants.A_REVISION, null);
+        mMetaDataChangedDate = e.getAttributeLong(MailConstants.A_MODIFIED_DATE, 0) * 1000;
         mAttrs = new HashMap<String, String>();
-        for (Element a : e.listElements(MailService.E_ATTRIBUTE)) {
-            mAttrs.put(a.getAttribute(MailService.A_ATTRIBUTE_NAME), a.getText());
+        for (Element a : e.listElements(MailConstants.E_ATTRIBUTE)) {
+            mAttrs.put(a.getAttribute(MailConstants.A_ATTRIBUTE_NAME), a.getText());
         }
     }
 
@@ -110,6 +117,16 @@ public class ZContact implements ZItem {
 
     public String getId() {
         return mId;
+    }
+
+    public boolean isGalContact() {
+        return mGalContact;
+    }
+
+    public boolean getIsGroup() { return getAttrs().get("dlist") != null; }
+
+    public List<ZEmailAddress> getGroupMembers() throws ServiceException {
+        return ZEmailAddress.parseAddresses(getAttrs().get("dlist"), ZEmailAddress.EMAIL_TYPE_TO);
     }
 
     public String toString() {

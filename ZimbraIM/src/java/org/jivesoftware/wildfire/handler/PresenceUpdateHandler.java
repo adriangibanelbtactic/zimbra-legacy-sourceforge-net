@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: PresenceUpdateHandler.java,v $
+ * $Revision: 3125 $
+ * $Date: 2005-11-30 15:14:14 -0300 (Wed, 30 Nov 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.handler;
 
 import org.jivesoftware.util.ConcurrentHashSet;
@@ -192,6 +179,7 @@ public class PresenceUpdateHandler extends BasicModule implements ChannelHandler
      * This includes:
      * <ul>
      * <li>Sending all offline presence subscription requests</li>
+     * <li>Probe the presence for all of this sessions RosterItems</li>
      * <li>Sending offline messages</li>
      * </ul>
      *
@@ -201,8 +189,8 @@ public class PresenceUpdateHandler extends BasicModule implements ChannelHandler
     private void initSession(ClientSession session)  throws UserNotFoundException {
 
         // Only user sessions need to be authenticated
-        if (userManager.isRegisteredUser(session.getAddress().getNode())) {
-            String username = session.getAddress().getNode();
+        if (userManager.isRegisteredUser(session.getAddress().toBareJID())) {
+            String username = session.getAddress().toBareJID();
 
             // Send pending subscription requests to user if roster service is enabled
             if (RosterManager.isRosterServiceEnabled()) {
@@ -264,7 +252,7 @@ public class PresenceUpdateHandler extends BasicModule implements ChannelHandler
                 return;
             }
             // Local updates can simply run through the roster of the local user
-            String name = update.getFrom().getNode();
+            String name = update.getFrom().toBareJID();
             try {
                 if (name != null && !"".equals(name)) {
                     Roster roster = rosterManager.getRoster(name);
@@ -282,7 +270,7 @@ public class PresenceUpdateHandler extends BasicModule implements ChannelHandler
             // Foreign updates will do a reverse lookup of entries in rosters
             // on the server
             Log.warn("Presence requested from server "
-                    + localServer.getServerInfo().getName()
+                    + localServer.getServerInfo().getDefaultName()
                     + " by unknown user: " + update.getFrom());
             /*
             Connection con = null;
@@ -331,7 +319,7 @@ public class PresenceUpdateHandler extends BasicModule implements ChannelHandler
         if (localServer.isLocal(update.getFrom())) {
             boolean keepTrack = false;
             WeakHashMap<ChannelHandler, Set<String>> map;
-            String name = update.getFrom().getNode();
+            String name = update.getFrom().toBareJID();
             if (name != null && !"".equals(name)) {
                 // Keep track of all directed presences if roster service is disabled
                 if (!RosterManager.isRosterServiceEnabled()) {

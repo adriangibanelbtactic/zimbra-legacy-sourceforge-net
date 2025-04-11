@@ -1,29 +1,17 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: ConnectionManagerImpl.java,v $
+ * $Revision: 3159 $
+ * $Date: 2005-12-04 22:56:40 -0300 (Sun, 04 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.spi;
 
+import org.apache.mina.common.IoSession;
 import org.jivesoftware.util.JiveGlobals;
 import org.jivesoftware.util.LocaleUtils;
 import org.jivesoftware.util.Log;
@@ -53,8 +41,6 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
     private PacketDeliverer deliverer;
     private PacketRouter router;
     private RoutingTable routingTable;
-    private String serverName;
-    private XMPPServer server;
     private String localIPAddress = null;
 
     // Used to know if the sockets can be started (the connection manager has been started)
@@ -69,8 +55,7 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
 
     private void createSocket() {
         if (!isStarted || isSocketStarted || sessionManager == null || deliverer == null ||
-                router == null ||
-                serverName == null)
+                router == null)
         {
             return;
         }
@@ -102,8 +87,9 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
         if (isServerListenerEnabled()) {
             int port = getServerListenerPort();
             try {
-                serverSocketThread = new SocketAcceptThread(this, new ServerPort(port, serverName,
-                        localIPAddress, false, null, ServerPort.Type.server));
+                serverSocketThread = new SocketAcceptThread(this, 
+                            new ServerPort(port, XMPPServer.getInstance().getServerNames(),
+                                        localIPAddress, false, null, ServerPort.Type.server));
                 ports.add(serverSocketThread.getServerPort());
                 serverSocketThread.setDaemon(true);
                 serverSocketThread.setPriority(Thread.MAX_PRIORITY);
@@ -135,7 +121,7 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
             int port = getConnectionManagerListenerPort();
             try {
                 multiplexerSocketThread = new SocketAcceptThread(this, new ServerPort(port,
-                        serverName, localIPAddress, false, null,
+                        XMPPServer.getInstance().getServerNames(), localIPAddress, false, null,
                         ServerPort.Type.connectionManager));
                 ports.add(multiplexerSocketThread.getServerPort());
                 multiplexerSocketThread.setDaemon(true);
@@ -168,7 +154,7 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
             int port = getComponentListenerPort();
             try {
                 componentSocketThread = new SocketAcceptThread(this, new ServerPort(port,
-                        serverName, localIPAddress, false, null, ServerPort.Type.component));
+                            XMPPServer.getInstance().getServerNames(), localIPAddress, false, null, ServerPort.Type.component));
                 ports.add(componentSocketThread.getServerPort());
                 componentSocketThread.setDaemon(true);
                 componentSocketThread.setPriority(Thread.MAX_PRIORITY);
@@ -200,7 +186,7 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
             int port = getClientListenerPort();
 
             try {
-                socketThread = new SocketAcceptThread(this, new ServerPort(port, serverName,
+                socketThread = new SocketAcceptThread(this, new ServerPort(port, XMPPServer.getInstance().getServerNames(),
                         localIPAddress, false, null, ServerPort.Type.client));
                 ports.add(socketThread.getServerPort());
                 socketThread.setDaemon(true);
@@ -236,7 +222,7 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
                 algorithm = "TLS";
             }
             try {
-                sslSocketThread = new SSLSocketAcceptThread(this, new ServerPort(port, serverName,
+                sslSocketThread = new SSLSocketAcceptThread(this, new ServerPort(port, XMPPServer.getInstance().getServerNames(),
                         localIPAddress, true, algorithm, ServerPort.Type.client));
                 ports.add(sslSocketThread.getServerPort());
                 sslSocketThread.setDaemon(true);
@@ -267,37 +253,51 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
         return ports.iterator();
     }
 
-    public SocketReader createSocketReader(Socket sock, boolean isSecure, ServerPort serverPort,
-            boolean useBlockingMode) throws IOException {
+    public SocketReader createSocketReader(Socket sock, boolean isSecure, ServerPort serverPort) throws IOException {
         if (serverPort.isClientPort()) {
-            SocketConnection conn = new SocketConnection(deliverer, sock, isSecure);
-            return new ClientSocketReader(router, routingTable, serverName, sock, conn,
-                    useBlockingMode);
+            SocketConnection conn = new StdSocketConnection(deliverer, sock, isSecure);
+            return new ClientSocketReader(router, routingTable, sock, conn);
+        } else if (serverPort.isComponentPort()) {
+            SocketConnection conn = new StdSocketConnection(deliverer, sock, isSecure);
+            return new ComponentSocketReader(router, routingTable, sock, conn);
+        } else if (serverPort.isServerPort()) {
+            SocketConnection conn = new StdSocketConnection(deliverer, sock, isSecure);
+            return new ServerSocketReader(router, routingTable, sock, conn);
+        } else {
+            // Use the appropriate packeet deliverer for connection managers. The packet
+            // deliverer will be configured with the domain of the connection manager once
+            // the connection manager has finished the handshake.
+            SocketConnection conn = new StdSocketConnection(new MultiplexerPacketDeliverer(), sock, isSecure);
+            return new ConnectionMultiplexerSocketReader(router, routingTable, sock, conn);
+        }
+    }
+    
+    public SocketReader createSocketReader(IoSession nioSocket, boolean isSecure, ServerPort serverPort)
+    throws IOException 
+    {
+        if (serverPort.isClientPort()) {
+            SocketConnection conn = new NioSocketConnection(deliverer, nioSocket, isSecure);
+            return new ClientSocketReader(router, routingTable, nioSocket, conn);
         }
         else if (serverPort.isComponentPort()) {
-            SocketConnection conn = new SocketConnection(deliverer, sock, isSecure);
-            return new ComponentSocketReader(router, routingTable, serverName, sock, conn,
-                    useBlockingMode);
+            SocketConnection conn = new NioSocketConnection(deliverer, nioSocket, isSecure);
+            return new ComponentSocketReader(router, routingTable, nioSocket, conn);
         }
         else if (serverPort.isServerPort()) {
-            SocketConnection conn = new SocketConnection(deliverer, sock, isSecure);
-            return new ServerSocketReader(router, routingTable, serverName, sock, conn,
-                    useBlockingMode);
+            SocketConnection conn = new NioSocketConnection(deliverer, nioSocket, isSecure);
+            return new ServerSocketReader(router, routingTable, nioSocket, conn);
         }
         else {
             // Use the appropriate packeet deliverer for connection managers. The packet
             // deliverer will be configured with the domain of the connection manager once
-            // the connection manager has finished the handshake.
-            SocketConnection conn =
-                    new SocketConnection(new MultiplexerPacketDeliverer(), sock, isSecure);
-            return new ConnectionMultiplexerSocketReader(router, routingTable, serverName, sock,
-                    conn, useBlockingMode);
+            // the connection manager has finished the handshake. 
+            SocketConnection conn = new NioSocketConnection(new MultiplexerPacketDeliverer(), nioSocket, isSecure);
+            return new ConnectionMultiplexerSocketReader(router, routingTable, nioSocket, conn);
         }
     }
-
+    
     public void initialize(XMPPServer server) {
         super.initialize(server);
-        this.server = server;
         router = server.getPacketRouter();
         routingTable = server.getRoutingTable();
         deliverer = server.getPacketDeliverer();
@@ -511,7 +511,6 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
     public void start() {
         super.start();
         isStarted = true;
-        serverName = server.getServerInfo().getName();
         createSocket();
         SocketSendingTracker.getInstance().start();
     }
@@ -524,6 +523,5 @@ public class ConnectionManagerImpl extends BasicModule implements ConnectionMana
         stopConnectionManagerListener();
         stopServerListener();
         SocketSendingTracker.getInstance().shutdown();
-        serverName = null;
     }
 }

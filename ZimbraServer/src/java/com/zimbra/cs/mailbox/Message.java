@@ -29,8 +29,8 @@
 package com.zimbra.cs.mailbox;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -44,6 +44,7 @@ import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.mailbox.calendar.*;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ICalTok;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
+import com.zimbra.cs.mime.ParsedAddress;
 import com.zimbra.cs.mime.ParsedMessage;
 import com.zimbra.cs.mime.TnefConverter;
 import com.zimbra.cs.redolog.op.IndexItem;
@@ -126,26 +127,17 @@ public class Message extends MailItem {
      */
     Message(Mailbox mbox, UnderlyingData ud) throws ServiceException {
         super(mbox, ud);
-        if (mData.type != TYPE_MESSAGE)
+        if (mData.type != TYPE_MESSAGE  && mData.type != TYPE_CHAT)
             throw new IllegalArgumentException();
         if (mData.parentId < 0)
             mData.parentId = -mId;
     }
-
+    
     /** Returns whether the Message was created as a draft.  Note that this
      *  can only be set when the Message is created; it cannot be altered
      *  thereafter. */
     public boolean isDraft() {
         return isTagged(mMailbox.mDraftFlag);
-    }
-
-    /**
-     * Returns <code>From:</code> address if available; if not, returns
-     * <code>Sender:</code> address.
-     * @return
-     */
-    public String getSender() {
-        return (mSender == null ? "" : mSender);
     }
 
     /** Returns the <code>To:</code> header of the message, if the message
@@ -174,10 +166,29 @@ public class Message extends MailItem {
     }
 
     /** Returns the raw subject of the message.  This is taken directly from
-     *  the <code>Subject:</code> header with no processing. */
+     *  the <tt>Subject:</tt> header with no processing. */
     @Override
     public String getSubject() {
         return (mRawSubject == null ? "" : mRawSubject);
+    }
+
+    /** Returns the <tt>From:</tt> header of the message if available;
+     *  if not, returns the <tt>Sender:</tt> header. */
+    @Override
+    public String getSender() {
+        return (mSender == null ? "" : mSender);
+    }
+
+    @Override
+    public String getSortSubject() {
+        String subject = getNormalizedSubject();
+        return subject.toUpperCase().substring(0, Math.min(DbMailItem.MAX_SUBJECT_LENGTH, subject.length()));
+    }
+
+    @Override
+    public String getSortSender() {
+        String sender = new ParsedAddress(getSender()).getSortString();
+        return sender.toUpperCase().substring(0, Math.min(DbMailItem.MAX_SENDER_LENGTH, sender.length()));
     }
 
     /** Returns whether the Message was sent by the owner of this mailbox.
@@ -229,11 +240,18 @@ public class Message extends MailItem {
 
     /** Returns whether the Message has a vCal attachment. */
     public boolean isInvite() {
+        return (mData.flags & Flag.BITMASK_INVITE) != 0;
+    }
+    
+    public boolean hasCalendarItemInfos() {
         return mCalendarItemInfos != null;
     }
 
     public Iterator<CalendarItemInfo> getCalendarItemInfoIterator() {
-        return mCalendarItemInfos.iterator();
+        if (mCalendarItemInfos != null)
+            return mCalendarItemInfos.iterator();
+        else
+            return new ArrayList<CalendarItemInfo>().iterator();
     }
 
     public CalendarItemInfo getCalendarItemInfo(int componentId) {
@@ -242,31 +260,6 @@ public class Message extends MailItem {
             return mCalendarItemInfos.get(componentId);
         else
             return null;
-    }
-
-    /** Returns an {@link InputStream} of the raw, uncompressed content of
-     *  the message.  This is the message body as received via SMTP; no
-     *  postprocessing has been performed to make opaque attachments (e.g.
-     *  TNEF) visible.
-     * 
-     * @return The InputStream fetched from the {@link MessageCache}.
-     * @throws ServiceException when the message file does not exist.
-     * @see #getMimeMessage()
-     * @see #getMessageContent() */
-    public InputStream getRawMessage() throws ServiceException {
-        return MessageCache.getRawContent(this);
-    }
-
-    /** Returns the raw, uncompressed content of the message as a byte array.
-     *  This is the message body as received via SMTP; no postprocessing has
-     *  been performed to make opaque attachments (e.g. TNEF) visible.
-     * 
-     * @return The InputStream returned by the {@link MessageCache}.
-     * @throws ServiceException when the message file does not exist.
-     * @see #getMimeMessage()
-     * @see #getRawMessage() */
-    public byte[] getMessageContent() throws ServiceException {
-        return MessageCache.getItemContent(this);
     }
 
     /** Returns a JavaMail {@link javax.mail.internet.MimeMessage}
@@ -279,8 +272,8 @@ public class Message extends MailItem {
      * @throws ServiceException when errors occur opening, reading,
      *                          uncompressing, or parsing the message file,
      *                          or when the file does not exist.
-     * @see #getRawMessage()
-     * @see #getMessageContent()
+     * @see MailItem#getContentStream()
+     * @see MailItem#getContent()
      * @see TnefConverter
      * @see UUEncodeConverter */
     public MimeMessage getMimeMessage() throws ServiceException {
@@ -298,28 +291,45 @@ public class Message extends MailItem {
      * @throws ServiceException when errors occur opening, reading,
      *                          uncompressing, or parsing the message file,
      *                          or when the file does not exist.
-     * @see #getRawMessage()
-     * @see #getMessageContent()
+     * @see #getContentStream()
+     * @see #getContent()
      * @see TnefConverter
      * @see UUEncodeConverter */
     public MimeMessage getMimeMessage(boolean runConverters) throws ServiceException {
         return MessageCache.getMimeMessage(this, runConverters);
     }
 
-    boolean isTaggable()      { return true; }
-    boolean isCopyable()      { return true; }
-    boolean isMovable()       { return true; }
-    boolean isMutable()       { return isTagged(mMailbox.mDraftFlag); }
-    boolean isIndexed()       { return true; }
-    boolean canHaveChildren() { return false; }
+    @Override boolean isTaggable()      { return true; }
+    @Override boolean isCopyable()      { return true; }
+    @Override boolean isMovable()       { return true; }
+    @Override boolean isMutable()       { return isTagged(mMailbox.mDraftFlag); }
+    @Override boolean isIndexed()       { return true; }
+    @Override boolean canHaveChildren() { return false; }
 
-    boolean canParent(MailItem item)  { return false; }
+    @Override boolean canParent(MailItem item)  { return false; }
 
-
+    static class MessageCreateFactory {
+        Message create(Mailbox mbox, UnderlyingData data) throws ServiceException {
+            return new Message(mbox, data);
+        }
+        
+        byte getType() {
+            return TYPE_MESSAGE;
+        }
+    }
+    
     static Message create(int id, Folder folder, Conversation conv, ParsedMessage pm,
                           int msgSize, String digest, short volumeId, boolean unread,
                           int flags, long tags, DraftInfo dinfo, boolean noICal, ZVCalendar cal)  
     throws ServiceException {
+        return createInternal(id, folder, conv, pm, msgSize, digest, volumeId, unread, 
+                    flags, tags, dinfo, noICal, cal,new MessageCreateFactory());
+    }
+    
+    protected static Message createInternal(int id, Folder folder, Conversation conv, ParsedMessage pm,
+                int msgSize, String digest, short volumeId, boolean unread,
+                int flags, long tags, DraftInfo dinfo, boolean noICal, ZVCalendar cal, 
+                MessageCreateFactory fact) throws ServiceException {
         if (folder == null || !folder.canContain(TYPE_MESSAGE))
             throw MailServiceException.CANNOT_CONTAIN();
         if (!folder.canAccess(ACL.RIGHT_INSERT))
@@ -348,6 +358,9 @@ public class Message extends MailItem {
             try {
                 components = Invite.createFromCalendar(acct, pm.getFragment(), cal, sentByMe, mbox, id);
                 methodStr = cal.getPropVal(ICalTok.METHOD, ICalTok.PUBLISH.toString());
+                if (components != null) {
+                    flags |= Flag.BITMASK_INVITE;
+                }
             } catch (Exception e) {
                 ZimbraLog.calendar.warn("Unable to process iCalendar attachment", e);
             }
@@ -355,7 +368,7 @@ public class Message extends MailItem {
 
         UnderlyingData data = new UnderlyingData();
         data.id          = id;
-        data.type        = TYPE_MESSAGE;
+        data.type        = fact.getType();
         if (conv != null)
             data.parentId = conv.getId();
         data.folderId    = folder.getId();
@@ -373,12 +386,12 @@ public class Message extends MailItem {
         data.unreadCount = unread ? 1 : 0; 
         data.contentChanged(mbox);
         DbMailItem.create(mbox, data);
-        Message msg = new Message(mbox, data);
+        Message msg = fact.create(mbox, data);
 
         // process the components in this invite (must do this last so blob is created, etc)
         if (components != null) {
             try {
-                msg.processInvitesAfterCreate(methodStr.toUpperCase(), folder.getId(), volumeId, !noICal, pm, components);
+                msg.processInvitesAfterCreate(methodStr, folder.getId(), volumeId, !noICal, pm, components);
             } catch (Exception e) {
                 ZimbraLog.calendar.warn("Unable to process iCalendar attachment", e);
             }
@@ -398,44 +411,39 @@ public class Message extends MailItem {
         boolean updatedMetadata = false;
 
         for (Invite cur : invites) {
-            CalendarItem calItem = null;
-            boolean success = false;
-            try {
-                calItem = mMailbox.getCalendarItemByUid(cur.getUid());
-                if (createCalItem) {
-                    if (calItem == null) { 
-                        // ONLY create a calendar item if this is a REQUEST method...otherwise don't.
-                        if (method.equals(ICalTok.REQUEST.toString())) {
-                            calItem = mMailbox.createCalendarItem(Mailbox.ID_FOLDER_CALENDAR, volumeId, 0, 0, cur.getUid(), pm, cur);
-                        } else {
-                            sLog.info("Mailbox " + getMailboxId()+" Message "+getId()+" SKIPPING Invite "+method+" b/c no CalendarItem could be found");
-                            success = true;
-                            continue; // for now, just ignore this Invitation
-                        }
+            boolean calItemIsNew = false;
+            boolean modifiedCalItem = false;
+            CalendarItem calItem = mMailbox.getCalendarItemByUid(cur.getUid());
+            if (createCalItem) {
+                if (calItem == null) { 
+                    // ONLY create a calendar item if this is a REQUEST method...otherwise don't.
+                    if (method.equals(ICalTok.REQUEST.toString())) {
+                        calItem = mMailbox.createCalendarItem(Mailbox.ID_FOLDER_CALENDAR, volumeId, 0, 0, cur.getUid(), pm, cur);
+                        calItemIsNew = true;
                     } else {
-                        // When updating an existing calendar item, ignore the
-                        // passed-in folderId which will usually be Inbox.  Leave
-                        // the calendar item in the folder it's currently in.
-                        calItem.processNewInvite(pm, cur, false, calItem.getFolderId(), volumeId);
+                        sLog.info("Mailbox " + getMailboxId()+" Message "+getId()+" SKIPPING Invite "+method+" b/c no CalendarItem could be found");
+                        continue; // for now, just ignore this Invitation
                     }
+                } else {
+                    // When updating an existing calendar item, ignore the
+                    // passed-in folderId which will usually be Inbox.  Leave
+                    // the calendar item in the folder it's currently in.
+                    modifiedCalItem = calItem.processNewInvite(pm, cur, false, calItem.getFolderId(), volumeId);
+                }
+            }
+            
+            if (calItem != null) {
+                CalendarItemInfo info = new CalendarItemInfo(calItem.getId(), cur.getComponentNum());
+                if (mCalendarItemInfos == null) {
+                    mCalendarItemInfos = new ArrayList<CalendarItemInfo>();
+                }
+                mCalendarItemInfos.add(info);
+                updatedMetadata = true;
+                
+                if (calItemIsNew || modifiedCalItem) {
+                    mMailbox.queueForIndexing(calItem, !calItemIsNew, null);
                 }
                 
-                if (calItem != null) {
-                    CalendarItemInfo info = new CalendarItemInfo(calItem.getId(), cur.getComponentNum());
-                    if (mCalendarItemInfos == null) {
-                        mCalendarItemInfos = new ArrayList<CalendarItemInfo>();
-                    }
-                    mCalendarItemInfos.add(info);
-                    updatedMetadata = true;
-                }
-                success = true;
-            } finally {
-                if (!success && calItem != null) {
-                    // Error occurred and the calItem in memory may be out of sync with
-                    // the database.  Uncache it here, because the error will be ignore
-                    // by this method's caller.
-                    getMailbox().uncache(calItem);
-                }
             }
         }
         
@@ -503,8 +511,6 @@ public class Message extends MailItem {
             if (pm.getFragment().compareTo(getFragment()) != 0) {
                 getMailbox().reanalyze(getId(), getType(),  pm);
             }
-            
-            pm = new ParsedMessage(getMimeMessage(), getDate(), getMailbox().attachmentsIndexingEnabled());
         }
 
         mi.indexMessage(mMailbox, redo, deleteFirst, pm, this);
@@ -529,38 +535,49 @@ public class Message extends MailItem {
             throw MailServiceException.MESSAGE_PARSE_ERROR(e);
         }
 
-        // make sure the "attachments" FLAG is correct
-        mData.flags &= ~Flag.BITMASK_ATTACHED;
-        if (pm.hasAttachments())
-            mData.flags |= Flag.BITMASK_ATTACHED;
-
         // make sure the SUBJECT is correct
-        boolean subjectChanged = !getSubject().equals(pm.getSubject());
+        if (!getSubject().equals(pm.getSubject()))
+            markItemModified(Change.MODIFIED_SUBJECT);
+        boolean subjectChanged = !getNormalizedSubject().equals(pm.getNormalizedSubject());
         mRawSubject = pm.getSubject();
         mData.subject = pm.getNormalizedSubject();
 
         // handle the message's PARENT
+        boolean parentChanged = false;
         MailItem parent = getParent();
-        if (subjectChanged)
+        if (subjectChanged && mData.parentId != -mId) {
             mData.parentId = -mId;
+            parentChanged = true;
+        }
 
-        // update the METADATA and SIZE
+        // make sure the "attachments" FLAG is correct
+        boolean hadAttachment = (mData.flags & Flag.BITMASK_ATTACHED) != 0;
+        mData.flags &= ~Flag.BITMASK_ATTACHED;
+        if (pm.hasAttachments())
+            mData.flags |= Flag.BITMASK_ATTACHED;
+        if (hadAttachment != pm.hasAttachments()) {
+            markItemModified(Change.MODIFIED_FLAGS);
+            parent.tagChanged(mMailbox.mAttachFlag, pm.hasAttachments());
+        }
+
+        // update the SIZE and METADATA
         if (mData.size != size) {
+            markItemModified(Change.MODIFIED_SIZE);
             mMailbox.updateSize(size - mData.size, false);
+            getFolder().updateSize(0, size - mData.size);
             mData.size = size;
         }
+        
         String metadata = encodeMetadata(mColor, pm, mData.flags, mDraftInfo, mCalendarItemInfos);
 
         // rewrite the DB row to reflect our new view
         saveData(pm.getParsedSender().getSortString(), metadata);
 
-        // and, finally, uncache this item since it may be dirty
-        mMailbox.uncache(this);
-
         // if the message is part of a real conversation, need to break it out
-        if (subjectChanged)
+        if (parentChanged)
             parent.removeChild(this);
-        mMailbox.uncache(parent);
+        else if (parent instanceof VirtualConversation)
+            ((VirtualConversation) parent).recalculateMetadata(Arrays.asList(new Message[] { this } ));
     }
 
     @Override
@@ -568,9 +585,9 @@ public class Message extends MailItem {
         MailItem parent = getParent();
         if (!(parent instanceof Conversation))
             return;
-        if (parent.getSize() <= 1)
+        if (parent.getSize() <= 1) {
             mMailbox.closeConversation((Conversation) parent, null);
-        else {
+        } else {
             // remove this message from its (real) conversation
             markItemModified(Change.MODIFIED_PARENT);
             parent.removeChild(this);
@@ -583,12 +600,12 @@ public class Message extends MailItem {
 
 
     @Override
-    void delete(boolean childrenOnly, boolean writeTombstones) throws ServiceException {
+    void delete(DeleteScope scope, boolean writeTombstones) throws ServiceException {
         MailItem parent = getParent();
         if (parent instanceof Conversation && ((Conversation) parent).getMessageCount() == 1)
-            parent.delete(DELETE_ITEM, writeTombstones);
+            parent.delete(DeleteScope.ENTIRE_ITEM, writeTombstones);
         else
-            super.delete(childrenOnly, writeTombstones);
+            super.delete(scope, writeTombstones);
     }
 
 
@@ -622,14 +639,17 @@ public class Message extends MailItem {
             mRawSubject = rawSubject;
     }
 
+    @Override
     Metadata encodeMetadata(Metadata meta) {
         return encodeMetadata(meta, mColor, mSender, mRecipients, mFragment, mData.subject, mRawSubject, mDraftInfo, mCalendarItemInfos);
     }
+
     private static String encodeMetadata(byte color, ParsedMessage pm, int flags, DraftInfo dinfo, List<CalendarItemInfo> calItemInfos) {
         // cache the "To" header only for messages sent by the user
         String recipients = ((flags & Flag.BITMASK_FROM_ME) == 0 ? null : pm.getRecipients());
         return encodeMetadata(new Metadata(), color, pm.getSender(), recipients, pm.getFragment(), pm.getNormalizedSubject(), pm.getSubject(), dinfo, calItemInfos).toString();
     }
+
     static Metadata encodeMetadata(Metadata meta, byte color, String sender, String recipients, String fragment, String subject, String rawSubject, DraftInfo dinfo, List<CalendarItemInfo> calItemInfos) {
         // try to figure out a simple way to make the raw subject from the normalized one
         String prefix = null;
@@ -669,6 +689,7 @@ public class Message extends MailItem {
     private static final String CN_RECIPIENTS = "to";
     private static final String CN_FRAGMENT   = "fragment";
 
+    @Override
     public String toString() {
         StringBuffer sb = new StringBuffer();
         sb.append("message: {");

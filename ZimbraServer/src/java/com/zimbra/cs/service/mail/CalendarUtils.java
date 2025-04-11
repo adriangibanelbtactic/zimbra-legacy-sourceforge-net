@@ -25,18 +25,14 @@
 
 package com.zimbra.cs.service.mail;
 
-import java.io.StringReader;
-import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.List;
-
 import com.zimbra.common.service.ServiceException;
-
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.account.Account;
-import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.account.ldap.LdapUtil;
+import com.zimbra.cs.mailbox.calendar.Alarm;
 import com.zimbra.cs.mailbox.calendar.ICalTimeZone;
+import com.zimbra.cs.mailbox.calendar.ICalTimeZone.SimpleOnset;
 import com.zimbra.cs.mailbox.calendar.IcalXmlStrMap;
 import com.zimbra.cs.mailbox.calendar.Invite;
 import com.zimbra.cs.mailbox.calendar.ParsedDateTime;
@@ -45,20 +41,24 @@ import com.zimbra.cs.mailbox.calendar.Period;
 import com.zimbra.cs.mailbox.calendar.RdateExdate;
 import com.zimbra.cs.mailbox.calendar.RecurId;
 import com.zimbra.cs.mailbox.calendar.Recurrence;
+import com.zimbra.cs.mailbox.calendar.Recurrence.IRecurrence;
 import com.zimbra.cs.mailbox.calendar.TimeZoneMap;
 import com.zimbra.cs.mailbox.calendar.WellKnownTimeZones;
 import com.zimbra.cs.mailbox.calendar.ZAttendee;
-import com.zimbra.cs.mailbox.calendar.ZRecur;
-import com.zimbra.cs.mailbox.calendar.ZOrganizer;
-import com.zimbra.cs.mailbox.calendar.ICalTimeZone.SimpleOnset;
-import com.zimbra.cs.mailbox.calendar.Recurrence.IRecurrence;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ICalTok;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZCalendarBuilder;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZParameter;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZProperty;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
-import com.zimbra.cs.account.ldap.LdapUtil;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.mailbox.calendar.ZOrganizer;
+import com.zimbra.cs.mailbox.calendar.ZRecur;
+
+import java.io.StringReader;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
 
 public class CalendarUtils {
     /**
@@ -113,9 +113,9 @@ public class CalendarUtils {
             boolean recurrenceIdAllowed, boolean recurAllowed)
             throws ServiceException {
         if (tzMap == null) {
-            tzMap = new TimeZoneMap(Provisioning.getInstance().getTimeZone(account));
+            tzMap = new TimeZoneMap(ICalTimeZone.getAccountTimeZone(account));
         }
-        Invite create = new Invite(ICalTok.PUBLISH.toString(), tzMap, false);
+        Invite create = new Invite(ICalTok.PUBLISH.toString(), tzMap);
 
         CalendarUtils.parseInviteElementCommon(
                 account, itemType, inviteElem, create, recurrenceIdAllowed, recurAllowed);
@@ -156,7 +156,8 @@ public class CalendarUtils {
             Account account, byte itemType, Element inviteElem, Invite oldInv,
             List<ZAttendee> attendeesToCancel, boolean recurAllowed)
             throws ServiceException {
-        Invite mod = new Invite(ICalTok.PUBLISH.toString(), oldInv.getTimeZoneMap(), false);
+        Invite mod = new Invite(ICalTok.PUBLISH.toString(), oldInv
+                .getTimeZoneMap());
 
         CalendarUtils.parseInviteElementCommon(
                 account, itemType, inviteElem, mod, oldInv.hasRecurId(), recurAllowed);
@@ -197,9 +198,9 @@ public class CalendarUtils {
             boolean recurrenceIdAllowed, boolean recurAllowed)
             throws ServiceException {
         if (tzMap == null) {
-            tzMap = new TimeZoneMap(Provisioning.getInstance().getTimeZone(account));
+            tzMap = new TimeZoneMap(ICalTimeZone.getAccountTimeZone(account));
         }
-        Invite cancel = new Invite(ICalTok.CANCEL.toString(), tzMap, false);
+        Invite cancel = new Invite(ICalTok.CANCEL.toString(), tzMap);
 
         CalendarUtils.parseInviteElementCommon(
                 account, itemType, inviteElem, cancel, recurrenceIdAllowed, recurAllowed);
@@ -256,7 +257,7 @@ public class CalendarUtils {
 
     static RecurId parseRecurId(Element e, TimeZoneMap invTzMap, Invite inv)
             throws ServiceException {
-        String range = e.getAttribute("range", "");
+        String range = e.getAttribute(MailConstants.A_CAL_RANGE, "");
 
         ParsedDateTime dt = parseDateTime(e, invTzMap, inv);
         return new RecurId(dt, range);
@@ -273,8 +274,8 @@ public class CalendarUtils {
      */
     static ParsedDateTime parseDateTime(Element e, TimeZoneMap invTzMap,
             Invite inv) throws ServiceException {
-        String d = e.getAttribute(MailService.A_CAL_DATETIME, null);
-        String tz = e.getAttribute(MailService.A_CAL_TIMEZONE, null);
+        String d = e.getAttribute(MailConstants.A_CAL_DATETIME, null);
+        String tz = e.getAttribute(MailConstants.A_CAL_TIMEZONE, null);
         return parseDateTime(e.getName(), d, tz, invTzMap, inv);
     }
 
@@ -343,10 +344,10 @@ public class CalendarUtils {
             
             boolean exclude = false;
             
-            if (e.getName().equals(MailService.E_CAL_EXCLUDE)) {
+            if (e.getName().equals(MailConstants.E_CAL_EXCLUDE)) {
                 exclude = true;
             } else {
-                if (!e.getName().equals(MailService.E_CAL_ADD)) {
+                if (!e.getName().equals(MailConstants.E_CAL_ADD)) {
                     throw ServiceException.INVALID_REQUEST("<add> or <exclude> expected inside <recur>", null);
                 }
             }
@@ -355,24 +356,24 @@ public class CalendarUtils {
             {
                 Element intElt = (Element)intIter.next();
                 
-                if (intElt.getName().equals(MailService.E_CAL_DATES)) {
+                if (intElt.getName().equals(MailConstants.E_CAL_DATES)) {
                     // handle RDATE or EXDATE
-                    String tzid = intElt.getAttribute(MailService.A_CAL_TIMEZONE);
+                    String tzid = intElt.getAttribute(MailConstants.A_CAL_TIMEZONE);
                     ICalTimeZone tz = invTzMap.lookupAndAdd(tzid);
                     RdateExdate rexdate = new RdateExdate(exclude ? ICalTok.EXDATE : ICalTok.RDATE, tz);
 
                     ICalTok valueType = null;
-                    for (Iterator<Element> dtvalIter = intElt.elementIterator(MailService.E_CAL_DATE_VAL);
+                    for (Iterator<Element> dtvalIter = intElt.elementIterator(MailConstants.E_CAL_DATE_VAL);
                          dtvalIter.hasNext(); ) {
                         ICalTok dtvalValueType = null;
                         Element dtvalElem = dtvalIter.next();
-                        Element dtvalStart = dtvalElem.getElement(MailService.E_CAL_START_TIME);
-                        String dtvalStartDateStr = dtvalStart.getAttribute(MailService.A_CAL_DATETIME);
+                        Element dtvalStart = dtvalElem.getElement(MailConstants.E_CAL_START_TIME);
+                        String dtvalStartDateStr = dtvalStart.getAttribute(MailConstants.A_CAL_DATETIME);
                         ParsedDateTime dtStart =
                             parseDateTime(dtvalElem.getName(), dtvalStartDateStr, tzid, invTzMap, inv);
 
-                        Element dtvalEnd = dtvalElem.getOptionalElement(MailService.E_CAL_END_TIME);
-                        Element dtvalDur = dtvalElem.getOptionalElement(MailService.E_CAL_DURATION);
+                        Element dtvalEnd = dtvalElem.getOptionalElement(MailConstants.E_CAL_END_TIME);
+                        Element dtvalDur = dtvalElem.getOptionalElement(MailConstants.E_CAL_DURATION);
                         if (dtvalEnd == null && dtvalDur == null) {
                             if (dtStart.hasTime())
                                 dtvalValueType = ICalTok.DATE_TIME;
@@ -382,7 +383,7 @@ public class CalendarUtils {
                         } else {
                             dtvalValueType = ICalTok.PERIOD;
                             if (dtvalEnd != null) {
-                                String dtvalEndDateStr = dtvalEnd.getAttribute(MailService.A_CAL_DATETIME);
+                                String dtvalEndDateStr = dtvalEnd.getAttribute(MailConstants.A_CAL_DATETIME);
                                 ParsedDateTime dtEnd =
                                     parseDateTime(dtvalElem.getName(), dtvalEndDateStr, tzid, invTzMap, inv);
                                 Period p = new Period(dtStart, dtEnd);
@@ -409,7 +410,7 @@ public class CalendarUtils {
                     else
                         addRules.add(sd);
 
-                } else if (intElt.getName().equals(MailService.E_CAL_RULE)) {
+                } else if (intElt.getName().equals(MailConstants.E_CAL_RULE)) {
                     // handle RRULE or EXRULE
 
                     // Turn XML into iCal RECUR string, which will then be
@@ -418,15 +419,15 @@ public class CalendarUtils {
                     StringBuilder recurBuf = new StringBuilder(100);
 
                     String freq = IcalXmlStrMap.sFreqMap.toIcal(
-                    		          intElt.getAttribute(MailService.A_CAL_RULE_FREQ));
+                    		          intElt.getAttribute(MailConstants.A_CAL_RULE_FREQ));
                     recurBuf.append("FREQ=").append(freq);
 
                     for (Iterator ruleIter = intElt.elementIterator(); ruleIter.hasNext(); ) {
                     	Element ruleElt = (Element) ruleIter.next();
                         String ruleEltName = ruleElt.getName();
-                        if (ruleEltName.equals(MailService.E_CAL_RULE_UNTIL)) {
+                        if (ruleEltName.equals(MailConstants.E_CAL_RULE_UNTIL)) {
                             recurBuf.append(";UNTIL=");
-                            String d = ruleElt.getAttribute(MailService.A_CAL_DATETIME);
+                            String d = ruleElt.getAttribute(MailConstants.A_CAL_DATETIME);
                             recurBuf.append(d);
                             
                             // If UNTIL has time part it must be specified
@@ -437,68 +438,68 @@ public class CalendarUtils {
                                     recurBuf.append('Z');
 
                             
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_COUNT)) {
-                            int num = (int) ruleElt.getAttributeLong(MailService.A_CAL_RULE_COUNT_NUM, -1);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_COUNT)) {
+                            int num = (int) ruleElt.getAttributeLong(MailConstants.A_CAL_RULE_COUNT_NUM, -1);
                             if (num > 0) {
                                 recurBuf.append(";COUNT=").append(num);
                             } else {
                                 throw ServiceException.INVALID_REQUEST(
                                     "Expected positive num attribute in <recur> <rule> <count>", null);
                             }
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_INTERVAL)) {
-                            String ival = ruleElt.getAttribute(MailService.A_CAL_RULE_INTERVAL_IVAL);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_INTERVAL)) {
+                            String ival = ruleElt.getAttribute(MailConstants.A_CAL_RULE_INTERVAL_IVAL);
                             recurBuf.append(";INTERVAL=").append(ival);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYSECOND)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYSECOND_SECLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYSECOND)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYSECOND_SECLIST);
                             recurBuf.append(";BYSECOND=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYMINUTE)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYMINUTE_MINLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYMINUTE)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYMINUTE_MINLIST);
                             recurBuf.append(";BYMINUTE=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYHOUR)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYHOUR_HRLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYHOUR)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYHOUR_HRLIST);
                             recurBuf.append(";BYHOUR=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYDAY)) {
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYDAY)) {
                             recurBuf.append(";BYDAY=");
                             int pos = 0;
-                            for (Iterator bydayIter = ruleElt.elementIterator(MailService.E_CAL_RULE_BYDAY_WKDAY);
+                            for (Iterator bydayIter = ruleElt.elementIterator(MailConstants.E_CAL_RULE_BYDAY_WKDAY);
                                  bydayIter.hasNext();
                                  pos++) {
                             	Element wkdayElt = (Element) bydayIter.next();
                                 if (pos > 0)
                                     recurBuf.append(",");
-                                String ordwk = wkdayElt.getAttribute(MailService.A_CAL_RULE_BYDAY_WKDAY_ORDWK, null);
+                                String ordwk = wkdayElt.getAttribute(MailConstants.A_CAL_RULE_BYDAY_WKDAY_ORDWK, null);
                                 if (ordwk != null)
                                     recurBuf.append(ordwk);
-                                String day = wkdayElt.getAttribute(MailService.A_CAL_RULE_DAY);
+                                String day = wkdayElt.getAttribute(MailConstants.A_CAL_RULE_DAY);
                                 if (day == null || day.length() == 0)
                                     throw ServiceException.INVALID_REQUEST("Missing " +
-                                                                               MailService.A_CAL_RULE_DAY + " in <" +
+                                                                               MailConstants.A_CAL_RULE_DAY + " in <" +
                                                                                ruleEltName + ">",
                                                                                null);
                                 recurBuf.append(day);
                             }
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYMONTHDAY)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYMONTHDAY_MODAYLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYMONTHDAY)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYMONTHDAY_MODAYLIST);
                             recurBuf.append(";BYMONTHDAY=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYYEARDAY)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYYEARDAY_YRDAYLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYYEARDAY)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYYEARDAY_YRDAYLIST);
                             recurBuf.append(";BYYEARDAY=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYWEEKNO)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYWEEKNO_WKLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYWEEKNO)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYWEEKNO_WKLIST);
                             recurBuf.append(";BYWEEKNO=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYMONTH)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYMONTH_MOLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYMONTH)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYMONTH_MOLIST);
                             recurBuf.append(";BYMONTH=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_BYSETPOS)) {
-                            String list = ruleElt.getAttribute(MailService.A_CAL_RULE_BYSETPOS_POSLIST);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_BYSETPOS)) {
+                            String list = ruleElt.getAttribute(MailConstants.A_CAL_RULE_BYSETPOS_POSLIST);
                             recurBuf.append(";BYSETPOS=").append(list);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_WKST)) {
-                            String day = ruleElt.getAttribute(MailService.A_CAL_RULE_DAY);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_WKST)) {
+                            String day = ruleElt.getAttribute(MailConstants.A_CAL_RULE_DAY);
                             recurBuf.append(";WKST=").append(day);
-                        } else if (ruleEltName.equals(MailService.E_CAL_RULE_XNAME)) {
-                            String name = ruleElt.getAttribute(MailService.A_CAL_RULE_XNAME_NAME, null);
+                        } else if (ruleEltName.equals(MailConstants.E_CAL_RULE_XNAME)) {
+                            String name = ruleElt.getAttribute(MailConstants.A_CAL_RULE_XNAME_NAME, null);
                             if (name != null) {
-                            	String value = ruleElt.getAttribute(MailService.A_CAL_RULE_XNAME_VALUE, "");
+                            	String value = ruleElt.getAttribute(MailConstants.A_CAL_RULE_XNAME_VALUE, "");
                                 // TODO: Escape/unescape value according to
                                 // "text" rule.
                                 recurBuf.append(";").append(name).append("=").append(value);
@@ -533,8 +534,8 @@ public class CalendarUtils {
 
 	static ParsedDateTime parseDtElement(Element e, TimeZoneMap tzMap,
             Invite inv) throws ServiceException {
-        String d = e.getAttribute(MailService.A_CAL_DATETIME);
-        String tzId = e.getAttribute(MailService.A_CAL_TIMEZONE, null);
+        String d = e.getAttribute(MailConstants.A_CAL_DATETIME);
+        String tzId = e.getAttribute(MailConstants.A_CAL_TIMEZONE, null);
         ICalTimeZone timezone = null;
         if (tzId != null) {
             timezone = lookupAndAddToTzList(tzId, tzMap, inv);
@@ -551,7 +552,7 @@ public class CalendarUtils {
     private static void parseTimeZones(Element parent, TimeZoneMap tzMap)
             throws ServiceException {
         assert (tzMap != null);
-        for (Iterator iter = parent.elementIterator(MailService.E_CAL_TZ); iter
+        for (Iterator iter = parent.elementIterator(MailConstants.E_CAL_TZ); iter
                 .hasNext();) {
             Element tzElem = (Element) iter.next();
             ICalTimeZone tz = parseTzElement(tzElem);
@@ -567,11 +568,11 @@ public class CalendarUtils {
      * @throws ServiceException
      */
     public static ICalTimeZone parseTzElement(Element tzElem) throws ServiceException {
-        String tzid = tzElem.getAttribute(MailService.A_ID);
+        String tzid = tzElem.getAttribute(MailConstants.A_ID);
         int standardOffset = (int) tzElem
-                .getAttributeLong(MailService.A_CAL_TZ_STDOFFSET);
+                .getAttributeLong(MailConstants.A_CAL_TZ_STDOFFSET);
         int daylightOffset = (int) tzElem.getAttributeLong(
-                MailService.A_CAL_TZ_DAYOFFSET, standardOffset);
+                MailConstants.A_CAL_TZ_DAYOFFSET, standardOffset);
         // minutes to milliseconds
         standardOffset *= 60 * 1000;
         daylightOffset *= 60 * 1000;
@@ -580,9 +581,9 @@ public class CalendarUtils {
         SimpleOnset daylightOnset = null;
         if (daylightOffset != standardOffset) {
             Element standard = tzElem
-                    .getOptionalElement(MailService.E_CAL_TZ_STANDARD);
+                    .getOptionalElement(MailConstants.E_CAL_TZ_STANDARD);
             Element daylight = tzElem
-                    .getOptionalElement(MailService.E_CAL_TZ_DAYLIGHT);
+                    .getOptionalElement(MailConstants.E_CAL_TZ_DAYLIGHT);
             if (standard == null || daylight == null)
                 throw ServiceException.INVALID_REQUEST(
                                 "DST time zone missing standard and/or daylight onset",
@@ -598,16 +599,16 @@ public class CalendarUtils {
 
     private static SimpleOnset parseSimpleOnset(Element element)
             throws ServiceException {
-        int week = (int) element.getAttributeLong(MailService.A_CAL_TZ_WEEK, 0);
+        int week = (int) element.getAttributeLong(MailConstants.A_CAL_TZ_WEEK, 0);
         int wkday = (int) element
-                .getAttributeLong(MailService.A_CAL_TZ_DAYOFWEEK, 0);
-        int month = (int) element.getAttributeLong(MailService.A_CAL_TZ_MONTH);
-        int mday = (int) element.getAttributeLong(MailService.A_CAL_TZ_DAYOFMONTH, 0);
-        int hour = (int) element.getAttributeLong(MailService.A_CAL_TZ_HOUR);
+                .getAttributeLong(MailConstants.A_CAL_TZ_DAYOFWEEK, 0);
+        int month = (int) element.getAttributeLong(MailConstants.A_CAL_TZ_MONTH);
+        int mday = (int) element.getAttributeLong(MailConstants.A_CAL_TZ_DAYOFMONTH, 0);
+        int hour = (int) element.getAttributeLong(MailConstants.A_CAL_TZ_HOUR);
         int minute = (int) element
-                .getAttributeLong(MailService.A_CAL_TZ_MINUTE);
+                .getAttributeLong(MailConstants.A_CAL_TZ_MINUTE);
         int second = (int) element
-                .getAttributeLong(MailService.A_CAL_TZ_SECOND);
+                .getAttributeLong(MailConstants.A_CAL_TZ_SECOND);
         return new SimpleOnset(week, wkday, month, mday, hour, minute, second);
     }
 
@@ -633,7 +634,7 @@ public class CalendarUtils {
             boolean recurrenceIdAllowed, boolean recurAllowed)
     throws ServiceException {
 
-    	Element compElem = element.getOptionalElement(MailService.E_INVITE_COMPONENT);
+    	Element compElem = element.getOptionalElement(MailConstants.E_INVITE_COMPONENT);
     	if (compElem != null)
     		element = compElem;
 
@@ -643,34 +644,34 @@ public class CalendarUtils {
         newInv.setItemType(itemType);
 
         // UID
-        String uid = element.getAttribute(MailService.A_UID, null);
+        String uid = element.getAttribute(MailConstants.A_UID, null);
         if (uid == null || uid.length() == 0)
             uid = LdapUtil.generateUUID();
         newInv.setUid(uid);
 
         // RECURRENCE-ID
         if (recurrenceIdAllowed) {
-            Element e = element.getElement(MailService.E_CAL_EXCEPTION_ID);
+            Element e = element.getElement(MailConstants.E_CAL_EXCEPTION_ID);
             ParsedDateTime dt = parseDateTime(e, tzMap, newInv);
             RecurId recurId = new RecurId(dt, RecurId.RANGE_NONE);
             newInv.setRecurId(recurId);
         } else {
-            if (element.getOptionalElement(MailService.E_CAL_EXCEPTION_ID) != null) {
+            if (element.getOptionalElement(MailConstants.E_CAL_EXCEPTION_ID) != null) {
                 throw ServiceException.INVALID_REQUEST(
                         "May not specify an <exceptId> in this request",
                         null);
             }
         }
 
-        boolean allDay = element.getAttributeBool(MailService.A_CAL_ALLDAY,
+        boolean allDay = element.getAttributeBool(MailConstants.A_CAL_ALLDAY,
                 false);
         newInv.setIsAllDayEvent(allDay);
 
-        String name = element.getAttribute(MailService.A_NAME, "");
-        String location = element.getAttribute(MailService.A_CAL_LOCATION, "");
+        String name = element.getAttribute(MailConstants.A_NAME, "");
+        String location = element.getAttribute(MailConstants.A_CAL_LOCATION, "");
 
         // SEQUENCE
-        int seq = (int) element.getAttributeLong(MailService.A_CAL_SEQUENCE, 0);
+        int seq = (int) element.getAttributeLong(MailConstants.A_CAL_SEQUENCE, 0);
         newInv.setSeqNo(seq);
 
         // SUMMARY (aka Name or Subject)
@@ -680,9 +681,9 @@ public class CalendarUtils {
         {
             Element s;
             if (newInv.isTodo())
-                s = element.getOptionalElement(MailService.E_CAL_START_TIME);
+                s = element.getOptionalElement(MailConstants.E_CAL_START_TIME);
             else
-                s = element.getElement(MailService.E_CAL_START_TIME);
+                s = element.getElement(MailConstants.E_CAL_START_TIME);
             if (s != null) {
                 ParsedDateTime dt = parseDtElement(s, tzMap, newInv);
                 if (dt.hasTime()) {
@@ -704,9 +705,9 @@ public class CalendarUtils {
 
         // DTEND (for VEVENT) or DUE (for VTODO)
         {
-            Element e = element.getOptionalElement(MailService.E_CAL_END_TIME);
+            Element e = element.getOptionalElement(MailConstants.E_CAL_END_TIME);
             if (e != null) {
-                if (element.getOptionalElement(MailService.E_CAL_DURATION) != null) {
+                if (element.getOptionalElement(MailConstants.E_CAL_DURATION) != null) {
                     throw ServiceException.INVALID_REQUEST(
                                     "<comp> may have <e> end or <d> duration but not both",
                                     null);
@@ -749,7 +750,7 @@ public class CalendarUtils {
 
         // DURATION
         {
-            Element d = element.getOptionalElement(MailService.E_CAL_DURATION);
+            Element d = element.getOptionalElement(MailConstants.E_CAL_DURATION);
             if (d != null) {
                 ParsedDuration pd = ParsedDuration.parse(d);
                 newInv.setDuration(pd);
@@ -760,37 +761,37 @@ public class CalendarUtils {
         newInv.setLocation(location);
 
         // STATUS
-        String status = element.getAttribute(MailService.A_CAL_STATUS,
+        String status = element.getAttribute(MailConstants.A_CAL_STATUS,
                 newInv.isEvent() ? IcalXmlStrMap.STATUS_CONFIRMED : IcalXmlStrMap.STATUS_NEEDS_ACTION);
-        validateAttr(IcalXmlStrMap.sStatusMap, MailService.A_CAL_STATUS,
+        validateAttr(IcalXmlStrMap.sStatusMap, MailConstants.A_CAL_STATUS,
                 status);
         newInv.setStatus(status);
 
         // PRIORITY
-        String priority = element.getAttribute(MailService.A_CAL_PRIORITY, null);
+        String priority = element.getAttribute(MailConstants.A_CAL_PRIORITY, null);
         newInv.setPriority(priority);
 
         if (newInv.isEvent()) {
             // FreeBusy
-            String fb = element.getAttribute(MailService.A_APPT_FREEBUSY,
+            String fb = element.getAttribute(MailConstants.A_APPT_FREEBUSY,
                     IcalXmlStrMap.FBTYPE_BUSY);
             newInv.setFreeBusy(fb);
     
             // TRANSPARENCY
-            String transp = element.getAttribute(MailService.A_APPT_TRANSPARENCY,
+            String transp = element.getAttribute(MailConstants.A_APPT_TRANSPARENCY,
                     IcalXmlStrMap.TRANSP_OPAQUE);
-            validateAttr(IcalXmlStrMap.sTranspMap, MailService.A_APPT_TRANSPARENCY,
+            validateAttr(IcalXmlStrMap.sTranspMap, MailConstants.A_APPT_TRANSPARENCY,
                     transp);
             newInv.setTransparency(transp);
         }
 
         if (newInv.isTodo()) {
             // PERCENT-COMPLETE
-            String pctComplete = element.getAttribute(MailService.A_TASK_PERCENT_COMPLETE, null);
+            String pctComplete = element.getAttribute(MailConstants.A_TASK_PERCENT_COMPLETE, null);
             newInv.setPercentComplete(pctComplete);
 
             // COMPLETED
-            String completed = element.getAttribute(MailService.A_TASK_COMPLETED, null);
+            String completed = element.getAttribute(MailConstants.A_TASK_COMPLETED, null);
             if (completed != null) {
                 try {
                     ParsedDateTime c = ParsedDateTime.parseUtcOnly(completed);
@@ -803,40 +804,9 @@ public class CalendarUtils {
 
         // ATTENDEEs
         boolean hasAttendees = false;
-        for (Iterator iter = element
-                .elementIterator(MailService.E_CAL_ATTENDEE); iter.hasNext();) {
-            Element cur = (Element) (iter.next());
-
-            String address = cur.getAttribute(MailService.A_ADDRESS);
-            String cn = cur.getAttribute(MailService.A_DISPLAY, null);
-            String sentBy = cur.getAttribute(MailService.A_CAL_SENTBY, null);
-            String dir = cur.getAttribute(MailService.A_CAL_DIR, null);
-            String lang = cur.getAttribute(MailService.A_CAL_LANGUAGE, null);
-
-            String cutype = cur.getAttribute(MailService.A_CAL_CUTYPE, null);
-            if (cutype != null)
-            	validateAttr(IcalXmlStrMap.sCUTypeMap, MailService.A_CAL_CUTYPE, cutype);
-
-            String role = cur.getAttribute(MailService.A_CAL_ROLE);
-            validateAttr(IcalXmlStrMap.sRoleMap, MailService.A_CAL_ROLE, role);
-
-            String partStat = cur.getAttribute(MailService.A_CAL_PARTSTAT);
-            validateAttr(IcalXmlStrMap.sPartStatMap,
-                    MailService.A_CAL_PARTSTAT, partStat);
-
-            String member = cur.getAttribute(MailService.A_CAL_MEMBER, null);
-            String delTo = cur.getAttribute(MailService.A_CAL_DELEGATED_TO, null);
-            String delFrom = cur.getAttribute(MailService.A_CAL_DELEGATED_FROM, null);
-
-            boolean rsvp = cur.getAttributeBool(MailService.A_CAL_RSVP, false);
-//            if (partStat.equals(IcalXmlStrMap.PARTSTAT_NEEDS_ACTION))
-//                rsvp = true;
-
-            ZAttendee at =
-                new ZAttendee(address, cn, sentBy, dir, lang,
-                              cutype, role, partStat,
-                              rsvp ? Boolean.TRUE : Boolean.FALSE,
-                              member, delTo, delFrom);
+        for (Iterator<Element> iter = element
+                .elementIterator(MailConstants.E_CAL_ATTENDEE); iter.hasNext();) {
+            ZAttendee at = ZAttendee.parse(iter.next());
             newInv.addAttendee(at);
             hasAttendees = true;
         }
@@ -847,28 +817,24 @@ public class CalendarUtils {
 
         // ORGANIZER
         Element orgElt = element
-                .getOptionalElement(MailService.E_CAL_ORGANIZER);
+                .getOptionalElement(MailConstants.E_CAL_ORGANIZER);
         if (orgElt == null) {
             if (hasAttendees)
                 throw ServiceException.INVALID_REQUEST(
                         "missing organizer when attendees are present", null);
         } else {
-            String address = orgElt.getAttribute(MailService.A_ADDRESS);
-            String cn = orgElt.getAttribute(MailService.A_DISPLAY, null);
-            String sentBy = orgElt.getAttribute(MailService.A_CAL_SENTBY, null);
-            String dir = orgElt.getAttribute(MailService.A_CAL_DIR, null);
-            String lang = orgElt.getAttribute(MailService.A_CAL_LANGUAGE, null);
+            String address = orgElt.getAttribute(MailConstants.A_ADDRESS);
+            String cn = orgElt.getAttribute(MailConstants.A_DISPLAY, null);
+            String sentBy = orgElt.getAttribute(MailConstants.A_CAL_SENTBY, null);
+            String dir = orgElt.getAttribute(MailConstants.A_CAL_DIR, null);
+            String lang = orgElt.getAttribute(MailConstants.A_CAL_LANGUAGE, null);
 
             ZOrganizer org = new ZOrganizer(address, cn, sentBy, dir, lang);
             newInv.setOrganizer(org);
         }
 
-        // Once we have organizer and attendee information, we can tell if this account is the
-        // organizer in this invite or not.
-        newInv.setIsOrganizer(account);
-
         // RECUR
-        Element recur = element.getOptionalElement(MailService.A_CAL_RECUR);
+        Element recur = element.getOptionalElement(MailConstants.A_CAL_RECUR);
         if (recur != null) {
             if (!recurAllowed) {
                 throw ServiceException.INVALID_REQUEST(
@@ -877,6 +843,14 @@ public class CalendarUtils {
             Recurrence.IRecurrence recurrence = parseRecur(recur, tzMap,
                     newInv);
             newInv.setRecurrence(recurrence);
+        }
+
+        // VALARMs
+        Iterator<Element> alarmsIter = element.elementIterator(MailConstants.E_CAL_ALARM);
+        while (alarmsIter.hasNext()) {
+            Alarm alarm = Alarm.parse(alarmsIter.next());
+            if (alarm != null)
+                newInv.addAlarm(alarm);
         }
 
         List<ZProperty> xprops = parseXProps(element);
@@ -889,18 +863,18 @@ public class CalendarUtils {
     private static List<ZProperty> parseXProps(Element element)
     throws ServiceException {
         List<ZProperty> props = new ArrayList<ZProperty>();
-        for (Iterator<Element> propIter = element.elementIterator(MailService.E_CAL_XPROP);
+        for (Iterator<Element> propIter = element.elementIterator(MailConstants.E_CAL_XPROP);
              propIter.hasNext(); ) {
             Element propElem = propIter.next();
-            String propName = propElem.getAttribute(MailService.A_NAME);
-            String propValue = propElem.getAttribute(MailService.A_VALUE, null);
+            String propName = propElem.getAttribute(MailConstants.A_NAME);
+            String propValue = propElem.getAttribute(MailConstants.A_VALUE, null);
             ZProperty xprop = new ZProperty(propName);
             xprop.setValue(propValue);
-            for (Iterator<Element> paramIter = propElem.elementIterator(MailService.E_CAL_XPARAM);
+            for (Iterator<Element> paramIter = propElem.elementIterator(MailConstants.E_CAL_XPARAM);
                  paramIter.hasNext(); ) {
                 Element paramElem = paramIter.next();
-                String paramName = paramElem.getAttribute(MailService.A_NAME);
-                String paramValue = paramElem.getAttribute(MailService.A_VALUE, null);
+                String paramName = paramElem.getAttribute(MailConstants.A_NAME);
+                String paramValue = paramElem.getAttribute(MailConstants.A_VALUE, null);
                 ZParameter xparam = new ZParameter(paramName, paramValue);
                 xprop.addParameter(xparam);
             }
@@ -985,7 +959,7 @@ public class CalendarUtils {
             boolean incrementSeq)
     throws ServiceException {
         Invite cancel = new Invite(inv.getItemType(), ICalTok.CANCEL.toString(),
-                                   inv.getTimeZoneMap(), inv.isOrganizer());
+                                   inv.getTimeZoneMap());
 
         // ORGANIZER
         if (inv.hasOrganizer()) {
@@ -1037,7 +1011,7 @@ public class CalendarUtils {
             // Increment only if this account is the organizer.  If this
             // account is a non-organizer attendee, leave the sequence at
             // present value.  (bug 8465)
-            if (acct != null && inv.isOrganizer())
+            if (acct != null && inv.thisAcctIsOrganizer(acct))
                 seq++;
         }
         cancel.setSeqNo(seq);

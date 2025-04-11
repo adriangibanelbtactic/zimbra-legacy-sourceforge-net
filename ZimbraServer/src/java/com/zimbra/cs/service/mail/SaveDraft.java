@@ -28,6 +28,7 @@
  */
 package com.zimbra.cs.service.mail;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Map;
@@ -37,19 +38,17 @@ import javax.mail.internet.MimeMessage;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mime.ParsedMessage;
-import com.zimbra.cs.operation.ItemActionOperation;
-import com.zimbra.cs.operation.SaveDraftOperation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.FileUploadServlet;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -57,8 +56,8 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class SaveDraft extends MailDocumentHandler {
 
-    private static final String[] TARGET_DRAFT_PATH = new String[] { MailService.E_MSG, MailService.A_ID };
-    private static final String[] TARGET_FOLDER_PATH = new String[] { MailService.E_MSG, MailService.A_FOLDER };
+    private static final String[] TARGET_DRAFT_PATH = new String[] { MailConstants.E_MSG, MailConstants.A_ID };
+    private static final String[] TARGET_FOLDER_PATH = new String[] { MailConstants.E_MSG, MailConstants.A_FOLDER };
     private static final String[] RESPONSE_ITEM_PATH = new String[] { };
     protected String[] getProxiedIdPath(Element request) {
         return getXPath(request, TARGET_DRAFT_PATH) != null ? TARGET_DRAFT_PATH : TARGET_FOLDER_PATH;
@@ -72,28 +71,28 @@ public class SaveDraft extends MailDocumentHandler {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
         OperationContext octxt = zsc.getOperationContext();
-        Session session = getSession(context);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
-        Element msgElem = request.getElement(MailService.E_MSG);
+        Element msgElem = request.getElement(MailConstants.E_MSG);
 
-        int id = (int) msgElem.getAttributeLong(MailService.A_ID, Mailbox.ID_AUTO_INCREMENT);
-        int origId = (int) msgElem.getAttributeLong(MailService.A_ORIG_ID, 0);
-        String replyType = msgElem.getAttribute(MailService.A_REPLY_TYPE, null);
-        String identity = msgElem.getAttribute(MailService.A_IDENTITY_ID, null);
+        int id = (int) msgElem.getAttributeLong(MailConstants.A_ID, Mailbox.ID_AUTO_INCREMENT);
+        int origId = (int) msgElem.getAttributeLong(MailConstants.A_ORIG_ID, 0);
+        String replyType = msgElem.getAttribute(MailConstants.A_REPLY_TYPE, null);
+        String identity = msgElem.getAttribute(MailConstants.A_IDENTITY_ID, null);
 
         // allow the caller to update the draft's metadata at the same time as they save the draft
-        String folderId = msgElem.getAttribute(MailService.A_FOLDER, null);
+        String folderId = msgElem.getAttribute(MailConstants.A_FOLDER, null);
         ItemId iidFolder = new ItemId(folderId == null ? "-1" : folderId, zsc);
         if (!iidFolder.belongsTo(mbox))
             throw ServiceException.INVALID_REQUEST("cannot move item between mailboxes", null);
         else if (folderId != null && iidFolder.getId() <= 0)
             throw MailServiceException.NO_SUCH_FOLDER(iidFolder.getId());
-        String flags = msgElem.getAttribute(MailService.A_FLAGS, null);
-        String tags  = msgElem.getAttribute(MailService.A_TAGS, null);
-        byte color = (byte) msgElem.getAttributeLong(MailService.A_COLOR, -1);
+        String flags = msgElem.getAttribute(MailConstants.A_FLAGS, null);
+        String tags  = msgElem.getAttribute(MailConstants.A_TAGS, null);
+        byte color = (byte) msgElem.getAttributeLong(MailConstants.A_COLOR, -1);
 
         // check to see whether the entire message has been uploaded under separate cover
-        String attachment = msgElem.getAttribute(MailService.A_ATTACHMENT_ID, null);
+        String attachment = msgElem.getAttribute(MailConstants.A_ATTACHMENT_ID, null);
 
         ParseMimeMessage.MimeMessageData mimeData = new ParseMimeMessage.MimeMessageData();
         MimeMessage mm;
@@ -117,10 +116,12 @@ public class SaveDraft extends MailDocumentHandler {
 
         ParsedMessage pm = new ParsedMessage(mm, date, mbox.attachmentsIndexingEnabled());
 
-        SaveDraftOperation op = new SaveDraftOperation(session, octxt, mbox, Requester.SOAP,
-                    pm, id, origId, replyType, identity);
-        op.schedule();
-        Message msg = op.getMsg();
+        Message msg;
+        try {
+            msg = mbox.saveDraft(octxt, pm, id, origId, replyType, identity);
+        } catch (IOException e) {
+            throw ServiceException.FAILURE("IOException while saving draft", e);
+        }
 
         // we can now purge the uploaded attachments
         if (mimeData.uploads != null)
@@ -130,8 +131,8 @@ public class SaveDraft extends MailDocumentHandler {
         if (folderId != null || flags != null || tags != null || color >= 0) {
             try {
                 // best not to fail if there's an error here...
-                ItemActionOperation.UPDATE(zsc, session, octxt, mbox, Requester.SOAP, Arrays.asList(msg.getId()),
-                                           MailItem.TYPE_MESSAGE, null, iidFolder, flags, tags, color);
+                ItemActionHelper.UPDATE(octxt, mbox, Arrays.asList(msg.getId()), MailItem.TYPE_MESSAGE,
+                                           null, null, iidFolder, flags, tags, color);
                 // and make sure the Message object reflects post-update reality
                 msg = mbox.getMessageById(octxt, msg.getId());
             } catch (ServiceException e) {
@@ -139,9 +140,9 @@ public class SaveDraft extends MailDocumentHandler {
             }
         }
 
-        Element response = zsc.createElement(MailService.SAVE_DRAFT_RESPONSE);
+        Element response = zsc.createElement(MailConstants.SAVE_DRAFT_RESPONSE);
         // FIXME: inefficient -- this recalculates the MimeMessage (but SaveDraft is called rarely)
-        ToXML.encodeMessageAsMP(response, zsc, msg, null, false, true);
+        ToXML.encodeMessageAsMP(response, ifmt, octxt, msg, null, false, true, null, true);
         return response;
     }
 }

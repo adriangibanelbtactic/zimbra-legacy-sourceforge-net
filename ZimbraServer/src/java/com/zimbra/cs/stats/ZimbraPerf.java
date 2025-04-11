@@ -28,27 +28,28 @@ package com.zimbra.cs.stats;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.TimerTask;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.zimbra.common.localconfig.LC;
-import com.zimbra.common.stats.StatUtil;
 import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.util.TaskScheduler;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.db.DbPool;
 import com.zimbra.cs.db.DbUtil;
 import com.zimbra.cs.service.util.ThreadLocalData;
-import com.zimbra.cs.util.Zimbra;
 
 /**
  * A collection of methods for keeping track of server performance statistics.
@@ -57,8 +58,17 @@ public class ZimbraPerf {
 
     static Log sLog = LogFactory.getLog(ZimbraPerf.class);
     private static final com.zimbra.common.util.Log sZimbraStats = LogFactory.getLog("zimbra.stats");
+    private static TaskScheduler<Void> sTaskScheduler = new TaskScheduler<Void>("ZimbraStats", 1, 1);
 
+    // Name constants for real-time statistics
+    public static final String RTS_JAVA_HEAP_MB = "java_heap_MB"; 
+    
     public static final String RTS_DB_POOL_SIZE = "db_pool_size";
+    public static final String RTS_MYSQL_OPENED_TABLES = "mysql_opened_tables";
+    public static final String RTS_MYSQL_SLOW_QUERIES = "mysql_slow_queries";
+    public static final String RTS_MYSQL_THREADS_CONNECTED = "mysql_threads_connected";
+    public static final String RTS_INNODB_PAGES_READ = "innodb_pages_read";
+    public static final String RTS_INNODB_PAGES_WRITTEN = "innodb_pages_written";
     public static final String RTS_INNODB_BP_HIT_RATE = "innodb_bp_hit_rate";
     
     public static final String RTS_POP_CONN = "pop_conn";
@@ -85,15 +95,16 @@ public class ZimbraPerf {
     public static StopWatch STOPWATCH_IMAP = new StopWatch("imap");
     public static StopWatch STOPWATCH_POP = new StopWatch("pop");
     public static Counter COUNTER_IDX_WRT = new Counter("idx_wrt");
-    public static Counter COUNTER_IDX_WRT_OPENED = new Counter("idx_wrt_opened");
-    public static Counter COUNTER_IDX_WRT_OPENED_CACHE_HIT = new Counter("idx_wrt_opened_cache_hit");
-
     
-    private static RealtimeStats sRealtimeStats = new RealtimeStats(
-        new String[] {
-            RTS_DB_POOL_SIZE, RTS_INNODB_BP_HIT_RATE,
-            RTS_POP_CONN, RTS_POP_SSL_CONN, RTS_IMAP_CONN, RTS_IMAP_SSL_CONN
-        });
+    private static RealtimeStats sRealtimeStats = 
+        new RealtimeStats(new String[] {
+            RTS_JAVA_HEAP_MB, 
+            RTS_DB_POOL_SIZE,
+            RTS_MYSQL_OPENED_TABLES, RTS_MYSQL_SLOW_QUERIES, RTS_MYSQL_THREADS_CONNECTED,
+            RTS_INNODB_PAGES_READ, RTS_INNODB_PAGES_WRITTEN, RTS_INNODB_BP_HIT_RATE,
+            RTS_POP_CONN, RTS_POP_SSL_CONN, RTS_IMAP_CONN, RTS_IMAP_SSL_CONN 
+            }
+        );
 
     private static CopyOnWriteArrayList<Accumulator> sAccumulators = 
         new CopyOnWriteArrayList<Accumulator>(
@@ -108,12 +119,10 @@ public class ZimbraPerf {
                         STOPWATCH_IMAP,
                         STOPWATCH_POP,
                         COUNTER_IDX_WRT,
-                        COUNTER_IDX_WRT_OPENED,
-                        COUNTER_IDX_WRT_OPENED_CACHE_HIT,        
                         sRealtimeStats
                     }
         );
-
+    
     /**
      * This may only be called BEFORE ZimbraPerf.initialize is called, otherwise the column
      * names will not be output correctly into the logs
@@ -123,7 +132,7 @@ public class ZimbraPerf {
             throw new IllegalStateException("Cannot add stat name after ZimbraPerf.initialize() is called");
         sRealtimeStats.addName(name);
     }
-
+    
     /**
      * This may only be called BEFORE ZimbraPerf.initialize is called, otherwise the column
      * names will not be output correctly into the logs
@@ -133,7 +142,7 @@ public class ZimbraPerf {
             throw new IllegalStateException("Cannot add stat name after ZimbraPerf.initialize() is called");
         sAccumulators.add(toAdd);
     }
-
+    
     private static Map<String, StatementStats> sSqlToStats =
         new HashMap<String, StatementStats>();
     
@@ -151,7 +160,7 @@ public class ZimbraPerf {
      */
     private static int sPrepareCount = 0;
 
-    private static final long STATS_WRITE_INTERVAL = Constants.MILLIS_PER_MINUTE;
+    private static final long DB_STATS_WRITE_INTERVAL = Constants.MILLIS_PER_MINUTE;
     private static final long SLOW_QUERY_THRESHOLD = 300;  // ms
     private static long sLastStatsWrite = System.currentTimeMillis();
     
@@ -219,7 +228,7 @@ public class ZimbraPerf {
         StatementStats stats = null;
         
         synchronized (sSqlToStats) {
-            stats = (StatementStats) sSqlToStats.get(normalized);
+            stats = sSqlToStats.get(normalized);
             if (stats == null) {
                 stats = new StatementStats(normalized);
                 sSqlToStats.put(normalized, stats);
@@ -241,7 +250,7 @@ public class ZimbraPerf {
             writeSlowQuery(sql, normalized, durationMillis);
         }
         long now = System.currentTimeMillis();
-        if (now - sLastStatsWrite > STATS_WRITE_INTERVAL) {
+        if (now - sLastStatsWrite > DB_STATS_WRITE_INTERVAL) {
             writeDbStats();
             sLastStatsWrite = now;
         }
@@ -302,6 +311,9 @@ public class ZimbraPerf {
         }
     }
 
+    private static final SimpleDateFormat TIMESTAMP_FORMATTER =
+        new SimpleDateFormat("MM/dd/yyyy HH:mm:ss");
+
     private static void writeSlowQuery(String sql, String normalized, int durationMillis) {
         String filename = LC.zimbra_log_directory.value() + "/slow_queries.csv";
         FileWriter writer = null;
@@ -320,7 +332,7 @@ public class ZimbraPerf {
                 // replace() does regexp operations, so only use it when necessary.
                 sql.replace("\"", "\"\"");
             }
-            writer.write(StatUtil.getTimestampString() + "," + durationMillis +
+            writer.write(TIMESTAMP_FORMATTER.format(new Date()) + "," + durationMillis +
                 ",\"" + sql + "\",\"" + normalized + "\"\n");
             writer.close();
         } catch (IOException e) {
@@ -335,7 +347,7 @@ public class ZimbraPerf {
         FileWriter writer = null;
         
         synchronized (sWriterMap) {
-            writer = (FileWriter) sWriterMap.get(statsFile.getFilename());
+            writer = sWriterMap.get(statsFile.getFilename());
             if (writer != null) {
                 return writer;
             }
@@ -439,7 +451,7 @@ public class ZimbraPerf {
             StringBuffer buf = new StringBuffer();
             writer = getWriter(statsFile);
             // Write timestamp and event name
-            buf.append(StatUtil.getTimestampString());
+            buf.append(TIMESTAMP_FORMATTER.format(new Date()));;
             
             // Write stats
             for (Object value : stats) {
@@ -506,7 +518,7 @@ public class ZimbraPerf {
         return columns;
     }
     
-    private static final long DUMP_FREQUENCY = Constants.MILLIS_PER_MINUTE;
+    private static final long CSV_DUMP_FREQUENCY = Constants.MILLIS_PER_MINUTE;
     private static boolean sIsInitialized = false;
 
     public synchronized static void initialize() {
@@ -536,45 +548,36 @@ public class ZimbraPerf {
         COUNTER_IDX_WRT.setShowAverage(true);
         COUNTER_IDX_WRT.setShowCount(false);
         COUNTER_IDX_WRT.setShowTotal(false);
-        
-        Zimbra.sTimer.scheduleAtFixedRate(new ZimbraStatsDumper(), DUMP_FREQUENCY, DUMP_FREQUENCY);
+
+        sTaskScheduler.schedule("ZimbraStats", new ZimbraStatsDumper(), true, CSV_DUMP_FREQUENCY, 0);
         sIsInitialized = true;
     }
 
     /**
-     * <code>TimerTask</code> implementation that writes a row to zimbrastats.csv once a minute.
+     * Scheduled task that writes a row to zimbrastats.csv with the latest
+     * <tt>Accumulator</tt> data.
      */
-    private static final class ZimbraStatsDumper extends TimerTask {
-        
-        public boolean cancel() {
-            ZimbraLog.perf.error("StatsDumper canceled");
-            return super.cancel();
-        }
-        
-        public void run() {
-            try {
-                List<Object> data = new ArrayList<Object>();
-                data.add(StatUtil.getTimestampString());
-                for (Accumulator a : sAccumulators) {
-                    synchronized (a) {
-                        data.addAll(a.getData());
-                        a.reset();
-                    }
+    private static final class ZimbraStatsDumper
+    implements Callable<Void>
+    {
+        public Void call() {
+            List<Object> data = new ArrayList<Object>();
+            data.add(TIMESTAMP_FORMATTER.format(new Date()));
+            for (Accumulator a : sAccumulators) {
+                synchronized (a) {
+                    data.addAll(a.getData());
+                    a.reset();
                 }
-                
-                // Clean up nulls 
-                for (int i = 0; i < data.size(); i++) {
-                    if (data.get(i) == null) {
-                        data.set(i, "");
-                    }
-                }
-                sZimbraStats.info(StringUtil.join(",", data));
-            } catch (Throwable t) {
-                if (t instanceof OutOfMemoryError) {
-                    throw (OutOfMemoryError) t;
-                }
-                ZimbraLog.perf.error("Accumulator error", t);
             }
+
+            // Clean up nulls 
+            for (int i = 0; i < data.size(); i++) {
+                if (data.get(i) == null) {
+                    data.set(i, "");
+                }
+            }
+            sZimbraStats.info(StringUtil.join(",", data));
+            return null;
         }
     }
 }

@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE_NAME}.mail_item (
    sender        VARCHAR(128),
    subject       TEXT,
    name          VARCHAR(128),               -- namespace entry for item (e.g. tag name, folder name, document filename)
-   metadata      MEDIUMTEXT,
+   metadata      TEXT,
    mod_metadata  INTEGER UNSIGNED NOT NULL,  -- change number for last row modification
    change_date   INTEGER UNSIGNED,           -- UNIX-style timestamp for last row modification
    mod_content   INTEGER UNSIGNED NOT NULL,  -- change number for last change to "content" (e.g. blob)
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE_NAME}.tombstone (
 CREATE TABLE IF NOT EXISTS ${DATABASE_NAME}.pop3_message (
    mailbox_id     INTEGER UNSIGNED NOT NULL,
    data_source_id CHAR(36) NOT NULL,
-   uid            VARCHAR(255) NOT NULL,
+   uid            VARCHAR(255) BINARY NOT NULL,
    item_id        INTEGER UNSIGNED NOT NULL,
    
    PRIMARY KEY (mailbox_id, item_id),

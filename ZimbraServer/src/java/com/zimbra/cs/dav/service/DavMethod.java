@@ -24,17 +24,26 @@
  */
 package com.zimbra.cs.dav.service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.httpclient.HttpMethod;
+import org.apache.commons.httpclient.methods.ByteArrayRequestEntity;
+import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.commons.httpclient.methods.PostMethod;
 import org.dom4j.Document;
 import org.dom4j.Element;
 import org.dom4j.QName;
+import org.dom4j.io.XMLWriter;
 
+import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.dav.DavContext;
 import com.zimbra.cs.dav.DavElements;
 import com.zimbra.cs.dav.DavException;
@@ -49,7 +58,7 @@ import com.zimbra.cs.dav.resource.DavResource;
  */
 public abstract class DavMethod {
 	public abstract String getName();
-	public abstract void handle(DavContext ctxt) throws DavException, IOException;
+	public abstract void handle(DavContext ctxt) throws DavException, IOException, ServiceException;
 	
 	public void checkPrecondition(DavContext ctxt) throws DavException {
 	}
@@ -59,6 +68,10 @@ public abstract class DavMethod {
 	
 	public String toString() {
 		return "DAV method " + getName();
+	}
+	
+	public String getMethodName() {
+		return getName();
 	}
 	
 	protected static final int STATUS_OK = HttpServletResponse.SC_OK;
@@ -81,6 +94,23 @@ public abstract class DavMethod {
 			respMsg.writeTo(resp.getOutputStream());
 		}
 		ctxt.responseSent();
+	}
+	
+	public HttpMethod toHttpMethod(DavContext ctxt, String targetUrl) throws IOException, DavException {
+		if (ctxt.hasRequestMessage()) {
+			PostMethod method = new PostMethod(targetUrl) {
+				public String getName() { return getMethodName(); }
+			};
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			XMLWriter writer = new XMLWriter(baos);
+			writer.write(ctxt.getRequestMessage());
+			ByteArrayRequestEntity reqEntry = new ByteArrayRequestEntity(baos.toByteArray());
+			method.setRequestEntity(reqEntry);
+			return method;
+		}
+    	return new GetMethod(targetUrl) {
+    		public String getName() { return getMethodName(); }
+    	};
 	}
 	
 	protected RequestProp getRequestProp(DavContext ctxt) throws DavException {
@@ -106,16 +136,19 @@ public abstract class DavMethod {
 		boolean nameOnly;
 		boolean allProp;
 		Collection<QName> props;
+		HashMap<QName, DavException> errProps;
 
-		RequestProp() {
+		public RequestProp() {
 			props = new ArrayList<QName>();
-			nameOnly = false;
+			errProps = new HashMap<QName, DavException>();
+			nameOnly = true;
 			allProp = true;
 		}
 		
 		public RequestProp(Element top) {
 			this();
 			
+			nameOnly = false;
 			allProp = false;
 			for (Object obj : top.elements()) {
 				if (!(obj instanceof Element))
@@ -138,7 +171,6 @@ public abstract class DavMethod {
 		public RequestProp(Collection<Element> set, Collection<QName> remove) {
 			this();
 			allProp = false;
-			nameOnly = true;
 			for (Element e : set)
 				props.add(e.getQName());
 			props.addAll(remove);
@@ -150,8 +182,17 @@ public abstract class DavMethod {
 		public boolean isAllProp() {
 			return allProp;
 		}
+		public void addProp(QName p) {
+			props.add(p);
+		}
 		public Collection<QName> getProps() {
 			return props;
+		}
+		public void addPropError(QName prop, DavException ex) {
+			errProps.put(prop, ex);
+		}
+		public Map<QName, DavException> getErrProps() {
+			return errProps;
 		}
 	}
 }

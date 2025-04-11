@@ -25,14 +25,15 @@
 
 package com.zimbra.qa.unittest;
 
-import java.io.OutputStream;
-import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 
 import junit.framework.Test;
 import junit.framework.TestResult;
 import junit.framework.TestSuite;
+
+import com.zimbra.common.soap.Element;
+import com.zimbra.cs.index.TestSearch;
 
 /**
  * Complete unit test suite for the Zimbra code base.
@@ -42,7 +43,6 @@ import junit.framework.TestSuite;
  */
 public class ZimbraSuite extends TestSuite
 {
-    static final DecimalFormat TEST_TIME_FORMAT = new DecimalFormat("0.00");
     private static List<Test> sAdditionalTests = new ArrayList<Test>();
 
     /**
@@ -58,13 +58,15 @@ public class ZimbraSuite extends TestSuite
      * Runs the entire test suite and writes the output to the specified
      * <code>OutputStream</code>.
      */
-    public static TestResult runTestSuite(OutputStream outputStream) {
+    public static TestResult runTestSuite(Element response) {
         TestSuite suite = new TestSuite();
 
+        suite.addTest(new TestSuite(TestWaitSet.class));
         suite.addTest(new TestSuite(TestUtilCode.class));
         suite.addTest(new TestSuite(TestEmailUtil.class));
         suite.addTest(new TestSuite(TestOutOfOffice.class));
         suite.addTest(new TestSuite(TestDbUtil.class));
+        suite.addTest(new TestSuite(TestTableMaintenance.class));
         suite.addTest(new TestSuite(TestUnread.class));
         suite.addTest(new TestSuite(TestTags.class));
         suite.addTest(new TestSuite(TestItemCache.class));
@@ -76,11 +78,20 @@ public class ZimbraSuite extends TestSuite
         suite.addTest(new TestSuite(TestMailItem.class));
         suite.addTest(new TestSuite(TestConcurrency.class));
         suite.addTest(new TestSuite(TestFolderFilterRules.class));
+        suite.addTest(new TestSuite(TestTagFilterRules.class));
         suite.addTest(new TestSuite(TestPop3Import.class));
         suite.addTest(new TestSuite(TestFilter.class));
         suite.addTest(new TestSuite(TestPop3ImapAuth.class));
-        suite.addTest(new TestSuite(TestNotification.class));
-        suite.addTest(new TestSuite(TestMaxMessageSize.class));
+        suite.addTest(new TestSuite(TestContacts.class));
+        suite.addTest(new TestSuite(TestTaskScheduler.class));
+        suite.addTest(new TestSuite(TestSearch.class));
+        suite.addTest(new TestSuite(TestSendAndReceive.class));
+        suite.addTest(new TestSuite(TestConnectionPool.class));
+
+        // xxx bburtin: Commenting out IMAP tests, since the new schema hasn't been
+        // checked in
+        // suite.addTest(new TestSuite(TestImapImport.class));
+        // suite.addTest(new TestSuite(TestImapImport.TearDown.class));
 
         synchronized (sAdditionalTests) {
             for (Test additional : sAdditionalTests) {
@@ -88,6 +99,6 @@ public class ZimbraSuite extends TestSuite
             }
         }
         
-        return TestUtil.runTest(suite, outputStream);
+        return TestUtil.runTest(suite, response);
     }
 }

@@ -27,8 +27,9 @@ package com.zimbra.cs.service.im;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.common.soap.IMConstants;
+import com.zimbra.common.soap.SoapFaultException;
+import com.zimbra.common.soap.Element;
 
 import com.zimbra.cs.im.IMAddr;
 import com.zimbra.cs.im.IMChat;
@@ -41,25 +42,24 @@ public class IMModifyChat extends IMDocumentHandler
         CLOSE, ADDUSER;
     }
 
-    public Element handle(Element request, Map<String, Object> context) throws ServiceException, SoapFaultException 
-    {
+    public Element handle(Element request, Map<String, Object> context) throws ServiceException, SoapFaultException {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
 
-        Element response = lc.createElement(IMService.IM_MODIFY_CHAT_RESPONSE);
+        Element response = lc.createElement(IMConstants.IM_MODIFY_CHAT_RESPONSE);
         
-        String threadId = request.getAttribute(IMService.A_THREAD_ID);
+        String threadId = request.getAttribute(IMConstants.A_THREAD_ID);
         
         Object lock = super.getLock(lc);
         
         synchronized(lock) {
             IMPersona persona = super.getRequestedPersona(lc, lock);
             
-            IMChat chat = persona.lookupChatOrNull(threadId);
+            IMChat chat = persona.getChat(threadId);
             
             if (chat == null) {
                 throw ServiceException.FAILURE("Unknown thread: "+threadId, null);
             } else {
-                String opStr = request.getAttribute(IMService.A_OPERATION);
+                String opStr = request.getAttribute(IMConstants.A_OPERATION);
                 Op op = Op.valueOf(opStr.toUpperCase());
                 
                 switch(op) {
@@ -67,13 +67,17 @@ public class IMModifyChat extends IMDocumentHandler
                         persona.closeChat(lc.getOperationContext(), chat);
                         break;
                     case ADDUSER:
-                        String newUser = request.getAttribute(IMService.A_ADDRESS);
-                        persona.addUserToChat(chat, new IMAddr(newUser));
-                        break;
+                    {
+                        String newUser = request.getAttribute(IMConstants.A_ADDRESS);
+                        String inviteMessage = request.getText();
+                        if (inviteMessage == null || inviteMessage.length() == 0)
+                            inviteMessage = "Please join my chat";
+                        persona.addUserToChat(lc.getOperationContext(), chat, new IMAddr(newUser), inviteMessage);
+                    }
+                    break;
                 }
             }
         }
-        
         return response;        
     }
 

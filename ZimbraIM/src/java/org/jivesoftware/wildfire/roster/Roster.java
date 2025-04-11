@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: $
+ * $Date: $
+ *
+ * Copyright (C) 2006 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.roster;
 
 import org.jivesoftware.database.JiveID;
@@ -93,6 +80,7 @@ public class Roster implements Cacheable {
      * @param username The username of the user that owns this roster
      */
     public Roster(String username) {
+        assert(username.indexOf('@') > 0);
         presenceManager = XMPPServer.getInstance().getPresenceManager();
         rosterManager = XMPPServer.getInstance().getRosterManager();
         sessionManager = SessionManager.getInstance();
@@ -172,7 +160,7 @@ public class Roster implements Cacheable {
             }
             catch (UserNotFoundException e) {
                 Log.error("Groups (" + sharedUsers.get(jid) + ") include non-existent username (" +
-                        jid.getNode() +
+                        jid.toBareJID() +
                         ")");
             }
         }
@@ -440,7 +428,7 @@ public class Roster implements Cacheable {
             // Cancel any existing presence subscription between the user and the contact
             if (subType == RosterItem.SUB_TO || subType == RosterItem.SUB_BOTH) {
                 Presence presence = new Presence();
-                presence.setFrom(server.createJID(username, null));
+                presence.setFrom(getUserJID());
                 presence.setTo(itemToRemove.getJid());
                 presence.setType(Presence.Type.unsubscribe);
                 server.getPacketRouter().route(presence);
@@ -449,7 +437,7 @@ public class Roster implements Cacheable {
             // cancel any existing presence subscription between the contact and the user
             if (subType == RosterItem.SUB_FROM || subType == RosterItem.SUB_BOTH) {
                 Presence presence = new Presence();
-                presence.setFrom(server.createJID(username, null));
+                presence.setFrom(getUserJID());
                 presence.setTo(itemToRemove.getJid());
                 presence.setType(Presence.Type.unsubscribed);
                 server.getPacketRouter().route(presence);
@@ -484,7 +472,7 @@ public class Roster implements Cacheable {
                 // If the contact being removed is not a local user then ACK unsubscription
                 if (!server.isLocal(user)) {
                     Presence presence = new Presence();
-                    presence.setFrom(server.createJID(username, null));
+                    presence.setFrom(getUserJID());
                     presence.setTo(user);
                     presence.setType(Presence.Type.unsubscribed);
                     server.getPacketRouter().route(presence);
@@ -662,7 +650,7 @@ public class Roster implements Cacheable {
     }
 
     private void broadcast(org.xmpp.packet.Roster roster) {
-        JID recipient = server.createJID(username, null);
+        JID recipient = getUserJID();
         roster.setTo(recipient);
         if (sessionManager == null) {
             sessionManager = SessionManager.getInstance();
@@ -1096,6 +1084,6 @@ public class Roster implements Cacheable {
     }
 
     private JID getUserJID() {
-        return XMPPServer.getInstance().createJID(getUsername(), null);
+        return new JID(getUsername());
     }
 }

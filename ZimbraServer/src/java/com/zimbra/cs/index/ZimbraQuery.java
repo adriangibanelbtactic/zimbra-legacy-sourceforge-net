@@ -41,6 +41,8 @@ import java.util.*;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.Pair;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.Term;
@@ -48,7 +50,9 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.BooleanClause.Occur;
 
+import com.zimbra.cs.account.Account;
 import com.zimbra.cs.index.MailboxIndex.SortBy;
 import com.zimbra.cs.index.queryparser.Token;
 import com.zimbra.cs.index.queryparser.ZimbraQueryParser;
@@ -65,7 +69,7 @@ import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.service.util.ItemId;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
-import com.zimbra.soap.SoapProtocol;
+import com.zimbra.common.soap.SoapProtocol;
 
 /**
  * @author tim
@@ -83,8 +87,6 @@ import com.zimbra.soap.SoapProtocol;
  */
 public final class ZimbraQuery {
     /**
-     * @author tim
-     * 
      * BaseQuery
      *
      * Very simple wrapper classes that each represent a node in the parse tree for the
@@ -96,8 +98,6 @@ public final class ZimbraQuery {
         private BaseQuery mNext = null;
         private int mModifierType;
         private int mQueryType;
-
-        private List<QueryInfo> getInfo() { return null; }
 
         protected BaseQuery(int modifierType, int queryType) {
             mModifierType = modifierType;
@@ -147,8 +147,6 @@ public final class ZimbraQuery {
 
         /**
          * Called by the optimizer, this returns an initialized QueryOperation of the requested type.
-         * 
-         * Type must be one of the types returned by canExec() 
          * 
          * @param type 
          * @param truth
@@ -252,27 +250,40 @@ public final class ZimbraQuery {
         }
 
 
-        protected int canExec() {
-            assert(false);
-            return 0;
-        }
-
     } 
 
     public static class ConvQuery extends BaseQuery
     {
-        private int mConvId;
-        public ConvQuery(Analyzer analyzer, int modifier, String target) {
+        private ItemId mConvId;
+        private Mailbox mMailbox; 
+        
+        private ConvQuery(Mailbox mbox, Analyzer analyzer, int modifier, ItemId convId) throws ServiceException {
             super(modifier, ZimbraQueryParser.CONV);
-            mConvId = 0;
-            mConvId = Integer.parseInt(target);
+            mMailbox = mbox;
+            mConvId = convId; 
+            
+            if (mConvId.getId() < 0) {
+                // should never happen (make an ItemQuery instead
+                throw ServiceException.FAILURE("Illegal Negative ConvID: "+convId.toString()+", use ItemQuery for virtual convs", null);
+            }
+        }
+        
+        public static BaseQuery create(Mailbox mbox, Analyzer analyzer, int modifier, String target) throws ServiceException {
+            ItemId convId = new ItemId(target, mbox.getAccountId());
+            if (convId.getId() < 0) {
+                // ...convert negative convId to positive ItemId...
+                convId = new ItemId(convId.getAccountId(), -1 * convId.getId());                
+                List<ItemId> iidList = new ArrayList<ItemId>(1);
+                iidList.add(convId);
+                return new ItemQuery(mbox, analyzer, modifier, false, false, iidList);
+            } else {
+                return new ConvQuery(mbox, analyzer, modifier, convId);
+            }
         }
 
         protected QueryOperation getQueryOperation(boolean truth) {
             DBQueryOperation op = DBQueryOperation.Create();
-
-            op.addConvId(mConvId, calcTruth(truth));
-
+            op.addConvId(mMailbox, mConvId, calcTruth(truth));
             return op;
         }
 
@@ -297,8 +308,14 @@ public final class ZimbraQuery {
             DBQueryOperation op = DBQueryOperation.Create();
 
             truth = calcTruth(truth);
-
-            op.addDateClause(mLowestTime, mLowerEq, mHighestTime, mHigherEq, truth);
+            
+            if (this.getQueryType() == ZimbraQueryParser.APPT_START)
+                op.addCalStartDateClause(mLowestTime, mLowerEq, mHighestTime, mHigherEq, truth);
+            else if (this.getQueryType() == ZimbraQueryParser.APPT_END)
+                op.addCalEndDateClause(mLowestTime, mLowerEq, mHighestTime, mHigherEq, truth);
+            else
+                op.addDateClause(mLowestTime, mLowerEq, mHighestTime, mHigherEq, truth);
+            
             return op;
         }
 
@@ -366,6 +383,8 @@ public final class ZimbraQuery {
 
             int field = 0;
             switch (origType) {
+                case ZimbraQueryParser.APPT_START:
+                case ZimbraQueryParser.APPT_END:
                 case ZimbraQueryParser.BEFORE:
                 case ZimbraQueryParser.AFTER:
                 case ZimbraQueryParser.DATE:
@@ -424,7 +443,7 @@ public final class ZimbraQuery {
                                     }
                                     break;
                                 case 'h':
-                                    field = Calendar.HOUR;
+                                    field = Calendar.HOUR_OF_DAY;
                                     break;
                                 case 'd':
                                     field = Calendar.DATE;
@@ -461,6 +480,7 @@ public final class ZimbraQuery {
                             case Calendar.DATE:
                                 cal.set(Calendar.HOUR_OF_DAY, 0);
                             case Calendar.HOUR:
+                            case Calendar.HOUR_OF_DAY:
                                 cal.set(Calendar.MINUTE, 0);
                             case Calendar.MINUTE:
                                 cal.set(Calendar.SECOND, 0);
@@ -535,7 +555,11 @@ public final class ZimbraQuery {
                         explicitGT= true;
                         explicitEq = false;
                         break;
+                    case ZimbraQueryParser.YEAR:
+                    case ZimbraQueryParser.MONTH:
                     case ZimbraQueryParser.DATE:
+                    case ZimbraQueryParser.APPT_START:
+                    case ZimbraQueryParser.APPT_END:
                         explicitEq = true;
                         break;
                 }
@@ -588,7 +612,7 @@ public final class ZimbraQuery {
                     mHigherEq = false;
                 }
             } else { 
-                assert(explicitEq == true);
+  //                assert(explicitEq == true);
                 // =  lowest=mDate,lowestEq=true,highest=mEndDate,highestEq=false 
                 mLowestTime = mDate.getTime();
                 mLowerEq = true;
@@ -609,6 +633,12 @@ public final class ZimbraQuery {
                     break;
                 case ZimbraQueryParser.DATE:
                     str = "DATE";
+                    break;
+                case ZimbraQueryParser.APPT_START:
+                    str = "APPT-START";
+                    break;
+                case ZimbraQueryParser.APPT_END:
+                    str = "APPT-END";
                     break;
                 default:
                     str = "ERROR";
@@ -705,7 +735,6 @@ public final class ZimbraQuery {
         }
     }
 
-
     public static class InQuery extends BaseQuery
     {
         public static final Integer IN_ANY_FOLDER = new Integer(-2);
@@ -713,55 +742,89 @@ public final class ZimbraQuery {
         public static final Integer IN_REMOTE_FOLDER = new Integer(-4);
 
         public static BaseQuery Create(Mailbox mailbox, Analyzer analyzer, int modifier, Integer folderId) throws ServiceException {
-//          try {
             if (folderId < 0) {
-                InQuery toRet = new InQuery(mailbox, analyzer, folderId);
+                InQuery toRet = new InQuery(mailbox, analyzer, modifier);
                 toRet.mSpecialTarget = folderId;
                 return toRet;
             } else {
                 Folder folder = mailbox.getFolderById(null, folderId.intValue());
-                return new InQuery(mailbox, analyzer, modifier, folder);
+                InQuery toRet = new InQuery(mailbox, analyzer, modifier);
+                toRet.mFolder = folder;
+                return toRet;
             }
-//          } catch (NoSuchItemException nsie) {
-//          TIM: why is this here?  Seems strange to eat this error!
-//          return null;
-//          } 
         }
 
         public static BaseQuery Create(Mailbox mailbox, Analyzer analyzer, int modifier, String folderName) throws ServiceException {
-//          try {
-            Folder folder = mailbox.getFolderByPath(null, folderName);
-            return new InQuery(mailbox, analyzer, modifier, folder);
-//          } catch (NoSuchItemException nsie) {
-//          return null;
-//          }
+            Pair<Folder, String> result = mailbox.getFolderByPathLongestMatch(null, Mailbox.ID_FOLDER_USER_ROOT, folderName);
+            return recursiveResolve(mailbox, analyzer, modifier, result.getFirst(), result.getSecond());
         }
-        private Folder mFolder;
-        private ItemId mInId;
-        private Integer mSpecialTarget = null;
-        private Mailbox mMailbox;
-
-        public InQuery(Mailbox mailbox, Analyzer analyzer, int modifier, ItemId itemId) {
-            super(modifier, ZimbraQueryParser.IN);
-            mFolder = null;
-            mInId = itemId;
-            mMailbox = mailbox;
+        
+        public static BaseQuery Create(Mailbox mailbox, Analyzer analyzer, int modifier, ItemId iid, String subfolderPath) throws ServiceException {
+            if (!iid.belongsTo(mailbox)) {
+                InQuery toRet = new InQuery(mailbox, analyzer, modifier);
+                toRet.mFolder = null;
+                toRet.mRemoteId = iid;
+                toRet.mSubfolderPath = subfolderPath;
+                return toRet;
+            } else {
+                // find the base folder
+                Pair<Folder, String> result;
+                if (subfolderPath != null && subfolderPath.length() > 0) {
+                    result = mailbox.getFolderByPathLongestMatch(null, iid.getId(), subfolderPath);
+                } else {
+                    Folder f = mailbox.getFolderById(null, iid.getId());
+                    result = new Pair<Folder, String>(f, null);
+                }
+                return recursiveResolve(mailbox, analyzer, modifier, result.getFirst(), result.getSecond());                
+            }
         }
-
-        public InQuery(Mailbox mailbox, Analyzer analyzer, int modifier, Folder folder) {
-            super(modifier, ZimbraQueryParser.IN);
-            assert(folder != null);
-            mFolder = folder;
-            mMailbox = mailbox;
+            
+        /** Resolve through local mountpoints until we get to the actual folder, or until we get to a remote folder */
+        private static BaseQuery recursiveResolve(Mailbox mailbox, Analyzer analyzer, int modifier, 
+            Folder baseFolder, String subfolderPath) throws ServiceException {
+            
+            if (!(baseFolder instanceof Mountpoint)) {
+                if (subfolderPath != null) {
+                    throw MailServiceException.NO_SUCH_FOLDER(baseFolder.getPath() + "/" + subfolderPath);
+                }
+                InQuery toRet = new InQuery(mailbox, analyzer, modifier);
+                toRet.mFolder = baseFolder;
+                return toRet;
+            } else {
+                Mountpoint mpt = (Mountpoint)baseFolder;
+                
+                if  (mpt.isLocal()) {
+                    // local!
+                    if (subfolderPath == null || subfolderPath.length() == 0) {
+                        InQuery toRet = new InQuery(mailbox, analyzer, modifier);
+                        toRet.mFolder = baseFolder;
+                        return toRet;
+                    } else {
+                        Folder newBase = mailbox.getFolderById(null, mpt.getRemoteId());
+                        return recursiveResolve(mailbox, analyzer, modifier, newBase, subfolderPath);
+                    }
+                } else {
+                    // remote!
+                    InQuery toRet = new InQuery(mailbox, analyzer, modifier);
+                    toRet.mRemoteId = new ItemId(mpt.getOwnerId(), mpt.getRemoteId());
+                    toRet.mSubfolderPath = subfolderPath;
+                    return toRet;
+                }
+            }
         }
-
+        
         private InQuery(Mailbox mailbox, Analyzer analyzer, int modifier) {
             super(modifier, ZimbraQueryParser.IN);
             mMailbox = mailbox;
         }
-
-        protected QueryOperation getLocalFolderOperation(Mailbox mbox) {
-
+        
+        /**
+         * Used for "is:local" queries
+         * 
+         * @param mbox
+         * @return 
+         */
+        private QueryOperation getLocalFolderOperation(Mailbox mbox) {
             try {
                 Folder root = mbox.getFolderById(null, Mailbox.ID_FOLDER_ROOT);
                 List<Folder> allFolders = root.getSubfolderHierarchy();
@@ -784,7 +847,6 @@ public final class ZimbraQuery {
 
                     for (Folder f : allFolders) {
                         if (!(f instanceof Mountpoint) && !(f instanceof SearchFolder)) {
-//                          System.out.println("Adding: "+f.toString());
                             DBQueryOperation dbop = new DBQueryOperation();
                             outer.add(dbop);
                             dbop.addInClause(f, true);
@@ -797,8 +859,14 @@ public final class ZimbraQuery {
             }
         }
 
-        protected QueryOperation getRemoteFolderOperation(boolean truth, Mailbox mbox) {
-
+        /**
+         * Used for "is:remote" queries
+         *  
+         * @param truth
+         * @param mbox
+         * @return
+         */
+        private QueryOperation getRemoteFolderOperation(boolean truth, Mailbox mbox) {
             try {
                 Folder root = mbox.getFolderById(null, Mailbox.ID_FOLDER_ROOT);
                 List<Folder> allFolders = root.getSubfolderHierarchy();
@@ -808,7 +876,6 @@ public final class ZimbraQuery {
 
                 allFolders.remove(trash);
                 for (Folder f : trashFolders) {
-
                     allFolders.remove(f);
                 }
 
@@ -820,10 +887,11 @@ public final class ZimbraQuery {
                     if (!(f instanceof Mountpoint))
                         iter.remove();
                     else {
+                        // this was commented out - why?  Uncommented it -tim
                         Mountpoint mpt = (Mountpoint)f;
-//                      if (mpt. .getAccount() == mbox.getAccount()) {
-//                      iter.remove();
-//                      }
+                        if (mpt.getAccount() == mbox.getAccount()) {
+                            iter.remove();
+                        }
                     }
                 }
 
@@ -869,18 +937,11 @@ public final class ZimbraQuery {
                             return getRemoteFolderOperation(true, mMailbox);
                         } else {
                             assert(mSpecialTarget == IN_LOCAL_FOLDER);
-//                          DBQueryOperation dbOp = DBQueryOperation.Create();
-//                          dbOp.addLocalFolderClause(true, mMailbox);
-//                          return dbOp;
                             return getLocalFolderOperation(mMailbox);
                         }
                     } else {
                         if (mSpecialTarget == IN_REMOTE_FOLDER) {
                             return getLocalFolderOperation(mMailbox);
-
-//                          DBQueryOperation dbOp = DBQueryOperation.Create();
-//                          dbOp.addLocalFolderClause(true, mMailbox);
-//                          return dbOp;
                         } else {
                             assert(mSpecialTarget == IN_LOCAL_FOLDER);
                             return getRemoteFolderOperation(true, mMailbox);
@@ -892,8 +953,8 @@ public final class ZimbraQuery {
             DBQueryOperation dbOp = DBQueryOperation.Create();
             if (mFolder != null) {
                 dbOp.addInClause(mFolder, calcTruth(truth));
-            } else if (mInId != null) {
-                dbOp.addInIdClause(mInId, calcTruth(truth));
+            } else if (mRemoteId != null) {
+                dbOp.addInRemoteFolderClause(mRemoteId, mSubfolderPath, calcTruth(truth));
             } else {
                 assert(false);
             }
@@ -914,11 +975,18 @@ public final class ZimbraQuery {
                 return toRet;
             } else {
                 return super.toString(expLevel)+
-                ",IN:"+(mInId!=null ? mInId.toString() :
+                ",IN:"+(mRemoteId!=null ? mRemoteId.toString() :
                     (mFolder!=null?mFolder.getName():"ANY_FOLDER"))
+                    + (mSubfolderPath != null ? "/"+mSubfolderPath : "")
                     +")";
             }
         }
+        
+        private Folder mFolder;
+        private ItemId mRemoteId = null;
+        private String mSubfolderPath = null;
+        private Integer mSpecialTarget = null;
+        private Mailbox mMailbox;
     }
 
     public abstract static class LuceneTableQuery extends BaseQuery
@@ -995,6 +1063,23 @@ public final class ZimbraQuery {
                 return super.toString(expLevel) + ",UNREPLIED)";
             }
         }
+    }
+    
+
+    public static class IsInviteQuery extends TagQuery
+    {
+        public IsInviteQuery(Mailbox mailbox, Analyzer analyzer, int modifier, boolean truth) throws ServiceException
+        {
+            super(analyzer, modifier, mailbox.mInviteFlag, truth);
+        }
+
+        public String toString(int expLevel) {
+            if (mTruth) {
+                return super.toString(expLevel) + ",INVITE)";
+            } else {
+                return super.toString(expLevel) + ",NOT_INVITE)";
+            }
+        }
     }    
 
     public static class SentQuery extends TagQuery
@@ -1012,7 +1097,7 @@ public final class ZimbraQuery {
             }
         }
     }
-
+    
     public static class SizeQuery extends BaseQuery
     {
         private String mSizeStr;
@@ -1101,6 +1186,82 @@ public final class ZimbraQuery {
             return super.toString(expLevel)+","+mSize +")";
         }
     }
+    
+    public static class ModseqQuery extends BaseQuery
+    {
+        static enum Operator {
+            EQ, GT, GTEQ, LT, LTEQ;
+        }
+        
+        private int mValue;
+        private Operator mOp;
+
+        public ModseqQuery(Mailbox mbox, Analyzer analyzer, int modifier, int target, String changeId) throws ParseException {
+            super(modifier, target);
+            
+            if (changeId.charAt(0) == '<') {
+                if (changeId.charAt(1) == '=') {
+                    mOp = Operator.LTEQ;
+                    changeId = changeId.substring(2); 
+                } else {
+                    mOp = Operator.LT;
+                    changeId = changeId.substring(1); 
+                }
+            } else if (changeId.charAt(0) == '>') {
+                if (changeId.charAt(1) == '=') {
+                    mOp = Operator.GTEQ;
+                    changeId = changeId.substring(2); 
+                } else {
+                    mOp = Operator.GT;
+                    changeId = changeId.substring(1); 
+                }
+            } else {
+                mOp = Operator.EQ;
+            }
+            mValue = Integer.parseInt(changeId);
+        }
+
+        protected QueryOperation getQueryOperation(boolean truth) 
+        {
+            DBQueryOperation op = DBQueryOperation.Create();
+            truth = calcTruth(truth);
+
+            long highest = -1, lowest = -1;
+            boolean lowestEq = false;
+            boolean highestEq = false;
+            
+            switch (mOp) {
+                case EQ:
+                    highest = mValue;
+                    lowest = mValue;
+                    highestEq = true;
+                    lowestEq = true;
+                    break;
+                case GT:
+                    lowest = mValue;
+                    break;
+                case GTEQ:
+                    lowest = mValue;
+                    lowestEq = true;
+                    break;
+                case LT:
+                    highest = mValue;
+                    break;
+                case LTEQ:
+                    highest = mValue;
+                    highestEq = true;
+                    break;
+            }
+            
+            op.addModSeqClause(lowest, lowestEq, highest, highestEq, truth);
+            return op;
+        }
+
+        public String toString(int expLevel) {
+            return super.toString(expLevel)+","+mOp+" "+mValue+")";
+        }
+    }
+    
 
     public static class SubQuery extends BaseQuery
     {
@@ -1110,7 +1271,7 @@ public final class ZimbraQuery {
             super(modifier, SUBQUERY_TOKEN );
             mSubClauses = exp;
         }
-
+        
         protected BaseQuery getSubClauseHead() {
             return (BaseQuery)mSubClauses.get(0);
         }
@@ -1132,10 +1293,117 @@ public final class ZimbraQuery {
             ret+=indent(expLevel)+" )";
             return ret;        
         }
+    }
 
-        protected int canExec() {
-            assert(false);
-            return 0;
+    // bitmask for choosing "FROM/TO/CC" of messages...used for AddrQuery and MeQuery 
+    public static final int ADDR_BITMASK_FROM = 0x1;
+    public static final int ADDR_BITMASK_TO =   0x2;
+    public static final int ADDR_BITMASK_CC =   0x4;
+    
+    /** A simpler way of expressing (to:FOO or from:FOO or cc:FOO) */
+    public static class AddrQuery extends SubQuery {
+        protected AddrQuery(Analyzer analyzer, int modifier, AbstractList exp) {
+            super(analyzer, modifier, exp);
+        }
+        public static ZimbraQuery.BaseQuery createFromTarget(Mailbox mbox, Analyzer analyzer, int modifier, int target, String text) throws ServiceException {
+            int bitmask = 0;
+            switch (target) {
+                case ZimbraQueryParser.TOFROM:
+                    bitmask = ADDR_BITMASK_TO | ADDR_BITMASK_FROM;
+                    break;
+                case ZimbraQueryParser.TOCC:
+                    bitmask = ADDR_BITMASK_TO | ADDR_BITMASK_CC;
+                    break;
+                case ZimbraQueryParser.FROMCC:
+                    bitmask = ADDR_BITMASK_FROM | ADDR_BITMASK_CC;
+                    break;
+                case ZimbraQueryParser.TOFROMCC:
+                    bitmask = ADDR_BITMASK_TO | ADDR_BITMASK_FROM | ADDR_BITMASK_CC;
+                    break;
+            }
+            return createFromBitmask(mbox, analyzer, modifier, text, bitmask);
+        }
+        
+        public static ZimbraQuery.BaseQuery createFromBitmask(Mailbox mbox, Analyzer analyzer, int modifier, String text, int operatorBitmask) throws ServiceException {
+            ArrayList<ZimbraQuery.BaseQuery> clauses = new ArrayList<ZimbraQuery.BaseQuery>();
+            boolean atFirst = true;
+            
+            if ((operatorBitmask & ADDR_BITMASK_FROM) !=0) {
+                clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.FROM, text));
+                atFirst = false;
+            } 
+            if ((operatorBitmask & ADDR_BITMASK_TO) != 0) {
+                if (atFirst) 
+                    atFirst = false;
+                else
+                    clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+                clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.TO, text)); 
+            }
+            if ((operatorBitmask & ADDR_BITMASK_CC) != 0) {
+                if (atFirst) 
+                    atFirst = false;
+                else
+                    clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+                clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.CC, text)); 
+            }
+            return new AddrQuery(analyzer, modifier, clauses); 
+        }
+    }
+    
+    /** Messages "to me" "from me" or "cc me" or any combination thereof */
+    public static class MeQuery extends SubQuery {
+        protected MeQuery(Analyzer analyzer, int modifier, AbstractList exp) {
+            super(analyzer, modifier, exp);
+        }
+        
+        public static ZimbraQuery.BaseQuery create(Mailbox mbox, Analyzer analyzer, int modifier, int operatorBitmask) throws ServiceException {
+            ArrayList<ZimbraQuery.BaseQuery> clauses = new ArrayList<ZimbraQuery.BaseQuery>();
+            Account acct = mbox.getAccount();
+            boolean atFirst = true;
+            if ((operatorBitmask & ADDR_BITMASK_FROM) !=0) {
+                clauses.add(new SentQuery(mbox, analyzer, modifier, true));
+                atFirst = false;
+            } 
+            if ((operatorBitmask & ADDR_BITMASK_TO) != 0) {
+                if (atFirst) 
+                    atFirst = false;
+                else
+                    clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+                clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.TO, acct.getName())); 
+            }
+            if ((operatorBitmask & ADDR_BITMASK_CC) != 0) {
+                if (atFirst) 
+                    atFirst = false;
+                else
+                    clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+                clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.CC, acct.getName())); 
+            }
+            
+            String[] aliases = acct.getAliases();
+            for (String alias : aliases) {
+//                if ((operatorBitmask & ADDR_BITMASK_FROM) !=0) {
+//                    if (atFirst) {
+//                        clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+//                        atFirst = false;
+//                    }
+//                    clauses.add(new SentQuery(mbox, analyzer, modifier, true)); 
+//                } 
+                if ((operatorBitmask & ADDR_BITMASK_TO) != 0) {
+                    if (atFirst) 
+                        atFirst = false;
+                    else
+                        clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+                    clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.TO, alias)); 
+                }
+                if ((operatorBitmask & ADDR_BITMASK_CC) != 0) {
+                    if (atFirst) 
+                        atFirst = false;
+                    else
+                        clauses.add(new ConjQuery(analyzer, ConjQuery.OR));
+                    clauses.add(new TextQuery(mbox, analyzer, modifier, ZimbraQueryParser.CC, alias)); 
+                }
+            }
+            return new MeQuery(analyzer, modifier, clauses); 
         }
     }
 
@@ -1163,41 +1431,13 @@ public final class ZimbraQuery {
         }
     }
 
-    public static class DBTypeQuery extends BaseQuery
-    {
-        private byte mType;
-
-        public DBTypeQuery(Analyzer analyzer, int modifier, byte type) 
-        {
-            super(modifier, ZimbraQueryParser.IS);
-            mType = type;
-        }
-
-        public static DBTypeQuery IS_INVITE(Mailbox mailbox, Analyzer analyzer, int modifier) throws ServiceException {
-//          return new DBTypeQuery(analyzer, modifier, MailItem.TYPE_INVITE);
-            return new DBTypeQuery(analyzer, modifier, MailItem.TYPE_MESSAGE);
-        }
-
-        protected QueryOperation getQueryOperation(boolean truth) {
-            DBQueryOperation dbOp = DBQueryOperation.Create();
-
-            dbOp.addTypeClause(mType, calcTruth(truth));
-
-            return dbOp;
-        }
-
-        public String toString(int expLevel) {
-            return super.toString(expLevel)+","+mType+")";
-        }
-    }
-
     public static class ItemQuery extends BaseQuery
     {
-        public static BaseQuery Create(Analyzer analyzer, int modifier, String str) 
+        public static BaseQuery Create(Mailbox mbox, Analyzer analyzer, int modifier, String str) 
         throws ServiceException {
             boolean allQuery = false;
             boolean noneQuery = false;
-            List<Integer> itemIds = new ArrayList<Integer>();
+            List<ItemId> itemIds = new ArrayList<ItemId>();
 
             if (str.equalsIgnoreCase("all")) {
                 allQuery = true;
@@ -1207,8 +1447,8 @@ public final class ZimbraQuery {
                 String[] items = str.split(",");
                 for (int i = 0; i < items.length; i++) {
                     if (items[i].length() > 0) {
-                        Integer id = Integer.decode(items[i].trim());
-                        itemIds.add(id);
+                        ItemId iid = new ItemId(items[i], mbox.getAccountId());
+                        itemIds.add(iid);
                     }
                 }
                 if (itemIds.size() == 0) {
@@ -1216,19 +1456,21 @@ public final class ZimbraQuery {
                 }
             }
 
-            return new ItemQuery(analyzer, modifier, allQuery, noneQuery, itemIds);
+            return new ItemQuery(mbox, analyzer, modifier, allQuery, noneQuery, itemIds);
         }
 
         private boolean mIsAllQuery;
         private boolean mIsNoneQuery;
-        private List mItemIds;
+        private List<ItemId> mItemIds;
+        private Mailbox mMailbox;
 
-        public ItemQuery(Analyzer analyzer, int modifier, boolean all, boolean none, List ids) 
+        ItemQuery(Mailbox mbox, Analyzer analyzer, int modifier, boolean all, boolean none, List<ItemId> ids) 
         {
             super(modifier, ZimbraQueryParser.ITEM);
             mIsAllQuery = all;
             mIsNoneQuery = none;
             mItemIds = ids;
+            mMailbox = mbox;
         }
 
         protected QueryOperation getQueryOperation(boolean truth) {
@@ -1241,9 +1483,8 @@ public final class ZimbraQuery {
             } else if (truth&&mIsNoneQuery || !truth&&mIsAllQuery) {
                 return new NullQueryOperation();
             } else {
-                for (Iterator iter = mItemIds.iterator(); iter.hasNext();) {
-                    Integer cur = (Integer)iter.next();
-                    dbOp.addItemIdClause(cur, truth);
+                for (ItemId iid : mItemIds) {
+                    dbOp.addItemIdClause(mMailbox, iid, truth);
                 }
             }
             return dbOp;
@@ -1256,9 +1497,9 @@ public final class ZimbraQuery {
             } else if (mIsNoneQuery) {
                 toRet.append(",none");
             } else {
-                for (Iterator iter = mItemIds.iterator(); iter.hasNext();) {
-                    Integer cur = (Integer)iter.next();
-                    toRet.append(","+cur);
+                for (Iterator<ItemId> iter = mItemIds.iterator(); iter.hasNext();) {
+                    ItemId cur = iter.next();
+                    toRet.append(","+cur.toString());
                 }
             }
             return toRet.toString();
@@ -1314,11 +1555,8 @@ public final class ZimbraQuery {
             
             // okay, quite a bit of hackery here....basically, if they're doing a contact:
             // search AND they haven't manually specified a phrase query (expands to more than one term)
-            // then lets hack their search and make it a * search.
-            // for bug:17232 -- if the search string is ".", don't auto-wildcard it, because . is
-            // supposed to match everything by default.
-            if (qType == ZimbraQueryParser.CONTACT && mTokens.size() <= 1 && text.length() > 0 
-                        && text.charAt(text.length()-1)!='*' && !text.equals(".")) {
+            // then lets hack their search and make it a * search.  
+            if (qType == ZimbraQueryParser.CONTACT && mTokens.size() <= 1 && text.length() > 0 && text.charAt(text.length()-1)!='*') {
                 text = text+'*';
             }
             
@@ -1417,8 +1655,9 @@ public final class ZimbraQuery {
                 if (mOredTokens.size() > 0) {
                     // probably don't need to do this here...can probably just call addClause
                     BooleanQuery orQuery = new BooleanQuery();
-                    for (String token : mOredTokens)
-                        orQuery.add(new TermQuery(new Term(fieldName, token)), false, false);
+                    for (String token : mOredTokens) {
+                        orQuery.add(new TermQuery(new Term(fieldName, token)), Occur.SHOULD);
+                    }
 
                     lop.addClause("", orQuery, calcTruth(truth));
                 }
@@ -1505,7 +1744,67 @@ public final class ZimbraQuery {
                 return new TextQuery(mbox, analyzer, modifier, qType, text);
         }
     }
-
+    
+    public static class ConvCountQuery extends BaseQuery {
+        private int mLowestCount;  private boolean mLowerEq;
+        private int mHighestCount; private boolean mHigherEq;
+        
+        private ConvCountQuery(Mailbox mbox, Analyzer analyzer, int modifier, int qType,
+           int lowestCount, boolean lowerEq, int highestCount, boolean higherEq) {
+            super(modifier, qType);
+            
+            mLowestCount = lowestCount;
+            mLowerEq = lowerEq;
+            mHighestCount = highestCount;
+            mHigherEq = higherEq;
+        }
+        
+        @Override
+        public String toString(int expLevel) {
+            return super.toString(expLevel) + "ConvCount(" 
+               + (mLowerEq ? ">=" : ">") + mLowestCount + " " 
+               + (mHigherEq? "<=" : "<") + mHighestCount + ")";
+        }
+        
+        @Override
+        protected QueryOperation getQueryOperation(boolean truthiness) {
+            DBQueryOperation op = DBQueryOperation.Create();
+            truthiness = calcTruth(truthiness);
+            op.addConvCountClause(mLowestCount, mLowerEq, mHighestCount, mHigherEq, truthiness);
+            return op;
+        }
+        
+        public static BaseQuery create(Mailbox mbox, Analyzer analyzer, int modifier, int qType, String str) 
+        throws ServiceException {
+            if (str.charAt(0) == '<') {
+                boolean eq = false;
+                if (str.charAt(1) == '=') { 
+                    eq = true;
+                    str = str.substring(2);
+                } else {
+                    str = str.substring(1);
+                }
+                int num = Integer.parseInt(str);
+                return new ConvCountQuery(mbox, analyzer, modifier, qType, 
+                    -1, false, num, eq);
+            } else if (str.charAt(0) == '>') {
+                boolean eq = false;
+                if (str.charAt(1) == '=') { 
+                    eq = true;
+                    str = str.substring(2);
+                } else {
+                    str = str.substring(1);
+                }
+                int num = Integer.parseInt(str);
+                return new ConvCountQuery(mbox, analyzer, modifier, qType, 
+                    num, eq, -1, false);
+            } else {
+                int num = Integer.parseInt(str);
+                return new ConvCountQuery(mbox, analyzer, modifier, qType, 
+                    num, true, num, true);
+            }
+        }
+    }
 
     public static class SubjectQuery extends BaseQuery {
         private String mStr;
@@ -1576,15 +1875,8 @@ public final class ZimbraQuery {
     private AbstractList mClauses;
     private ParseTree.Node mParseTree = null;
     private QueryOperation mOp;
-    //private byte[] mTypes;
-//    private SortBy mSearchOrder;
-//    private int mChunkSize;
     private Mailbox mMbox;
     private ZimbraQueryResults mResults;
-//    private boolean mPrefetch;
-//    private Mailbox.SearchResultMode mMode;
-//    private java.util.TimeZone mTimeZone;
-//    private Locale mLocale;
     private SearchParams mParams;
     private int mChunkSize;
 
@@ -1620,15 +1912,17 @@ public final class ZimbraQuery {
             case ZimbraQueryParser.TO:         return LuceneFields.L_H_TO;
             case ZimbraQueryParser.CC:         return LuceneFields.L_H_CC;
             case ZimbraQueryParser.SUBJECT:    return LuceneFields.L_H_SUBJECT;
-            case ZimbraQueryParser.IN:         return "in";
-            case ZimbraQueryParser.HAS:        return "has";
+            case ZimbraQueryParser.IN:         return "IN";
+            case ZimbraQueryParser.HAS:        return "HAS";
             case ZimbraQueryParser.FILENAME:   return LuceneFields.L_FILENAME;
             case ZimbraQueryParser.TYPE:       return LuceneFields.L_MIMETYPE;
             case ZimbraQueryParser.ATTACHMENT: return LuceneFields.L_ATTACHMENTS;
             case ZimbraQueryParser.IS:         return "IS";
-            case ZimbraQueryParser.DATE:       return LuceneFields.L_DATE;
-            case ZimbraQueryParser.AFTER:      return "after";
-            case ZimbraQueryParser.BEFORE:     return "before";
+            case ZimbraQueryParser.DATE:       return "DATE";
+            case ZimbraQueryParser.AFTER:      return "AFTER";
+            case ZimbraQueryParser.BEFORE:     return "BEFORE";
+            case ZimbraQueryParser.APPT_START: return "APPT-START";
+            case ZimbraQueryParser.APPT_END: return "APPT-END";
             case ZimbraQueryParser.SIZE:       return "SIZE";
             case ZimbraQueryParser.BIGGER:     return "BIGGER";
             case ZimbraQueryParser.SMALLER:    return "SMALLER";
@@ -1639,14 +1933,14 @@ public final class ZimbraQuery {
             case ZimbraQueryParser.CONV_COUNT: return "CONV-COUNT";
             case ZimbraQueryParser.CONV_MINM:  return "CONV_MINM";
             case ZimbraQueryParser.CONV_MAXM:  return "CONV_MAXM";
-            case ZimbraQueryParser.CONV_START: return "conv-start";
-            case ZimbraQueryParser.CONV_END:   return "conv-end";
-            case ZimbraQueryParser.AUTHOR:     return "author";
-            case ZimbraQueryParser.TITLE:      return "title";
-            case ZimbraQueryParser.KEYWORDS:   return "keywords";
-            case ZimbraQueryParser.COMPANY:    return "company";
-            case ZimbraQueryParser.METADATA:   return "metadata";
-            case ZimbraQueryParser.ITEM:       return "itemId";
+            case ZimbraQueryParser.CONV_START: return "CONV-START";
+            case ZimbraQueryParser.CONV_END:   return "CONV-END";
+            case ZimbraQueryParser.AUTHOR:     return "AUTHOR";
+            case ZimbraQueryParser.TITLE:      return "TITLE";
+            case ZimbraQueryParser.KEYWORDS:   return "KEYWORDS";
+            case ZimbraQueryParser.COMPANY:    return "COMPANY";
+            case ZimbraQueryParser.METADATA:   return "METADATA";
+            case ZimbraQueryParser.ITEM:       return "ITEMID";
         }
         return "UNKNOWN:(" + qType + ")";
     }
@@ -1994,11 +2288,6 @@ public final class ZimbraQuery {
         else 
             mChunkSize = (int)chunkSize;
         
-//        mPrefetch = prefetch;
-//        mMode = mode;
-//        mTimeZone = tz;
-//        mLocale = locale;
-
         //
         // Step 1: parse the text using the JavaCC parser
         ZimbraQueryParser parser = new ZimbraQueryParser(new StringReader(mParams.getQueryStr()));
@@ -2033,9 +2322,6 @@ public final class ZimbraQuery {
         // 
         // Store some variables that we'll need later
         mParseTree = pt;
-//        mSearchOrder = searchOrder;
-//        mTypes = types;
-//        mChunkSize = chunkSize;
         mOp = null;
 
         //
@@ -2078,24 +2364,6 @@ public final class ZimbraQuery {
         }
     }
 
-//    /**
-//     * Parse a query string and build a query plan from it.
-//     * 
-//     * @param queryString
-//     * @param mbox
-//     * @param types
-//     * @param searchOrder
-//     * @param includeTrash
-//     * @param includeSpam
-//     * @param chunkSize
-//     * @throws ParseException
-//     * @throws ServiceException
-//     */
-//    public ZimbraQuery(String queryString, java.util.TimeZone tz, Locale locale, Mailbox mbox, byte[] types, SortBy searchOrder, boolean includeTrash, boolean includeSpam, int chunkSize, boolean prefetch, Mailbox.SearchResultMode mode) 
-//    throws ParseException, ServiceException
-//    {
-//    }
-
     public void doneWithQuery() throws ServiceException {
         if (mResults != null)
             mResults.doneWithSearchResults();
@@ -2113,12 +2381,14 @@ public final class ZimbraQuery {
 
             if (targets.size() > 1) {
                 UnionQueryOperation union = (UnionQueryOperation)mOp;
-                mOp = union.runRemoteSearches(proto, mMbox, octxt, mbidx, mParams.getTypes(), mParams.getSortBy(), 0, mChunkSize, mParams.getMode());
+                mOp = union.runRemoteSearches(proto, mMbox, octxt, mbidx, mParams);
             } else {
                 if (targets.hasExternalTargets()) {
                     RemoteQueryOperation remote = new RemoteQueryOperation();
                     remote.tryAddOredOperation(mOp);
-                    remote.setup(proto, octxt.getAuthenticatedUser(), octxt.isUsingAdminPrivileges(), mParams.getTypes(), mParams.getSortBy(), 0, mChunkSize, mParams.getMode());
+                    SearchParams params = (SearchParams)mParams.clone();
+                    params.setLimit(mChunkSize);
+                    remote.setup(proto, octxt.getAuthenticatedUser(), octxt.isUsingAdminPrivileges(), params);
                     mOp = remote;
                 } else {
                     // 1 local target...HACK: for now we'll temporarily wrap it in a UnionQueryOperation,
@@ -2126,7 +2396,7 @@ public final class ZimbraQuery {
                     // important code there (permissions checks).  FIXME!
                     UnionQueryOperation union = new UnionQueryOperation();
                     union.add(mOp);
-                    mOp = union.runRemoteSearches(proto, mMbox, octxt, mbidx, mParams.getTypes(), mParams.getSortBy(), 0, mChunkSize, mParams.getMode());
+                    mOp = union.runRemoteSearches(proto, mMbox, octxt, mbidx, mParams);
                     mOp = mOp.optimize(mMbox);
                 }
             }
@@ -2190,6 +2460,13 @@ public final class ZimbraQuery {
             }
         }
         return ret;
+    }
+    
+    public String toQueryString() {
+        if (mOp == null)
+            return "";
+        else
+            return mOp.toQueryString();
     }
 
 }

@@ -37,7 +37,7 @@ import com.zimbra.common.util.BEncoding;
 import com.zimbra.common.util.BlobMetaData;
 import com.zimbra.common.util.BlobMetaDataEncodingException;
 import com.zimbra.common.util.BEncoding.BEncodingException;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 public class Metadata {
 
@@ -59,6 +59,7 @@ public class Metadata {
     static final String FN_CALITEM_IDS     = "ais";
     static final String FN_CALITEM_END     = "ape";
     static final String FN_CALITEM_START   = "aps";
+    static final String FN_ATTACHMENTS     = "att";
     static final String FN_COLOR           = "c";
     static final String FN_COMPONENT       = "comp";
     static final String FN_CREATOR         = "cr";
@@ -75,6 +76,7 @@ public class Metadata {
     static final String FN_IDENTITY_ID     = "idnt";
     static final String FN_INV             = "inv";
     static final String FN_BOUNDS          = "l";
+    static final String FN_MODSEQ          = "mseq";
     static final String FN_NUM_COMPONENTS  = "nc";
     static final String FN_NODES           = "no";
     static final String FN_PREFIX          = "p";
@@ -92,6 +94,7 @@ public class Metadata {
     static final String FN_SYNC_DATE       = "sd";
     static final String FN_SYNC_GUID       = "sg";
 //    static final String FN_SENDER_LIST     = "sl";
+    static final String FN_TOTAL_SIZE      = "sz";
     static final String FN_RECIPIENTS      = "t";
     static final String FN_TYPES           = "t";
     static final String FN_TZMAP           = "tzm"; // calendaring: timezone map
@@ -231,9 +234,8 @@ public class Metadata {
             sb.append("[\n");
             for (Iterator it = ((List) object).iterator(); it.hasNext(); )
                 if ((value = it.next()) != null) {
-                    appendIndent(sb, indentLevel);
-                    prettyEncode(sb, value, indentLevel);
-                    sb.append("\n");
+                    appendIndent(sb, indentLevel + 1);
+                    prettyEncode(sb, value, indentLevel + 1);
                 }
             appendIndent(sb, indentLevel);
             sb.append("]\n");

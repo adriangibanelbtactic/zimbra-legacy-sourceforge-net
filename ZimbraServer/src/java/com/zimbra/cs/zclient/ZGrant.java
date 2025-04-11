@@ -25,11 +25,11 @@
 
 package com.zimbra.cs.zclient;
 
-import java.util.Arrays;
-
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.mail.MailService;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
+
+import java.util.Arrays;
 
 public class ZGrant {
 
@@ -37,7 +37,6 @@ public class ZGrant {
     private String mGranteeName;
     private String mGranteeId;
     private GranteeType mGranteeType;
-    private boolean mInherit;
     private String mPermissions;
     
     public enum Permission {
@@ -111,12 +110,28 @@ public class ZGrant {
 
 
     public ZGrant(Element e) throws ServiceException {
-        mArgs = e.getAttribute(MailService.A_ARGS, null);
-        mPermissions = e.getAttribute(MailService.A_RIGHTS);
-        mGranteeName = e.getAttribute(MailService.A_DISPLAY, null);
-        mGranteeId = e.getAttribute(MailService.A_ZIMBRA_ID, null);        
-        mGranteeType = GranteeType.fromString(e.getAttribute(MailService.A_GRANT_TYPE));
-        mInherit = e.getAttributeBool(MailService.A_INHERIT);
+        mArgs = e.getAttribute(MailConstants.A_ARGS, null);
+        mPermissions = e.getAttribute(MailConstants.A_RIGHTS);
+        mGranteeName = e.getAttribute(MailConstants.A_DISPLAY, null);
+        mGranteeId = e.getAttribute(MailConstants.A_ZIMBRA_ID, null);
+        mGranteeType = GranteeType.fromString(e.getAttribute(MailConstants.A_GRANT_TYPE));
+    }
+
+    public void toElement(Element parent) {
+        Element grant = parent.addElement(MailConstants.E_GRANT);
+        if (mPermissions != null)
+            grant.addAttribute(MailConstants.A_RIGHTS, mPermissions);
+        
+        grant.addAttribute(MailConstants.A_GRANT_TYPE, mGranteeType.name());
+
+        if (mGranteeId != null)
+            grant.addAttribute(MailConstants.A_ZIMBRA_ID, mGranteeId);
+
+        if (mGranteeName != null)
+            grant.addAttribute(MailConstants.A_DISPLAY, mGranteeName);
+
+        if (mArgs != null && mArgs.length() > 0)
+            grant.addAttribute(MailConstants.A_ARGS, mArgs);
     }
     
     /**
@@ -179,13 +194,6 @@ public class ZGrant {
     }
     
     /**
-     * whether rights granted on this folder are also granted on all subfolders
-     */
-    public boolean getInherit() {
-        return mInherit;
-    }
-    
-    /**
      *  optional argument.  password when {grantee-type} is "guest"
      */
     public String getArgs() {
@@ -199,7 +207,6 @@ public class ZGrant {
         sb.add("name", mGranteeName);
         sb.add("id", mGranteeId);
         sb.add("permissions", mPermissions);
-        sb.add("inherit", mInherit);
         sb.add("args", mArgs);
         sb.endStruct();
         return sb.toString();

@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile$
+ * $Revision: 2911 $
+ * $Date: 2005-10-03 12:35:52 -0300 (Mon, 03 Oct 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
 import org.dom4j.DocumentException;
@@ -118,15 +105,15 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
             return;
         }
         JID recipient = message.getTo();
-        String username = recipient.getNode();
+        String username = recipient.toBareJID();
         // If the username is null (such as when an anonymous user), don't store.
         if (username == null || !UserManager.getInstance().isRegisteredUser(recipient)) {
             return;
-        }
-        else
-        if (!XMPPServer.getInstance().getServerInfo().getName().equals(recipient.getDomain())) {
-            // Do not store messages sent to users of remote servers
-            return;
+        } else {
+            if (!XMPPServer.getInstance().getServerInfo().getNames().contains(recipient.getDomain())) {
+                // Do not store messages sent to users of remote servers
+                return;
+            }
         }
 
         long messageID = SequenceManager.nextID(JiveConstants.OFFLINE);
@@ -172,6 +159,7 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
      * @return An iterator of packets containing all offline messages.
      */
     public Collection<OfflineMessage> getMessages(String username, boolean delete) {
+        assert(username.indexOf('@') > 0);
         List<OfflineMessage> messages = new ArrayList<OfflineMessage>();
         Connection con = null;
         PreparedStatement pstmt = null;
@@ -200,8 +188,9 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
                             xmlReader.read(new StringReader(msgXML)).getRootElement());
                 }
                 // Add a delayed delivery (JEP-0091) element to the message.
+                JID userJID = new JID(username);
                 Element delay = message.addChildElement("x", "jabber:x:delay");
-                delay.addAttribute("from", XMPPServer.getInstance().getServerInfo().getName());
+                delay.addAttribute("from", userJID.getDomain());
                 delay.addAttribute("stamp", dateFormat.format(creationDate));
                 messages.add(message);
             }
@@ -240,6 +229,7 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
      * @return the offline message of the specified user with the given creation stamp.
      */
     public OfflineMessage getMessage(String username, Date creationDate) {
+        assert(username.indexOf('@') > 0);
         OfflineMessage message = null;
         Connection con = null;
         PreparedStatement pstmt = null;
@@ -259,7 +249,8 @@ public class OfflineMessageStore extends BasicModule implements UserEventListene
                         xmlReader.read(new StringReader(msgXML)).getRootElement());
                 // Add a delayed delivery (JEP-0091) element to the message.
                 Element delay = message.addChildElement("x", "jabber:x:delay");
-                delay.addAttribute("from", XMPPServer.getInstance().getServerInfo().getName());
+                JID userJID = new JID(username); 
+                delay.addAttribute("from", userJID.getDomain());
                 delay.addAttribute("stamp", dateFormat.format(creationDate));
             }
         }

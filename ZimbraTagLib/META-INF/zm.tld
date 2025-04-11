@@ -149,7 +149,34 @@
             <rtexprvalue>true</rtexprvalue>
             <type>java.lang.String</type>
         </attribute>
+    </tag>
 
+    <tag>
+        <description>sends an invite reply</description>
+        <name>sendInviteReply</name>
+        <tag-class>com.zimbra.cs.taglib.tag.SendInviteReplyTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZMailbox.ZSendInviteReplyResult</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+             <description>
+                 message compose bean to use. all other args are ignored.
+             </description>
+             <name>compose</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageComposeBean</type>
+        </attribute>
     </tag>
 
     <tag>
@@ -335,14 +362,71 @@
              <rtexprvalue>true</rtexprvalue>
              <type>com.zimbra.cs.taglib.bean.ZMessageBean</type>
          </attribute>
+        <attribute>
+             <description>
+                 date for new appointments
+             </description>
+             <name>date</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.util.Calendar</type>
+         </attribute>
          <attribute>
              <description>
-                 action (reply/replyAll/forward)
+                 action (reply/replyAll/forward/new/draft/apptedit/apptnew)
              </description>
              <name>action</name>
              <required>true</required>
              <rtexprvalue>true</rtexprvalue>
              <type>java.lang.String</type>
+         </attribute>
+
+        <attribute>
+            <description>
+                invite id if editing appt
+            </description>
+            <name>inviteId</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        
+        <attribute>
+            <description>
+                exception invite id if editing exception
+            </description>
+            <name>exceptionInviteId</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                true if we are editing an instance instead of the series
+            </description>
+            <name>useInstance</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                a particular instance's start time in UTC
+            </description>
+            <name>instanceStartTime</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+             <description>
+                 a particular instance's duration
+             </description>
+             <name>instanceDuration</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
          </attribute>
     </tag>
 
@@ -400,6 +484,25 @@
     </tag>
 
     <tag>
+        <description>construct a file uploader bean</description>
+        <name>fileUploader</name>
+        <tag-class>com.zimbra.cs.taglib.tag.FileUploaderTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZFileUploaderBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+    </tag>
+
+    <tag>
         <description>
             Iterates over all mailbox tags.
         </description>
@@ -421,7 +524,7 @@
         </attribute>
 
     </tag>
-    
+
     <tag>
         <description>
             Iterates over all time zones.
@@ -442,6 +545,7 @@
             <name>var</name>
             <required>true</required>
         </attribute>
+
     </tag>
 
     <tag>
@@ -488,6 +592,15 @@
                 whether or not to skip system folders. default value is false.
             </description>
             <name>skipsystem</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+        <attribute>
+            <description>
+                whether or not to skip the trash folder and its subfolders
+            </description>
+            <name>skiptrash</name>
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
             <type>boolean</type>
@@ -764,6 +877,22 @@
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
         </attribute>
+        <attribute>
+            <description>
+                Comma-separated list of prefs to fetch during login.
+            </description>
+            <name>prefs</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                Comma-separated list of attrs to fetch during login.
+            </description>
+            <name>attrs</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
     </tag>
 
     <tag>
@@ -930,7 +1059,7 @@
 
     <tag>
         <description>
-            Hard-delete a conversation. Use moveConversation if you just want to move to trash.
+            Hard-delete a conversation. Use trashConversation if you just want to move to trash.
         </description>
 
         <name>deleteConversation</name>
@@ -977,6 +1106,56 @@
              <type>java.lang.String</type>
          </attribute>
      </tag>
+
+    <tag>
+        <description>
+            Moves a conversation to trash (correctly handles delegated/mounted items).
+        </description>
+
+        <name>trashConversation</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.TrashConversationTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+         <attribute>
+             <description>
+              <![CDATA[
+                 [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                 t - include items in the Trash <br />
+                 j - include items in Spam/Junk<br />
+                 s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                 o - include items in any other folder<br />
+                 a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+               ]]>
+             </description>
+             <name>tc</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+
+         <attribute>
+             <description>conversation id(s) to move to trash</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
 
     <tag>
         <description>
@@ -1278,7 +1457,7 @@
 
     <tag>
         <description>
-            Hard-delete a message. Use moveMessage if you just want to move to trash.
+            Hard-delete a message. Use trashMessage if you want to move to trash.
         </description>
 
         <name>deleteMessage</name>
@@ -1302,6 +1481,39 @@
         </attribute>
          <attribute>
              <description>message id(s) to delete</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+            Moves a message to the trash.
+        </description>
+
+        <name>trashMessage</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.TrashMessageTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+         <attribute>
+             <description>message id(s) to move to trash</description>
              <name>id</name>
              <required>true</required>
              <rtexprvalue>true</rtexprvalue>
@@ -1567,7 +1779,40 @@
 
     <tag>
         <description>
-            Hard-delete a contact. Use moveContact if you just want to move to trash.
+            auto-complete contacts
+        </description>
+
+        <name>contactAutoComplete</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.ContactAutoCompleteTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>prefix query</description>
+            <name>query</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>output JSON</description>
+            <name>json</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>max hits to return</description>
+            <name>limit</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Hard-delete a contact. Use trashContact if you just want to move to trash.
         </description>
 
         <name>deleteContact</name>
@@ -1591,6 +1836,39 @@
         </attribute>
          <attribute>
              <description>contact id(s) to delete</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+            Move contact(s) to trash.
+        </description>
+
+        <name>trashContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.TrashContactTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+         <attribute>
+             <description>contact id(s) to move to trash</description>
              <name>id</name>
              <required>true</required>
              <rtexprvalue>true</rtexprvalue>
@@ -2137,6 +2415,42 @@
 
     <tag>
         <description>
+            Modify tag's color and/or name.
+        </description>
+
+        <name>updateTag</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.tag.UpdateTagTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of tag to modify.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>            
+        </attribute>
+        <attribute>
+            <description>new tag name</description>
+            <name>name</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>color of tag: orange, blue, cyan, green, purple, red, yellow</description>
+            <name>color</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
             Modify tag's color.
         </description>
 
@@ -2307,6 +2621,95 @@
 
     <tag>
         <description>
+            Create a mountpoint
+        </description>
+
+        <name>createMountpoint</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.CreateMountpointTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZFolderBean</variable-class>
+            <scope>AT_BEGIN</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                ZFolderBean for create mount point.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>parent id of new folder</description>
+            <name>parentid</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>name of folder to create</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>color of folder: orange, blue, cyan, green, purple, red, yellow, pink, gray</description>
+            <name>color</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>default view of new folder: appointment, contact, conversation, message, wiki</description>
+            <name>view</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>flags for new folder</description>
+            <name>flags</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>OwnerBy value for owner: BY_ID, BY_NAME</description>
+            <name>ownerby</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>owner value, either a name (email addresss), or Zimbra account id </description>
+            <name>owner</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+                <attribute>
+            <description>SharedItemBy value for shareditem: BY_ID, BY_PATH</description>
+            <name>shareditemby</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>shareditem value, either a path, or Zimbra mail item id </description>
+            <name>shareditem</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
             Rename a folder
         </description>
 
@@ -2331,6 +2734,143 @@
             <required>true</required>
             <rtexprvalue>true</rtexprvalue>
             <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Modify folder color
+        </description>
+
+        <name>modifyFolderColor</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.ModifyFolderColorTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to modify
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder color </description>
+            <name>color</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Modify folder url
+        </description>
+
+        <name>modifyFolderUrl</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.ModifyFolderURLTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to modify
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new url</description>
+            <name>url</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Update multiple folders attributes
+        </description>
+
+        <name>updateFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.UpdateFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to modify
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder name </description>
+            <name>name</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder parent id</description>
+            <name>parentid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder flags</description>
+            <name>flags</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder color </description>
+            <name>color</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Modify folder free busy
+        </description>
+
+        <name>modifyFolderFreeBusy</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.ModifyFolderFreeBusyTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to modify
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>exlucde from free/busy</description>
+            <name>exclude</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
         </attribute>
     </tag>
 
@@ -2365,7 +2905,7 @@
 
     <tag>
         <description>
-            Hard delete a folder
+            Hard delete a folder. Use trashFolder to move a folder to the trash.
         </description>
 
         <name>deleteFolder</name>
@@ -2377,6 +2917,30 @@
         <attribute>
             <description>
                 id of folder to hard delete
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            move the folder to the Trash, marking all contents as read and
+            renaming the folder if a folder by that name is already present in the Trash
+
+        </description>
+
+        <name>trashFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.TrashFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to move to trash
             </description>
             <name>id</name>
             <required>true</required>
@@ -2399,6 +2963,37 @@
         <attribute>
             <description>
                 id of folder to mark read.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Check/uncheck folder (UI state)
+        </description>
+
+        <name>checkFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.CheckFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                check/uncheck
+            </description>
+            <name>checked</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>
+                id of folder to check/uncheck
             </description>
             <name>id</name>
             <required>true</required>
@@ -2547,7 +3142,7 @@
 
      </tag>
 
-     <tag>
+    <tag>
          <description>
              A pref to modify
          </description>
@@ -3019,7 +3614,7 @@
         </attribute>
     </tag>
 
-     <tag>
+    <tag>
         <description>
             delete a filter rule
         </description>
@@ -3073,6 +3668,621 @@
         </attribute>
     </tag>
 
+    <tag>
+        <description>
+            construct a filter rule object (for use with createFilterRule/modifyFilterRule)
+        </description>
+
+        <name>getAppointmentSummaries</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.calendar.GetAppointmentSummariesTag</tag-class>
+
+        <body-content>scriptless</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZApptSummariesBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <variable>
+            <name-from-attribute>varexception</name-from-attribute>
+            <variable-class>com.zimbra.common.service.ServiceException</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                get appointment summaries for the specified time range
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                variable to store service exception, otherwise it is thrown.
+            </description>
+            <name>varexception</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>starting time in msecs</description>
+            <name>start</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>ending time in msecs</description>
+            <name>end</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>timezone to compute correct start/end time for all day appts</description>
+            <name>timezone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.util.TimeZone</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                comma-separated list of folder ids to get summaries for. If not specified, get appts for
+                all calendar folders that are checked in the UI.
+            </description>
+            <name>folderid</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                search query to limit set of appts returned.
+            </description>
+            <name>query</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Iterates over an appointment list. If start and end are specified,
+            only return appointments within that range.  
+        </description>
+        <name>forEachAppoinment</name>
+        <tag-class>com.zimbra.cs.taglib.tag.calendar.ForEachAppointmentTag</tag-class>
+        <body-content>scriptless</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZAppointmentHit</variable-class>
+            <scope>NESTED</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                appointments (from getAppointmentSummaries) to iterate over
+            </description>
+            <name>appointments</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.bean.ZApptSummariesBean</type>
+        </attribute>
+
+        <attribute>
+            <description>starting time in msecs</description>
+            <name>start</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>ending time in msecs</description>
+            <name>end</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+    </tag>
+
+    <tag>
+        <description>
+            Compute appointment row layout. If start and end are specified,
+            only return appointments within that range.
+        </description>
+        <name>apptMultiDayLayout</name>
+        <tag-class>com.zimbra.cs.taglib.tag.calendar.ApptMultiDayLayoutTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZApptMultiDayLayoutBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                appointments (from getAppointmentSummaries) to iterate over
+            </description>
+            <name>appointments</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.bean.ZApptSummariesBean</type>
+        </attribute>
+
+        <attribute>
+            <description>starting time in msecs</description>
+            <name>start</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>number of days to layout</description>
+            <name>days</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>default starting hour, inclusive </description>
+            <name>hourstart</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>default ending hour, exclusive</description>
+            <name>hourend</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>
+                comma-separated list of folder ids to compute schedule (side-by-side) layout data for.
+            </description>
+            <name>schedule</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>timezone to compute correct start/end time for all day appts</description>
+            <name>timezone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.util.TimeZone</type>
+        </attribute>
+
+    </tag>
+
+    <tag>
+        <description>
+            clears the appt summary cache.
+        </description>
+
+        <name>clearApptSummaryCache</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.ClearApptSummaryCacheTag</tag-class>
+
+        <body-content>empty</body-content>
+    </tag>
+
+    <tag>
+         <description>create/modify an appointment</description>
+         <name>saveAppointment</name>
+         <tag-class>com.zimbra.cs.taglib.tag.calendar.SaveAppointmentTag</tag-class>
+         <body-content>empty</body-content>
+         <variable>
+             <name-from-attribute>var</name-from-attribute>
+             <variable-class>com.zimbra.cs.zclient.ZMailbox.ZAppointmentResult</variable-class>
+             <scope>AT_END</scope>
+         </variable>
+         <attribute>
+             <description>
+                 Name of the exported scoped variable for the result.
+             </description>
+             <name>var</name>
+             <required>true</required>
+         </attribute>
+         <attribute>
+              <description>
+                  message compose bean to use.
+              </description>
+              <name>compose</name>
+              <required>false</required>
+              <rtexprvalue>true</rtexprvalue>
+              <type>com.zimbra.cs.taglib.bean.ZMessageComposeBean</type>
+          </attribute>
+        <attribute>
+             <description>
+                 existing appointment if we are modifying
+             </description>
+             <name>message</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageBean</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>cancel an appointment</description>
+        <name>cancelAppointment</name>
+        <tag-class>com.zimbra.cs.taglib.tag.calendar.CancelAppointmentTag</tag-class>
+        <body-content>empty</body-content>
+        <attribute>
+            <description>
+                message compose bean to use.
+            </description>
+            <name>compose</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.bean.ZMessageComposeBean</type>
+        </attribute>
+        <attribute>
+            <description>
+                existing appointment
+            </description>
+            <name>message</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.bean.ZMessageBean</type>
+        </attribute>
+        <attribute>
+            <description>
+                cancel a particular instance. time in msecs. not used if compose is specified.
+            </description>
+            <name>instance</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Move an item to a folder.
+        </description>
+
+        <name>moveItem</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.item.MoveItemTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>item id(s) to move</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>destination folder id</description>
+             <name>folderid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
+
+    <tag>
+         <description>import contacts</description>
+         <name>importContacts</name>
+         <tag-class>com.zimbra.cs.taglib.tag.contact.ImportContactsTag</tag-class>
+         <body-content>empty</body-content>
+         <variable>
+             <name-from-attribute>var</name-from-attribute>
+             <variable-class>com.zimbra.cs.zclient.ZMailbox.ZImportContactsResult</variable-class>
+             <scope>AT_END</scope>
+         </variable>
+         <attribute>
+             <description>
+                 Name of the exported scoped variable for the result.
+             </description>
+             <name>var</name>
+             <required>true</required>
+         </attribute>
+         <attribute>
+              <description>
+                  file uploader bean to use.
+              </description>
+              <name>uploader</name>
+              <required>true</required>
+              <rtexprvalue>true</rtexprvalue>
+              <type>com.zimbra.cs.taglib.bean.ZFileUploaderBean</type>
+          </attribute>
+        <attribute>
+             <description>
+                 folder id to import into.
+             </description>
+             <name>folderid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+        <attribute>
+             <description>
+                 type of data being imported. "csv" is currently the only supported format.
+             </description>
+             <name>type</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+     </tag>
+
+    <tag>
+         <description>import appointments</description>
+         <name>importAppointments</name>
+         <tag-class>com.zimbra.cs.taglib.tag.calendar.ImportAppointmentsTag</tag-class>
+         <body-content>empty</body-content>
+         <variable>
+             <name-from-attribute>var</name-from-attribute>
+             <variable-class>com.zimbra.cs.zclient.ZMailbox.ZImportAppointmentsResult</variable-class>
+             <scope>AT_END</scope>
+         </variable>
+         <attribute>
+             <description>
+                 Name of the exported scoped variable for the result.
+             </description>
+             <name>var</name>
+             <required>true</required>
+         </attribute>
+         <attribute>
+              <description>
+                  file uploader bean to use.
+              </description>
+              <name>uploader</name>
+              <required>true</required>
+              <rtexprvalue>true</rtexprvalue>
+              <type>com.zimbra.cs.taglib.bean.ZFileUploaderBean</type>
+          </attribute>
+        <attribute>
+             <description>
+                 folder id to import into.
+             </description>
+             <name>folderid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+        <attribute>
+             <description>
+                 type of data being imported. "ics" is currently the only supported format.
+             </description>
+             <name>type</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Flag/unflag an item
+        </description>
+
+        <name>flagItem</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.item.FlagItemTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>item id(s) to flag/unflag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>flag state (true=flagged, false=unflagged)</description>
+             <name>flag</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Tag an item.
+        </description>
+
+        <name>tagItem</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.item.TagItemTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>item id(s) to tag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>tag id</description>
+             <name>tagid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+        <attribute>
+            <description>tag state (true=tag, false=untag)</description>
+            <name>tag</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+
+
+    <tag>
+        <description>
+            container for bindKey tags
+        </description>
+
+        <name>keyboardBindings</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.KeyBindingsTag</tag-class>
+
+        <body-content>scriptless</body-content>
+
+    </tag>
+
+    <tag>
+        <description>
+            Bind a key to a particular action.
+        </description>
+
+        <name>bindKey</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.BindKeyTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of anchor tag to get when key is pressed.
+            </description>
+            <name>id</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                reference to function to call when key is pressed.
+            </description>
+            <name>func</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+               key sequence to bind
+            </description>
+            <name>key</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
     <tag-file>
         <name>currentResultUrl</name>
         <path>/META-INF/tags/currentResultUrl.tag</path>
@@ -3103,6 +4313,11 @@
         <path>/META-INF/tags/nextItemUrl.tag</path>
     </tag-file>
 
+    <tag-file>
+        <name>keyboard</name>
+        <path>/META-INF/tags/keyboard.tag</path>
+    </tag-file>
+
     <function>
         <description>Used to determine if any of the specified fields are set in a contact</description>
         <name>anySet</name>
@@ -3126,12 +4341,6 @@
         <name>truncate</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>java.lang.String truncate(java.lang.String,int,boolean)</function-signature>
-    </function>
-
-    <function>
-        <name>containsAddress</name>
-        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
-        <function-signature>java.lang.Boolean containsAddress(java.util.Set,java.lang.String)</function-signature>
     </function>
 
     <function>
@@ -3182,10 +4391,24 @@
     </function>
 
     <function>
+        <name>getTag</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.taglib.bean.ZTagBean getTag(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+    <function>
         <name>getFolderName</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>java.lang.String
             getFolderName(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getFolder</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>
+            com.zimbra.cs.taglib.bean.ZFolderBean getFolder(javax.servlet.jsp.PageContext,java.lang.String)
+        </function-signature>
     </function>
 
     <function>
@@ -3226,7 +4449,7 @@
     </function>
 
     <function>
-        <name>isAddressBook</name>
+        <name>isAddressBookCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isAddressBook(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3238,7 +4461,7 @@
     </function>
 
     <function>
-        <name>isBody</name>
+        <name>isBodyCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isBody(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3250,7 +4473,7 @@
     </function>
 
     <function>
-        <name>isSize</name>
+        <name>isSizeCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isSize(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3262,7 +4485,7 @@
     </function>
 
     <function>
-        <name>isDate</name>
+        <name>isDateCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isDate(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3274,7 +4497,7 @@
     </function>
 
     <function>
-        <name>isHeader</name>
+        <name>isHeaderCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isHeader(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3286,7 +4509,7 @@
     </function>
 
     <function>
-        <name>isHeaderExists</name>
+        <name>isHeaderExistsCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isHeaderExists(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3298,7 +4521,7 @@
     </function>
 
     <function>
-        <name>isAttachmentExists</name>
+        <name>isAttachmentExistsCondition</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isAttachmentExists(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
     </function>
@@ -3310,71 +4533,207 @@
     </function>
 
     <function>
-        <name>isKeep</name>
+        <name>isKeepAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isKeep(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>isStop</name>
+        <name>isStopAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isStop(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>isDiscard</name>
+        <name>isDiscardAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isDiscard(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>isFileInto</name>
+        <name>isFileIntoAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isFileInto(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>isTag</name>
+        <name>isTagAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isTag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>isFlag</name>
+        <name>isFlagAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isFlag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>isRedirect</name>
+        <name>isRedirectAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean isRedirect(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>getTag</name>
+        <name>getTagAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZTagAction getTag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>getFlag</name>
+        <name>getFlagAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZMarkAction getFlag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>getRedirect</name>
+        <name>getRedirectAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZRedirectAction getRedirect(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
     <function>
-        <name>getFileInto</name>
+        <name>getFileIntoAction</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZFileIntoAction getFileInto(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
     </function>
 
+    <function>
+        <name>getFirstDayOfMonthView</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar getFirstDayOfMonthView(java.util.Calendar,long)</function-signature>
+    </function>
+
+    <function>
+        <name>getFirstDayOfMultiDayView</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar getFirstDayOfMultiDayView(java.util.Calendar,long,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getNextDay</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>void getNextDay(java.util.Calendar)</function-signature>
+    </function>
+
+    <function>
+        <name>addDay</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar addDay(java.util.Calendar,int)</function-signature>
+    </function>
+
+    <function>
+        <name>addMonth</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar addMonth(java.util.Calendar,int)</function-signature>
+    </function>
+
+    <function>
+        <name>addYear</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar addYear(java.util.Calendar,int)</function-signature>
+    </function>
+
+    <function>
+        <name>getCalendar</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar getCalendar(long, java.util.TimeZone)</function-signature>
+    </function>
+
+    <function>
+        <name>getCalendarMidnight</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar getCalendarMidnight(long, java.util.TimeZone)</function-signature>
+    </function>
+
+    <function>
+        <name>getToday</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar getToday(java.util.TimeZone)</function-signature>
+    </function>
+
+    <function>
+        <name>getTodayHour</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar getTodayHour(int, java.util.TimeZone)</function-signature>
+    </function>
+
+    <function>
+        <name>isSameDate</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isSameDate(java.util.Calendar,java.util.Calendar)</function-signature>
+    </function>
+    <function>
+        <name>isSameMonth</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isSameMonth(java.util.Calendar,java.util.Calendar)</function-signature>
+    </function>
+
+    <function>
+        <name>getYear</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>int getYear(java.util.Calendar)</function-signature>
+    </function>
+
+    <function>
+        <name>getMonth</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>int getMonth(java.util.Calendar)</function-signature>
+    </function>
+
+    <function>
+        <name>getDay</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>int getDay(java.util.Calendar)</function-signature>
+    </function>
+
+    <function>
+        <name>getDayOfWeek</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>int getDayOfWeek(java.util.Calendar)</function-signature>
+    </function>
+
+    <function>
+        <name>relativeDay</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.Calendar relativeDay(java.util.Calendar,int)</function-signature>
+    </function>
+
+    <function>
+        <name>getCheckedCalendarFolderIds</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getCheckedCalendarFolderIds(com.zimbra.cs.taglib.bean.ZMailboxBean)</function-signature>
+    </function>
+
+    <function>
+        <name>hasAnyAppointments</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean hasAnyAppointments(com.zimbra.cs.taglib.bean.ZApptSummariesBean,long,long)</function-signature>
+    </function>
+
+    <function>
+        <name>MSECS_PER_MINUTE</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>long MSECS_PER_MINUTE()</function-signature>
+    </function>
+
+    <function>
+        <name>MSECS_PER_HOUR</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>long MSECS_PER_HOUR()</function-signature>
+    </function>
+
+    <function>
+        <name>getWindowsId</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getWindowsId(java.util.TimeZone)</function-signature>
+    </function>
+
+    <function>
+        <name>getFolderStyleColor</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getFolderStyleColor(java.lang.String,java.lang.String)</function-signature>
+    </function>
 
     <function>
         <name>getPartHtmlContent</name>
@@ -3388,4 +4747,57 @@
         <function-signature>boolean actionSet(java.util.Map,java.lang.String)</function-signature>
     </function>
 
+    <function>
+        <name>isSameTimeZone</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isSameTimeZone(java.lang.String,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getCanonicalTimeZoneId</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getCanonicalTimeZoneId(java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>setDayOfWeek</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>void setDayOfWeek(java.util.Calendar,int)</function-signature>
+    </function>
+
+    <function>
+        <name>setMonth</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>void setMonth(java.util.Calendar,int)</function-signature>
+    </function>
+
+    <function>
+        <name>getRepeatBlurb</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getRepeatBlurb(com.zimbra.cs.zclient.ZSimpleRecurrence,javax.servlet.jsp.PageContext,java.util.TimeZone,java.util.Date)</function-signature>
+    </function>
+
+    <function>
+        <name>getApptDateBlurb</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getApptDateBlurb(javax.servlet.jsp.PageContext,java.util.TimeZone,long,long,boolean)</function-signature>
+    </function>
+
+    <function>
+        <name>getMyAttendee</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZInvite.ZAttendee getMyAttendee(com.zimbra.cs.zclient.ZInvite,com.zimbra.cs.taglib.bean.ZMailboxBean)</function-signature>
+    </function>
+
+    <function>
+        <name>clearMessageCache</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>void clearMessageCache(com.zimbra.cs.taglib.bean.ZMailboxBean)</function-signature>
+    </function>
+
+    <function>
+        <name>hasShareMountPoint</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean hasShareMountPoint(com.zimbra.cs.taglib.bean.ZMailboxBean,com.zimbra.cs.taglib.bean.ZMessageBean)</function-signature>
+    </function>
 </taglib>

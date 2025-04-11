@@ -31,7 +31,6 @@ import com.zimbra.cs.zclient.ZEmailAddress;
 
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 public class ZContactBean implements Comparable {
@@ -180,32 +179,16 @@ public class ZContactBean implements Comparable {
 
     public String getWorkURL() { return mContact.getAttrs().get("workURL"); }
 
-    public boolean getIsGroup() { return mContact.getAttrs().get("dlist") != null; }
+    public boolean getIsGroup() { return mContact.getIsGroup(); }
 
-    private static final Pattern sCOMMA = Pattern.compile(",");
-
-    public String[] getGroupMembers() throws ServiceException {
-        String dlist = mContact.getAttrs().get("dlist");
-        if (dlist != null) {
-            try {
-                List<ZEmailAddress> addrs = ZEmailAddress.parseAddresses(dlist, ZEmailAddress.EMAIL_TYPE_TO);
-                List<String> result = new ArrayList<String>(addrs.size());
-                for (ZEmailAddress a : addrs) {
-                    result.add(a.getFullAddressQuoted());
-                }
-                return result.toArray(new String[result.size()]);
-            } catch (ServiceException e) {
-                return sCOMMA.split(dlist);
-            }
-        } else {
-            return new String[0];
-        }
+    public List<ZEmailAddress> getGroupMembers() throws ServiceException {
+        return mContact.getGroupMembers();
     }
 
     public String getGroupMembersPerLine() throws ServiceException {
         StringBuilder sb = new StringBuilder();
-        for (String addr : getGroupMembers()) {
-            sb.append(addr).append("\n");
+        for (ZEmailAddress addr : getGroupMembers()) {
+            sb.append(addr.getFullAddressQuoted()).append("\n");
         }
         return sb.toString();
     }

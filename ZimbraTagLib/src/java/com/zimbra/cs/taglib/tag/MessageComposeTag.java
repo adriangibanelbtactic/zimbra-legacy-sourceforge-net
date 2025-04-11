@@ -28,29 +28,39 @@ import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.taglib.bean.ZMessageBean;
 import com.zimbra.cs.taglib.bean.ZMessageComposeBean;
 import com.zimbra.cs.taglib.bean.ZMessageComposeBean.Action;
+import com.zimbra.cs.taglib.bean.ZMessageComposeBean.AppointmentOptions;
 import com.zimbra.cs.zclient.ZMailbox;
-import com.zimbra.cs.zclient.ZIdentity;
 
 import javax.servlet.jsp.JspContext;
 import javax.servlet.jsp.JspException;
 import javax.servlet.jsp.JspTagException;
 import javax.servlet.jsp.PageContext;
 import java.io.IOException;
-import java.util.Set;
-import java.util.List;
+import java.util.Calendar;
 
 public class MessageComposeTag extends ZimbraSimpleTag {
 
     public static final String ACTION_NEW = "new";
+    public static final String ACTION_APPT_EDIT = "apptedit";
+    public static final String ACTION_APPT_NEW = "apptnew";
     public static final String ACTION_REPLY = "reply";
     public static final String ACTION_REPLY_ALL = "replyAll";
     public static final String ACTION_FORWARD = "forward";
     public static final String ACTION_RESEND = "resend";
-    public static final String ACTION_DRAFT = "draft";            
+    public static final String ACTION_DRAFT = "draft";
+    public static final String ACTION_ACCEPT = "accept";
+    public static final String ACTION_DECLINE = "decline";
+    public static final String ACTION_TENTATIVE = "tentative";
 
     private String mVar;
     private ZMessageBean mMessage;
     private String mAction;
+    private Calendar mDate;
+    private String mInviteId;
+    private String mExceptionInviteId;
+    private boolean mUseInstance;
+    private long mInstanceStartTime;
+    private long mInstanceDuration;
 
     public void setVar(String var) { this.mVar = var; }
 
@@ -58,37 +68,58 @@ public class MessageComposeTag extends ZimbraSimpleTag {
 
     public void setAction(String action) { mAction = action; }
 
+    public void setDate(Calendar date) { mDate = date; }
+
+    public void setInviteId(String inviteId) { mInviteId = inviteId; }
+    public void setExceptionInviteId(String exceptionInviteId) { mExceptionInviteId = exceptionInviteId; }
+    public void setUseInstance(boolean useInstance) { mUseInstance = useInstance; }
+    public void setInstanceStartTime(long instanceStartTime) { mInstanceStartTime = instanceStartTime; }
+    public void setInstanceDuration(long instanceDuration) { mInstanceDuration = instanceDuration; }
+
     public void doTag() throws JspException, IOException {
         try {
             JspContext jctxt = getJspContext();
             PageContext pc = (PageContext) jctxt;
             ZMailbox mailbox = getMailbox();
 
-            Set<String> aliases = mailbox.getAccountInfo(false).getEmailAddresses();
-
             ZMessageComposeBean compose;
-            List<ZIdentity> identities = mailbox.getAccountInfo(false).getIdentities();
 
-            if (ACTION_REPLY.equals(mAction))
-                compose = new ZMessageComposeBean(Action.REPLY, mMessage, identities, aliases, pc);
-            else if (ACTION_REPLY_ALL.equals(mAction))
-                compose = new ZMessageComposeBean(Action.REPLY_ALL, mMessage, identities, aliases, pc);
-            else if (ACTION_FORWARD.equals(mAction))
-                compose = new ZMessageComposeBean(Action.FORWARD, mMessage, identities, aliases, pc);
-            else if (ACTION_RESEND.equals(mAction))
-                compose = new ZMessageComposeBean(Action.RESEND, mMessage, identities, aliases, pc);
-            else if (ACTION_DRAFT.equals(mAction))
-                compose = new ZMessageComposeBean(Action.DRAFT, mMessage, identities, aliases, pc);
-            else
-                compose = new ZMessageComposeBean(Action.NEW, null, identities, aliases, pc);
-
+            if (ACTION_REPLY.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.REPLY, mMessage, mailbox, pc, null);
+            } else if (ACTION_REPLY_ALL.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.REPLY_ALL, mMessage, mailbox, pc, null);
+            } else if (ACTION_FORWARD.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.FORWARD, mMessage, mailbox, pc, null);
+            } else if (ACTION_RESEND.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.RESEND, mMessage, mailbox, pc, null);
+            } else if (ACTION_DRAFT.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.DRAFT, mMessage, mailbox, pc, null);
+            } else if (ACTION_ACCEPT.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.INVITE_ACCEPT, mMessage, mailbox, pc, null);
+            } else if (ACTION_DECLINE.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.INVITE_DECLINE, mMessage, mailbox, pc, null);
+            } else if (ACTION_TENTATIVE.equals(mAction)) {
+                compose = new ZMessageComposeBean(Action.INVITE_TENTATIVE, mMessage, mailbox, pc, null);
+            } else if (ACTION_APPT_NEW.equals(mAction)) {
+                AppointmentOptions options = new AppointmentOptions();
+                options.setDate(mDate);
+                compose = new ZMessageComposeBean(Action.APPT_NEW, null, mailbox, pc, options);
+            } else if (ACTION_APPT_EDIT.equals(mAction)) {
+                AppointmentOptions options = new AppointmentOptions();
+                options.setDate(mDate);
+                options.setInviteId(mInviteId);
+                options.setExceptionInviteId(mExceptionInviteId);
+                options.setUseInstance(mUseInstance);
+                options.setInstanceStartTime(mInstanceStartTime);
+                options.setInstanceDuration(mInstanceDuration);
+                compose = new ZMessageComposeBean(Action.APPT_EDIT, mMessage, mailbox, pc, options);
+            } else {
+                compose = new ZMessageComposeBean(Action.NEW, null, mailbox, pc, null);
+            }
             jctxt.setAttribute(mVar, compose, PageContext.PAGE_SCOPE);
             
         } catch (ServiceException e) {
             throw new JspTagException(e.getMessage(), e);
         }
     }
-
-
-
 }

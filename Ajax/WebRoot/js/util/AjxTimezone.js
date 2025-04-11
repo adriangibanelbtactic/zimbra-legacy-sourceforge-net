@@ -121,7 +121,7 @@
  * by setting the <code>DEFAULT</code> property's value. The default 
  * timezone is specified using the client identifier.
  */
-function AjxTimezone() {}
+AjxTimezone = function() {}
 
 //
 // Static methods
@@ -312,48 +312,6 @@ AjxTimezone.getAbbreviatedZoneChoices = function() {
     }
 	return AjxTimezone._ABBR_ZONE_OPTIONS;
 };
-
-AjxTimezone.getZonePreferences =
-function() {
-	if (AjxTimezone._PREF_ZONE_DISPLAY) {
-		var count = AjxTimezone._PREF_ZONE_DISPLAY.length;
-		var total = AjxTimezone.STANDARD_RULES.length + AjxTimezone.DAYLIGHT_RULES.length;
-		if (count != total) {
-			AjxTimezone._PREF_ZONE_DISPLAY = null;
-			AjxTimezone._PREF_ZONE_DISPLAY_DISPLAY = null;
-		}
-	}
-
-	if (!AjxTimezone._PREF_ZONE_DISPLAY) {
-		AjxTimezone._PREF_ZONE_DISPLAY = [];
-		AjxTimezone.getAbbreviatedZoneChoices();
-		for (var i = 0; i < AjxTimezone._ABBR_ZONE_OPTIONS.length; i++) {
-			AjxTimezone._PREF_ZONE_DISPLAY.push(AjxTimezone._ABBR_ZONE_OPTIONS[i].displayValue);
-		}
-	}
-	return AjxTimezone._PREF_ZONE_DISPLAY;
-}
-
-AjxTimezone.getZonePreferencesOptions =
-function() {
-	if (AjxTimezone._PREF_ZONE_OPTIONS) {
-		var count = AjxTimezone._PREF_ZONE_OPTIONS.length;
-		var total = AjxTimezone.STANDARD_RULES.length + AjxTimezone.DAYLIGHT_RULES.length;
-		if (count != total) {
-			AjxTimezone._PREF_ZONE_OPTIONS = null;
-		}
-	}
-
-	if (!AjxTimezone._PREF_ZONE_OPTIONS) {
-		AjxTimezone._PREF_ZONE_OPTIONS = [];
-
-		AjxTimezone.getAbbreviatedZoneChoices();
-		for (var i = 0; i < AjxTimezone._ABBR_ZONE_OPTIONS.length; i++) {
-			AjxTimezone._PREF_ZONE_OPTIONS.push(AjxTimezone._ABBR_ZONE_OPTIONS[i].serverid);
-		}
-	}
-	return AjxTimezone._PREF_ZONE_OPTIONS;
-}
 
 AjxTimezone._BY_OFFSET = function(arule, brule) {
 	// sort by offset and then by name

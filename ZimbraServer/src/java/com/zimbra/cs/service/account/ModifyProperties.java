@@ -27,8 +27,9 @@ package com.zimbra.cs.service.account;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 import com.zimbra.cs.zimlet.ZimletUserProperties;
 
@@ -41,18 +42,17 @@ public class ModifyProperties extends AccountDocumentHandler {
 		ZimbraSoapContext lc = getZimbraSoapContext(context);
         Account acct = getRequestedAccount(lc);
         
-        if (!canAccessAccount(lc, acct))
-            throw ServiceException.PERM_DENIED("can not access account");
+        canModifyOptions(lc, acct);
 
         ZimletUserProperties props = ZimletUserProperties.getProperties(acct);
 
-        for (Element e : request.listElements(AccountService.E_PROPERTY)) {
-            props.setProperty(e.getAttribute(AccountService.A_ZIMLET),
-            					e.getAttribute(AccountService.A_NAME),
+        for (Element e : request.listElements(AccountConstants.E_PROPERTY)) {
+            props.setProperty(e.getAttribute(AccountConstants.A_ZIMLET),
+            					e.getAttribute(AccountConstants.A_NAME),
             					e.getText());
         }
         props.saveProperties(acct);
-        Element response = lc.createElement(AccountService.MODIFY_PROPERTIES_RESPONSE);
+        Element response = lc.createElement(AccountConstants.MODIFY_PROPERTIES_RESPONSE);
         return response;
 	}
 }

@@ -63,18 +63,11 @@ public class ItemId {
     public ItemId(String acctId, int id, int subId) {
         mAccountId = acctId;  mId = id;  mSubpartId = subId;
     }
-    
-    public static void main(String[] args) {
-        ItemId foo = null;
-        try {
-            foo = new ItemId("34480-508bc90b-d85e-45d6-bca2-7c34b7c407cb:34479", null);
-        } catch (ServiceException e) {
-            e.printStackTrace();
-        }
-        System.out.println(foo.toString());
-    }
 
-    public ItemId(String encoded, ZimbraSoapContext lc) throws ServiceException {
+    public ItemId(String encoded, ZimbraSoapContext zsc) throws ServiceException {
+        this(encoded, zsc.getRequestedAccountId());
+    }
+    public ItemId(String encoded, String defaultAccountId) throws ServiceException {
         if (encoded == null || encoded.equals(""))
             throw ServiceException.INVALID_REQUEST("empty/missing item ID", null);
 
@@ -84,8 +77,8 @@ public class ItemId {
             throw ServiceException.INVALID_REQUEST("malformed item ID: " + encoded, null);
         if (delimiter != -1)
             mAccountId = encoded.substring(0, delimiter);
-        else if (lc != null)
-            mAccountId = lc.getRequestedAccountId();
+        else if (defaultAccountId != null)
+            mAccountId = defaultAccountId;
         encoded = encoded.substring(delimiter + 1);
 
         // break out the appointment sub-id, if present
@@ -111,6 +104,10 @@ public class ItemId {
 
     public boolean hasSubpart()   { return mSubpartId >= 0; }
 
+    /**
+     * @return TRUE if this item is on the local server
+     * @throws ServiceException
+     */
     public boolean isLocal() throws ServiceException {
         if (mAccountId == null)
             return true;
@@ -120,22 +117,37 @@ public class ItemId {
         return DocumentHandler.LOCAL_HOST.equalsIgnoreCase(acctTarget.getAttr(Provisioning.A_zimbraMailHost));
     }
 
+    /**
+     * @param acct
+     * @return TRUE if the item is in the passed-in account
+     */
     public boolean belongsTo(Account acct) {
         return acct == null || mAccountId == null || mAccountId.equals(acct.getId());
     }
+    /**
+     * @param acctId
+     * @return TRUE if the item is in the passed-in account
+     */
     public boolean belongsTo(String acctId) {
         return acctId == null || mAccountId == null || mAccountId.equals(acctId);
     }
+    /**
+     * @param mbox
+     * @return TRUE if the item is in the passed-in mailbox
+     */
     public boolean belongsTo(Mailbox mbox) {
         return mbox == null || mAccountId == null || mAccountId.equals(mbox.getAccountId());
     }
 
-    public String toString()  { return toString((String) null); }
+    @Override
+    public String toString() {
+        return toString((String) null);
+    }
     public String toString(Account authAccount) {
         return toString(authAccount == null ? null : authAccount.getId());
     }
-    public String toString(ZimbraSoapContext lc) {
-        return toString(lc == null ? null : lc.getAuthtokenAccountId());
+    public String toString(ItemIdFormatter ifmt) {
+        return toString(ifmt == null ? null : ifmt.getAuthenticatedId());
     }
     public String toString(String authAccountId) {
         StringBuffer sb = new StringBuffer();
@@ -145,5 +157,34 @@ public class ItemId {
         if (hasSubpart())
             sb.append(PART_DELIMITER).append(mSubpartId);
         return sb.toString();
+    }
+
+    public static void main(String[] args) {
+        ItemId foo = null;
+        try {
+            foo = new ItemId("34480-508bc90b-d85e-45d6-bca2-7c34b7c407cb:34479", (String) null);
+        } catch (ServiceException e) {
+            e.printStackTrace();
+        }
+        System.out.println(foo.toString());
+    }
+    
+    public boolean equals(Object that) {
+        if (this == that)
+            return true;
+        ItemId other = (ItemId)that;
+        if ((other.mAccountId==null && this.mAccountId==null) || (other.mAccountId.equals(this.mAccountId))) {
+            // same acct
+            return (other.mId == this.mId && other.mSubpartId == this.mSubpartId);
+        } else {
+            return false;
+        }
+    }
+    
+    public int hashCode() {
+        int toRet = 0;
+        if (mAccountId != null)
+            toRet = mAccountId.hashCode();
+        return (toRet ^ mId);
     }
 }

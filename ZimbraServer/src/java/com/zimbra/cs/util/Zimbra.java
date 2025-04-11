@@ -28,14 +28,13 @@ package com.zimbra.cs.util;
 import java.io.File;
 import java.util.Timer;
 
-import org.jivesoftware.wildfire.XMPPServer;
-
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Server;
+import com.zimbra.cs.datasource.DataSourceManager;
 import com.zimbra.cs.db.Versions;
 import com.zimbra.cs.extension.ExtensionUtil;
-import com.zimbra.cs.httpclient.EasySSLProtocolSocketFactory;
 import com.zimbra.cs.im.IMRouter;
+import com.zimbra.cs.im.ZimbraIM;
 import com.zimbra.cs.imap.ImapServer;
 import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.lmtpserver.LmtpServer;
@@ -47,8 +46,8 @@ import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.pop3.Pop3Server;
 import com.zimbra.cs.redolog.RedoLogProvider;
 import com.zimbra.cs.servlet.PrivilegedServlet;
-import com.zimbra.cs.session.OzNotificationServer;
 import com.zimbra.cs.session.SessionCache;
+import com.zimbra.cs.session.WaitSetMgr;
 import com.zimbra.cs.stats.ZimbraPerf;
 import com.zimbra.cs.store.StoreManager;
 
@@ -99,7 +98,7 @@ public class Zimbra {
         String tzFilePath = LC.timezone_file.value();
         try {
             File tzFile = new File(tzFilePath);
-            WellKnownTimeZones.loadFromFile(new File(tzFilePath));
+            WellKnownTimeZones.loadFromFile(tzFile);
         } catch (Throwable t) {
             Zimbra.halt("Unable to load timezones from " + tzFilePath, t);
         }
@@ -118,27 +117,15 @@ public class Zimbra {
 
         System.setProperty("ical4j.unfolding.relaxed", "true");
 
-        if (!redoLog.isSlave()) {
-            OzNotificationServer.startup();
+        MailboxManager.getInstance().startup();
+        
+        SessionCache.startup();
 
+        if (!redoLog.isSlave()) {
             Server server = Provisioning.getInstance().getLocalServer();
             
             if (server.getBooleanAttr(Provisioning.A_zimbraXMPPEnabled, false)) {
-                try {
-                    System.setProperty("wildfireHome", "/opt/zimbra");
-                    String defaultDomain = Provisioning.getInstance().getConfig().getAttr(Provisioning.A_zimbraDefaultDomainName, null);
-                    if (defaultDomain != null) {
-                        ZimbraLog.im.info("Setting default XMPP domain to: "+defaultDomain);
-                        System.setProperty("wildfireDomain", defaultDomain);
-                    } else {
-                        ZimbraLog.im.warn("No default domain has been set, domain must be set in JiveProperties table or IM will not work"+defaultDomain);
-                    }
-                    
-                    XMPPServer srv = new XMPPServer();
-                } catch (Exception e) { 
-                    ZimbraLog.system.warn("Could not start XMPP server: " + e.toString());
-                    e.printStackTrace();
-                }
+                ZimbraIM.startup();
             }
             
             LmtpServer.startupLmtpServer();
@@ -152,10 +139,15 @@ public class Zimbra {
                 ImapServer.startupImapSSLServer();
         }
         
+        WaitSetMgr.startup();
+        
         MemoryStats.startup();
+        
+        DataSourceManager.startup();
 
         // should be last, so that other subsystems can add dynamic stats counters 
         ZimbraPerf.initialize();
+        
         sInited = true;
     }
 
@@ -167,13 +159,16 @@ public class Zimbra {
 
         MemoryStats.shutdown();
         
+        WaitSetMgr.shutdown();
+        
         RedoLogProvider redoLog = RedoLogProvider.getInstance();
         if (!redoLog.isSlave()) {
             LmtpServer.shutdownLmtpServer();
             Pop3Server.shutdownPop3Servers();
             ImapServer.shutdownImapServers();
-            OzNotificationServer.shutdown();
         }
+        
+        ZimbraIM.shutdown();
 
         SessionCache.shutdown();
         
@@ -185,7 +180,7 @@ public class Zimbra {
         StoreManager.getInstance().shutdown();
 
         ExtensionUtil.destroyAll();
-        
+
         MailboxManager.getInstance().shutdown();
 
         sTimer.cancel();
@@ -219,20 +214,4 @@ public class Zimbra {
             Runtime.getRuntime().halt(1);
         }
     }
-
-    public static void toolSetup() {
-        toolSetup("INFO");
-    }
-
-    public static void toolSetup(String defaultLogLevel) {
-    	toolSetup(defaultLogLevel, null, false);
-    }
-    
-    public static void toolSetup(String defaultLogLevel, String logFile, boolean showThreads) {
-        ZimbraLog.toolSetupLog4j(defaultLogLevel, logFile, showThreads);
-        if (LC.ssl_allow_untrusted_certs.booleanValue())
-            EasySSLProtocolSocketFactory.init();
-    }
-
-
 }

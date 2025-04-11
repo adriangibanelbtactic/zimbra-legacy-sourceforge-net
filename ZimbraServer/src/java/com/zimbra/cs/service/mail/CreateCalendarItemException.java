@@ -31,6 +31,8 @@ import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.mailbox.CalendarItem;
 import com.zimbra.cs.mailbox.MailServiceException;
@@ -39,7 +41,7 @@ import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mailbox.calendar.Invite;
 import com.zimbra.cs.mailbox.calendar.ZAttendee;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -47,7 +49,7 @@ public class CreateCalendarItemException extends CreateCalendarItem {
     
     private static Log sLog = LogFactory.getLog(CreateCalendarItemException.class);
 
-    private static final String[] TARGET_PATH = new String[] { MailService.A_ID };
+    private static final String[] TARGET_PATH = new String[] { MailConstants.A_ID };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_PATH; }
     protected boolean checkMountpointProxy(Element request)  { return false; }
 
@@ -85,30 +87,29 @@ public class CreateCalendarItemException extends CreateCalendarItem {
         Account acct = getRequestedAccount(zsc);
         Mailbox mbox = getRequestedMailbox(zsc);
         OperationContext octxt = zsc.getOperationContext();
-        
-        ItemId iid = new ItemId(request.getAttribute(MailService.A_ID), zsc);
-        int compNum = (int) request.getAttributeLong(MailService.E_INVITE_COMPONENT);
-        sLog.info("<CreateCalendarItemException id=" + zsc.formatItemId(iid) + " comp=" + compNum + "> " + zsc.toString());
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
+
+        ItemId iid = new ItemId(request.getAttribute(MailConstants.A_ID), zsc);
+        int compNum = (int) request.getAttributeLong(MailConstants.E_INVITE_COMPONENT);
+        sLog.info("<CreateCalendarItemException id=" + ifmt.formatItemId(iid) + " comp=" + compNum + "> " + zsc.toString());
         
         // <M>
-        Element msgElem = request.getElement(MailService.E_MSG);
+        Element msgElem = request.getElement(MailConstants.E_MSG);
         
-        if (msgElem.getAttribute(MailService.A_FOLDER, null) != null) {
+        if (msgElem.getAttribute(MailConstants.A_FOLDER, null) != null) {
             throw ServiceException.FAILURE("You may not specify a target Folder when creating an Exception for an existing calendar item", null);
         }
         
         Element response = getResponseElement(zsc);
         synchronized(mbox) {
             CalendarItem calItem = mbox.getCalendarItemById(octxt, iid.getId()); 
-            Invite inv = calItem.getInvite(iid.getSubpartId(), compNum);
-            
-            if (inv.hasRecurId()) {
-                throw MailServiceException.INVITE_OUT_OF_DATE("Invite id=" + zsc.formatItemId(iid) + " comp=" + compNum + " is not the a default invite");
-            }
-            
             if (calItem == null)
-                throw MailServiceException.NO_SUCH_CALITEM(inv.getUid(), " for CreateCalendarItemExceptionRequest(" + iid + "," + compNum + ")");
-            else if (!calItem.isRecurring())
+                throw MailServiceException.NO_SUCH_CALITEM(iid.getId(), " for CreateCalendarItemExceptionRequest(" + iid + "," + compNum + ")");
+
+            Invite inv = calItem.getInvite(iid.getSubpartId(), compNum);
+            if (inv.hasRecurId())
+                throw MailServiceException.INVITE_OUT_OF_DATE("Invite id=" + ifmt.formatItemId(iid) + " comp=" + compNum + " is not the default invite");
+            if (!calItem.isRecurring())
                 throw ServiceException.INVALID_REQUEST("CalendarItem " + calItem.getId() + " is not a recurring calendar item", null);
             
             CreateCalendarItemExceptionInviteParser parser = new CreateCalendarItemExceptionInviteParser(calItem.getUid(), inv);

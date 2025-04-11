@@ -40,7 +40,6 @@ import com.zimbra.cs.redolog.op.IndexItem;
 import com.zimbra.cs.store.StoreManager;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ByteUtil;
-import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.ZimbraLog;
 
 
@@ -89,6 +88,15 @@ public class Document extends MailItem {
         super(mbox, data);
     }
 
+    @Override
+    public String getSender() {
+        try {
+            return getCreator();
+        } catch (ServiceException e) {
+            return "";
+        }
+    }
+
     public String getFragment() {
     	if (mFragment == null && mRevisionList.size() > 0)
     		try {
@@ -127,11 +135,11 @@ public class Document extends MailItem {
         if (mi == null)
             return;
 
-        ParsedDocument pd = (ParsedDocument)indexData;
+        ParsedDocument pd = (ParsedDocument) indexData;
         if (pd == null) {
             try {
                 byte[] buf = ByteUtil.getContent(getRawDocument(), 0);
-                pd = new ParsedDocument(buf, getDigest(), getName(), getContentType(), getChangeDate(), getCreator());
+                pd = new ParsedDocument(buf, getName(), getContentType(), getChangeDate(), getCreator());
             } catch (IOException e) {
                 throw ServiceException.FAILURE("reindex caught IOException: "+e, e);
             }
@@ -163,22 +171,6 @@ public class Document extends MailItem {
         return getVersion() + 1;
     }
 
-    public void rename(String newName) throws ServiceException {
-        validateName(newName);
-        mData.name = newName;
-    }
-
-    // name validation is the same as Folder
-    private static final String INVALID_CHARACTERS = ".*[:/\"\t\r\n].*";
-    private static final int MAX_NAME_LENGTH  = 128;
-
-    private static void validateName(String name) throws ServiceException {
-        if (name == null || name != StringUtil.stripControlCharacters(name))
-            throw MailServiceException.INVALID_NAME(name);
-        if (name.trim().equals("") || name.length() > MAX_NAME_LENGTH || name.matches(INVALID_CHARACTERS))
-            throw MailServiceException.INVALID_NAME(name);
-    }
-
     private static Metadata getRevisionMetadata(int changeID, ParsedDocument pd) {
         Metadata rev = new Metadata();
         rev.put(Metadata.FN_REV_ID, changeID);
@@ -199,6 +191,7 @@ public class Document extends MailItem {
         mRevisionList.add(rev);
         mFragment = pd.getFragment();
         mData.size = pd.getSize();
+            DbMailItem.saveName(this, getFolderId());
         pd.setVersion(getVersion());
 
         String encodedMetadata = encodeMetadata();
@@ -210,7 +203,7 @@ public class Document extends MailItem {
         }
     }
 
-    public synchronized void purgeOldRevisions(int revToKeep) throws ServiceException, IOException {
+    public synchronized void purgeOldRevisions(int revToKeep) throws ServiceException {
         int last = mRevisionList.size() - revToKeep;
         StoreManager sm = StoreManager.getInstance();
         while (last > 0) {
@@ -223,27 +216,27 @@ public class Document extends MailItem {
             int revid = (int)rev.getLong(Metadata.FN_REV_ID);
             if (revid == 0)
                 break;
-            sm.delete(sm.getMailboxBlob(getMailbox(), getId(), revid, getVolumeId()));
+            markBlobForDeletion(sm.getMailboxBlob(getMailbox(), getId(), revid, getVolumeId()));
             rev.put(Metadata.FN_REV_ID, 0);
             mRevisionList.mList.set(last, rev.mMap);  // rev is a copy.
         }
         DbMailItem.saveMetadata(this, encodeMetadata(new Metadata()).toString());
     }
 
-    protected static UnderlyingData prepareCreate(byte tp, int id, Folder folder, short volumeId, String name, String creator, String type, ParsedDocument pd, Document parent, Metadata meta) 
+    protected static UnderlyingData prepareCreate(byte type, int id, Folder folder, short volumeId, String name, String mimeType, ParsedDocument pd, Metadata meta) 
     throws ServiceException {
         if (folder == null || !folder.canContain(TYPE_DOCUMENT))
             throw MailServiceException.CANNOT_CONTAIN();
         if (!folder.canAccess(ACL.RIGHT_INSERT))
             throw ServiceException.PERM_DENIED("you do not have the required rights on the folder");
-        validateName(name);
+        validateItemName(name);
 
         Mailbox mbox = folder.getMailbox();
         MetadataList revisions = new MetadataList();
 
         UnderlyingData data = new UnderlyingData();
         data.id          = id;
-        data.type        = tp;
+        data.type        = type;
         data.folderId    = folder.getId();
         data.indexId     = id;
         data.imapId      = id;
@@ -253,23 +246,23 @@ public class Document extends MailItem {
         data.name        = name;
         data.subject     = name;
         data.blobDigest  = pd.getDigest();
-        data.metadata    = encodeMetadata(meta, DEFAULT_COLOR, type, revisions).toString();
+        data.metadata    = encodeMetadata(meta, DEFAULT_COLOR, mimeType, revisions).toString();
 
         return data;
     }
 
-    static Document create(int id, Folder folder, short volumeId, String filename, String creator, String type, ParsedDocument pd, MailItem parent)
+    static Document create(int id, Folder folder, short volumeId, String filename, String type, ParsedDocument pd)
     throws ServiceException {
         assert(id != Mailbox.ID_AUTO_INCREMENT);
 
-        UnderlyingData data = prepareCreate(TYPE_DOCUMENT, id, folder, volumeId, filename, creator, type, pd, (Document) parent, null);
+        UnderlyingData data = prepareCreate(TYPE_DOCUMENT, id, folder, volumeId, filename, type, pd, null);
 
         Mailbox mbox = folder.getMailbox();
         data.contentChanged(mbox);
         DbMailItem.create(mbox, data);
 
         Document doc = new Document(mbox, data);
-        doc.finishCreation(parent);
+        doc.finishCreation(null);
         pd.setVersion(doc.getVersion());
         return doc;
     }

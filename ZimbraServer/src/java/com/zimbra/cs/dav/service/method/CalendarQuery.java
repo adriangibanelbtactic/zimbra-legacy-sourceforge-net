@@ -42,7 +42,6 @@ import com.zimbra.cs.dav.caldav.Filter.CompFilter;
 import com.zimbra.cs.dav.resource.CalendarCollection;
 import com.zimbra.cs.dav.resource.CalendarObject;
 import com.zimbra.cs.dav.resource.DavResource;
-import com.zimbra.cs.dav.resource.UrlNamespace;
 import com.zimbra.cs.dav.service.DavResponse;
 import com.zimbra.cs.mailbox.CalendarItem;
 
@@ -56,7 +55,7 @@ import com.zimbra.cs.mailbox.CalendarItem;
  */
 public class CalendarQuery extends Report {
 
-	public void handle(DavContext ctxt) throws DavException {
+	public void handle(DavContext ctxt) throws DavException, ServiceException {
 		Element query = ctxt.getRequestMessage().getRootElement();
 		if (!query.getQName().equals(DavElements.E_CALENDAR_QUERY))
 			throw new DavException("msg "+query.getName()+" is not calendar-query", HttpServletResponse.SC_BAD_REQUEST, null);
@@ -67,7 +66,7 @@ public class CalendarQuery extends Report {
 		if (qctxt.componentFilter == null)
 			throw new DavException("missing filter element in the request", HttpServletResponse.SC_BAD_REQUEST, null);
 		
-		DavResource rsc = UrlNamespace.getResource(ctxt);
+		DavResource rsc = ctxt.getRequestedResource();
 		if (!(rsc instanceof CalendarCollection))
 			throw new DavException("not a calendar resource", HttpServletResponse.SC_BAD_REQUEST, null);
 		

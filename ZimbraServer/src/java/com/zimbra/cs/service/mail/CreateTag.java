@@ -31,13 +31,12 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Tag;
-import com.zimbra.cs.operation.CreateTagOperation;
-import com.zimbra.cs.operation.Operation.Requester;
-import com.zimbra.cs.session.Session;
-import com.zimbra.soap.Element;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -49,21 +48,17 @@ public class CreateTag extends MailDocumentHandler  {
 		ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(lc);
         Mailbox.OperationContext octxt = lc.getOperationContext();
-        Session session = getSession(context);
-        
+        ItemIdFormatter ifmt = new ItemIdFormatter(lc);
 
-        Element t = request.getElement(MailService.E_TAG);
-        String name = t.getAttribute(MailService.A_NAME);
-        byte color = (byte) t.getAttributeLong(MailService.A_COLOR, MailItem.DEFAULT_COLOR);
+        Element t = request.getElement(MailConstants.E_TAG);
+        String name = t.getAttribute(MailConstants.A_NAME);
+        byte color = (byte) t.getAttributeLong(MailConstants.A_COLOR, MailItem.DEFAULT_COLOR);
         
-        CreateTagOperation op = new CreateTagOperation(session, octxt, mbox, Requester.SOAP,
-        			name, color);
-        op.schedule();
-        Tag tag = op.getTag();
+        Tag tag = mbox.createTag(octxt, name, color);
         
-        Element response = lc.createElement(MailService.CREATE_TAG_RESPONSE);
+        Element response = lc.createElement(MailConstants.CREATE_TAG_RESPONSE);
         if (tag != null)
-        	ToXML.encodeTag(response, lc, tag);
+        	ToXML.encodeTag(response, ifmt, tag);
         return response;
 	}
 }

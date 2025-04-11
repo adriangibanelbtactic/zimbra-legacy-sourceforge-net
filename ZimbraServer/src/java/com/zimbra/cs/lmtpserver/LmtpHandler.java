@@ -28,14 +28,18 @@ package com.zimbra.cs.lmtpserver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import java.net.Socket;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
-import com.zimbra.common.util.Log;
-import com.zimbra.common.util.LogFactory;
+import javax.mail.internet.MailDateFormat;
+import javax.mail.internet.MimeUtility;
 
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.stats.ZimbraPerf;
 import com.zimbra.cs.tcpserver.ProtocolHandler;
 import com.zimbra.cs.util.Config;
@@ -47,7 +51,8 @@ public class LmtpHandler extends ProtocolHandler {
 	private LmtpInputStream mInputStream;
 	private LmtpWriter mWriter;
 	private String mRemoteAddress;
-	private String mLhloArg;
+    private String mRemoteHostname;
+    private String mLhloArg;
 	
 	// Message specific data
 	private LmtpEnvelope mEnvelope;
@@ -63,27 +68,32 @@ public class LmtpHandler extends ProtocolHandler {
 	}
 
 	protected boolean setupConnection(Socket connection) throws IOException {
-		reset();
-		mRemoteAddress = connection.getInetAddress().getHostAddress();
-		INFO("connected");
-
-		InputStream is = connection.getInputStream();
-		mInputStream = new LmtpInputStream(is);
-		
-		OutputStream os = connection.getOutputStream();
-		mWriter = new LmtpWriter(os);
-
-        boolean allow = Config.userServicesEnabled();
-        if (allow) {
-            sendResponse(mServer.get220Greeting());
-        } else {
-            sendResponse("421 4.3.2 User services disabled");
-            dropConnection();
+	    reset();
+	    mRemoteAddress = connection.getInetAddress().getHostAddress();
+        mRemoteHostname = connection.getInetAddress().getHostName();
+        if (StringUtil.isNullOrEmpty(mRemoteHostname)) {
+            mRemoteHostname = mRemoteAddress;
         }
-        return allow;
+	    ZimbraLog.addIpToContext(mRemoteAddress);
+	    ZimbraLog.lmtp.debug("connected");
+
+	    InputStream is = connection.getInputStream();
+	    mInputStream = new LmtpInputStream(is);
+
+	    OutputStream os = connection.getOutputStream();
+	    mWriter = new LmtpWriter(os);
+
+	    boolean allow = Config.userServicesEnabled();
+	    if (allow) {
+	        sendResponse(mServer.get220Greeting());
+	    } else {
+	        sendResponse("421 4.3.2 User services disabled");
+	        dropConnection();
+	    }
+	    return allow;
 	}
 
-	protected boolean authenticate() throws IOException {
+	protected boolean authenticate() {
 		// LMTP doesn't need auth.
 		return true;
 	}
@@ -99,7 +109,7 @@ public class LmtpHandler extends ProtocolHandler {
 				mWriter = null;
 			}
 		} catch (IOException e) {
-			INFO("exception while closing connection", e);
+			ZimbraLog.lmtp.info("exception while closing connection", e);
 		}
 	}
 
@@ -109,7 +119,7 @@ public class LmtpHandler extends ProtocolHandler {
 		String arg = null;
 
 		if (cmd == null) {
-			INFO("disconnected without quit");
+		    ZimbraLog.lmtp.info("disconnected without quit");
 			dropConnection();
 			return false;
 		}
@@ -127,10 +137,8 @@ public class LmtpHandler extends ProtocolHandler {
 			arg = cmd.substring(space + 1); 
 			cmd = cmd.substring(0, space);
 		}
-		
-		if (mLog.isDebugEnabled()) {
-			DEBUG("command=" + cmd + " arg=" + arg);
-		}
+
+        ZimbraLog.lmtp.debug("command=%s arg=%s", cmd, arg);
 				
 		if (cmd.length() < 4) {
 			doSyntaxError("command too short");
@@ -233,11 +241,11 @@ public class LmtpHandler extends ProtocolHandler {
 	private void sendResponse(String response) {
 		String cl = mCurrentCommandLine != null ? mCurrentCommandLine : "<none>";
 		char firstCh = response.charAt(0);
-		if (mLog.isDebugEnabled()) {
-			DEBUG(response + " (" + cl + ")");
+		if (ZimbraLog.lmtp.isDebugEnabled()) {
+            ZimbraLog.lmtp.debug("%s (%s)", response, cl);
 		} else {
 			if (firstCh != '2' && firstCh != '3') {	// Log only error cases
-				INFO(response + " (" + cl + ")");
+                ZimbraLog.lmtp.info("%s (%s)", response, cl);
 			}
 		}
 		mWriter.println(response);
@@ -254,13 +262,13 @@ public class LmtpHandler extends ProtocolHandler {
     
     private void doQUIT() {
     	sendResponse(mServer.get221Goodbye());
-    	INFO("quit from client");
+    	ZimbraLog.lmtp.debug("quit from client");
     	dropConnection();
     }
 
     private void doRSET(String arg) {
     	if (arg != null) {
-    		doSyntaxError("paramater supplied to rset");
+    		doSyntaxError("parameter supplied to rset");
     		return;
     	}
     	reset();
@@ -281,6 +289,7 @@ public class LmtpHandler extends ProtocolHandler {
     }
 
     private void doLHLO(String arg) {
+        mLhloArg = arg;
     	if (arg == null || arg.length() == 0) {
     		doSyntaxError("no parameter to lhlo");
     		return;
@@ -288,14 +297,9 @@ public class LmtpHandler extends ProtocolHandler {
     	mWriter.println("250-" + mServer.getConfigName());
     	mWriter.println("250-8BITMIME");
     	mWriter.println("250-ENHANCEDSTATUSCODES");
-   		if (mServer.getConfigMaxMessageSize() < Integer.MAX_VALUE) {
-    			mWriter.println("250-SIZE " + mServer.getConfigMaxMessageSize());
-   		} else {
-    			mWriter.println("250-SIZE ");
-    	}
+    	mWriter.println("250-SIZE ");
     	mWriter.println("250 PIPELINING");
     	mWriter.flush();
-    	mLhloArg = arg;
     	reset();
     }
     
@@ -391,21 +395,38 @@ public class LmtpHandler extends ProtocolHandler {
 
     	sendResponse("354 End data with <CR><LF>.<CR><LF>");
     	
-    	byte[] data = mInputStream.readMessage(mEnvelope.getSize());
+        // Read message
+    	byte[] data = mInputStream.readMessage(mEnvelope.getSize(), getAdditionalHeaders());
     	if (data == null || data.length == 0) {
     		sendResponse("554 5.6.0 Empty message not allowed");
     		return;
     	}
 
-    	if (mLog.isDebugEnabled()) {
-    		DEBUG("size hint=" + mEnvelope.getSize() + " read data=" + data.length);
-    	}
+        // Log envelope information
+        if (ZimbraLog.lmtp.isInfoEnabled()) {
+            StringBuilder recipients = new StringBuilder();
+            boolean firstTime = true;
+            for (LmtpAddress recipient : mEnvelope.getRecipients()) {
+                if (!firstTime) {
+                    recipients.append(',');
+                } else {
+                    firstTime = false;
+                }
+                recipients.append(recipient);
+                if (recipients.length() > 100) {
+                    recipients.setLength(100);
+                    recipients.append("...");
+                    break;
+                }
+            }
+            String size = (mEnvelope.getSize() == 0 ?
+                "unspecified" : Integer.toString(mEnvelope.getSize()) + " bytes");
+            ZimbraLog.lmtp.info("Delivering message: sender=%s, recipient(s)={%s}, size=%s",
+                mEnvelope.getSender(), recipients, size);
+        }
 
-    	if (data.length > mServer.getConfigMaxMessageSize()) {
-    		sendResponse("552 5.2.3 Message size " + data.length + " exceeds allowed size (" + mServer.getConfigMaxMessageSize() + ")");
-    		return;
-    	}
-    	
+    	ZimbraLog.lmtp.debug("Actual number of bytes read: %d", data.length);
+
     	// TODO cleanup maybe add Date if not present
     	// TODO cleanup maybe add From header from envelope is not present
     	// TODO add Received header for this lmtp transaction
@@ -441,39 +462,37 @@ public class LmtpHandler extends ProtocolHandler {
         
     	reset();
     }
-    
-	/*
-	 * Logging support so we log client info on each log line
-	 */ 
-	private static Log mLog = LogFactory.getLog(LmtpHandler.class);
-	
-	private StringBuffer withClientInfo(String message) {
-		int length = 64;
-		if (message != null) length += message.length();
-		return new StringBuffer(length).append("[").append(mRemoteAddress).append("] ").append(message);
-	}
-	
-    private void INFO(String message, Throwable e) {
-    	if (mLog.isInfoEnabled()) mLog.info(withClientInfo(message), e); 
-    }
-    
-    private void INFO(String message) {
-    	if (mLog.isInfoEnabled()) mLog.info(withClientInfo(message));
-    }
 
-    private void DEBUG(String message, Throwable e) {
-    	if (mLog.isDebugEnabled()) mLog.debug(withClientInfo(message), e);
-    }
+    /**
+     * Generates the <tt>Return-Path</tt> and <tt>Received</tt> headers
+     * for the current incoming message.
+     */
+    private String getAdditionalHeaders() {
+        StringBuilder headers = new StringBuilder();
 
-    private void DEBUG(String message) {
-    	if (mLog.isDebugEnabled()) mLog.debug(withClientInfo(message));
-    }
-
-    private void WARN(String message, Throwable e) {
-    	if (mLog.isWarnEnabled()) mLog.warn(withClientInfo(message), e);
-    }
-
-    private void WARN(String message) {
-    	if (mLog.isWarnEnabled()) mLog.warn(withClientInfo(message));
+        // Assemble Return-Path header
+        if (mEnvelope.hasSender()) {
+            String sender = mEnvelope.getSender().getEmailAddress();
+            if (!StringUtil.isNullOrEmpty(sender)) {
+                headers.append(String.format("Return-Path: %s\r\n", sender));
+            }
+        }
+        
+        // Assemble Received header
+        String localHostname = "unknown";
+        try {
+            localHostname = Provisioning.getInstance().getLocalServer().getName();
+        } catch (ServiceException e) {
+            ZimbraLog.lmtp.warn("Unable to determine local hostname", e);
+        }
+        String timestamp = new MailDateFormat().format(new Date());
+        String name = "Received: ";
+        String value = String.format("from %s (LHLO %s) (%s) by %s with LMTP; %s",
+            mRemoteHostname, mLhloArg, mRemoteAddress, localHostname, timestamp);
+        headers.append(name);
+        headers.append(MimeUtility.fold(name.length(), value));
+        headers.append("\r\n");
+        
+        return headers.toString();
     }
 }

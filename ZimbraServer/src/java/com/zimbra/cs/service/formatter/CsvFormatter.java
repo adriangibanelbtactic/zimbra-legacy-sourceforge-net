@@ -40,24 +40,15 @@ import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mime.Mime;
-import com.zimbra.cs.operation.CreateContactOperation;
-import com.zimbra.cs.operation.Operation;
-import com.zimbra.cs.operation.Operation.Requester;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet.Context;
+import com.zimbra.cs.service.mail.ImportContacts;
 import com.zimbra.cs.service.util.ItemId;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.HttpUtil;
 
 public class CsvFormatter extends Formatter {
 
-    public static class Format {};
-    public static class Save {};
-    static int sFormatLoad = Operation.setLoad(CsvFormatter.Format.class, 10);
-    static int sSaveLoad = Operation.setLoad(CsvFormatter.Save.class, 10);
-    int getFormatLoad() { return  sFormatLoad; }
-    int getSaveLoad() { return sSaveLoad; }
-    
     public String getType() {
         return "csv";
     }
@@ -70,11 +61,11 @@ public class CsvFormatter extends Formatter {
         return MailboxIndex.SEARCH_FOR_CONTACTS;
     }
 
-    public void formatCallback(Context context, MailItem item) throws IOException, ServiceException {
+    public void formatCallback(Context context) throws IOException, ServiceException {
         Iterator<? extends MailItem> iterator = null;
         StringBuffer sb = new StringBuffer();
         try {
-            iterator = getMailItems(context, item, -1, -1, Integer.MAX_VALUE);
+            iterator = getMailItems(context, -1, -1, Integer.MAX_VALUE);
             ContactCSV.toCSV(iterator, sb);
         } finally {
             if (iterator instanceof QueryResultIterator)
@@ -96,15 +87,12 @@ public class CsvFormatter extends Formatter {
         return false;
     }
 
-    public void saveCallback(byte[] body, Context context, Folder folder) throws UserServletException, ServiceException {
+    public void saveCallback(byte[] body, Context context, String contentType, Folder folder, String filename) throws UserServletException, ServiceException {
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(body), "UTF-8"));
             List<Map<String, String>> contacts = ContactCSV.getContacts(reader);
-            
             ItemId iidFolder = new ItemId(folder);
-            
-            CreateContactOperation.ImportCsvContacts(null, context.opContext, context.targetMailbox, Requester.REST, iidFolder, contacts, null);
-            
+            ImportContacts.ImportCsvContacts(context.opContext, context.targetMailbox, iidFolder, contacts, null);
         } catch (ContactCSV.ParseException e) {
             throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "could not parse csv file");
         } catch (UnsupportedEncodingException uee) {

@@ -26,10 +26,10 @@
 package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.cs.service.mail.MailService;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.zclient.event.ZModifyEvent;
 import com.zimbra.cs.zclient.event.ZModifyMessageEvent;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.Element;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,33 +51,40 @@ public class ZMessageHit implements ZSearchHit {
     private List<String> mMimePartHits;
     private ZEmailAddress mSender;
     private ZMessage mMessage;
+    private boolean mIsInvite;
 
     public ZMessageHit(Element e) throws ServiceException {
-        mId = e.getAttribute(MailService.A_ID);
-        mFolderId = e.getAttribute(MailService.A_FOLDER);
-        mFlags = e.getAttribute(MailService.A_FLAGS, null);
-        mDate = e.getAttributeLong(MailService.A_DATE);
-        mTags = e.getAttribute(MailService.A_TAGS, null);
-        Element fr = e.getOptionalElement(MailService.E_FRAG);
+        mId = e.getAttribute(MailConstants.A_ID);
+        mFolderId = e.getAttribute(MailConstants.A_FOLDER);
+        mFlags = e.getAttribute(MailConstants.A_FLAGS, null);
+        mDate = e.getAttributeLong(MailConstants.A_DATE);
+        mTags = e.getAttribute(MailConstants.A_TAGS, null);
+        Element fr = e.getOptionalElement(MailConstants.E_FRAG);
         if (fr != null) mFragment = fr.getText();
-        Element sub = e.getOptionalElement(MailService.E_SUBJECT);
+        Element sub = e.getOptionalElement(MailConstants.E_SUBJECT);
         if (sub != null) mSubject = sub.getText();
-        mSortField = e.getAttribute(MailService.A_SORT_FIELD, null);
-        mSize = (int) e.getAttributeLong(MailService.A_SIZE);
-        mConvId = e.getAttribute(MailService.A_CONV_ID);
-        mScore = (float) e.getAttributeDouble(MailService.A_SCORE, 0);
-        mContentMatched = e.getAttributeBool(MailService.A_CONTENTMATCHED, false);
+        mSortField = e.getAttribute(MailConstants.A_SORT_FIELD, null);
+        mSize = (int) e.getAttributeLong(MailConstants.A_SIZE);
+        mConvId = e.getAttribute(MailConstants.A_CONV_ID);
+        mScore = (float) e.getAttributeDouble(MailConstants.A_SCORE, 0);
+        mContentMatched = e.getAttributeBool(MailConstants.A_CONTENTMATCHED, false);
         mMimePartHits = new ArrayList<String>();
-        for (Element hp: e.listElements(MailService.E_HIT_MIMEPART)) {
-            mMimePartHits.add(hp.getAttribute(MailService.A_PART));
+        for (Element hp: e.listElements(MailConstants.E_HIT_MIMEPART)) {
+            mMimePartHits.add(hp.getAttribute(MailConstants.A_PART));
         }
-        Element emailEl = e.getOptionalElement(MailService.E_EMAIL);
-        if (emailEl != null) mSender = new ZEmailAddress(emailEl);
+        for (Element emailEl : e.listElements(MailConstants.E_EMAIL)) {
+            String t = emailEl.getAttribute(MailConstants.A_ADDRESS_TYPE, null);
+            if (ZEmailAddress.EMAIL_TYPE_FROM.equals(t)) {
+                mSender = new ZEmailAddress(emailEl);
+                break;
+            }
+        }
 
-        Element mp = e.getOptionalElement(MailService.E_MIMEPART);
+        Element mp = e.getOptionalElement(MailConstants.E_MIMEPART);
         if (mp != null) {
             mMessage = new ZMessage(e);
         }
+        mIsInvite = e.getOptionalElement(MailConstants.E_INVITE) != null;
     }
 
     public String getId() {
@@ -88,12 +95,17 @@ public class ZMessageHit implements ZSearchHit {
         return mContentMatched;
     }
 
+    public boolean getIsInvite() {
+        return mIsInvite;
+    }
+
     public String toString() {
         ZSoapSB sb = new ZSoapSB();
         sb.beginStruct();
         sb.add("id", mId);
         sb.add("conversationId", mConvId);
         sb.add("flags", mFlags);
+        sb.add("isInvite", mIsInvite);
         sb.add("fragment", mFragment);
         sb.add("subject", mSubject);
         sb.addDate("date", mDate);

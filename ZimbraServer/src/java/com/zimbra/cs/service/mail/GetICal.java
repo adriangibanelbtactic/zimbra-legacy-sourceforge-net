@@ -37,16 +37,18 @@ import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mailbox.calendar.Invite;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.service.util.ItemId;
+import com.zimbra.cs.service.util.ItemIdFormatter;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.HttpUtil;
 import com.zimbra.common.util.HttpUtil.Browser;
-import com.zimbra.soap.Element;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
 public class GetICal extends MailDocumentHandler {
 
-    private static final String[] TARGET_OBJ_PATH = new String[] { MailService.A_ID };
+    private static final String[] TARGET_OBJ_PATH = new String[] { MailConstants.A_ID };
     protected String[] getProxiedIdPath(Element request)     { return TARGET_OBJ_PATH; }
 
     /* (non-Javadoc)
@@ -56,10 +58,10 @@ public class GetICal extends MailDocumentHandler {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
         Mailbox mbx = getRequestedMailbox(lc);
         OperationContext octxt = lc.getOperationContext();
-        
-        String iidStr = request.getAttribute(MailService.A_ID, null);
-        long rangeStart = request.getAttributeLong(MailService.A_CAL_START_TIME, -1);
-        long rangeEnd = request.getAttributeLong(MailService.A_CAL_END_TIME, -1);
+
+        String iidStr = request.getAttribute(MailConstants.A_ID, null);
+        long rangeStart = request.getAttributeLong(MailConstants.A_CAL_START_TIME, -1);
+        long rangeEnd = request.getAttributeLong(MailConstants.A_CAL_END_TIME, -1);
         
 //        int compNum = (int)request.getAttributeLong(MailService.A_CAL_COMPONENT_NUM);
         int compNum = 0;
@@ -69,8 +71,8 @@ public class GetICal extends MailDocumentHandler {
         try {
             try {
                 ZVCalendar cal = null;
-                if (iidStr != null) {
-                	ItemId iid = new ItemId(iidStr, lc);
+                ItemId iid = iidStr != null ? new ItemId(iidStr, lc) : null;
+                if (iid != null) {
                     CalendarItem calItem = mbx.getCalendarItemById(octxt, iid.getId());
                     if (calItem == null) {
                         throw MailServiceException.NO_SUCH_CALITEM(iid.toString(), "Could not find calendar item");
@@ -85,8 +87,6 @@ public class GetICal extends MailDocumentHandler {
                 }
                 
                 ByteArrayOutputStream buf = new ByteArrayOutputStream();
-//                CalendarOutputter calOut = new CalendarOutputter();
-                
                 try {
                     OutputStreamWriter wout = new OutputStreamWriter(buf);
                     cal.toICalendar(wout);
@@ -94,9 +94,10 @@ public class GetICal extends MailDocumentHandler {
                     
                     Element response = getResponseElement(lc);
                     
-                    Element icalElt = response.addElement(MailService.E_CAL_ICAL);
-                    
-                    icalElt.addAttribute(MailService.A_ID, iidStr);
+                    Element icalElt = response.addElement(MailConstants.E_CAL_ICAL);
+
+                    if (iid != null)
+                        icalElt.addAttribute(MailConstants.A_ID, new ItemIdFormatter(lc).formatItemId(iid));
                     
                     icalElt.addText(buf.toString());
                     

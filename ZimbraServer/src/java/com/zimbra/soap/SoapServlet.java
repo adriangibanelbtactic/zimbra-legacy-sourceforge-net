@@ -38,19 +38,23 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.collections.Factory;
 import org.apache.commons.collections.map.LazyMap;
-import com.zimbra.common.util.Log;
-import com.zimbra.common.util.LogFactory;
 import org.apache.log4j.PropertyConfigurator;
+import org.mortbay.util.ajax.Continuation;
+import org.mortbay.util.ajax.ContinuationSupport;
 
 import com.zimbra.common.localconfig.LC;
+import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapProtocol;
+import com.zimbra.common.util.Log;
+import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.StringUtil;
+import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.service.util.ThreadLocalData;
 import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.cs.stats.StatsFile;
 import com.zimbra.cs.stats.ZimbraPerf;
-import com.zimbra.common.service.ServiceException;
-import com.zimbra.common.util.StringUtil;
 import com.zimbra.cs.util.Zimbra;
-import com.zimbra.common.util.ZimbraLog;
 
 /**
  * The soap service servlet
@@ -126,7 +130,10 @@ public class SoapServlet extends ZimbraServlet {
             Zimbra.shutdown();
         } catch (ServiceException e) {
             // Log as error and ignore.
-        	ZimbraLog.soap.error("Exception while shutting down servlet " + name, e);
+            ZimbraLog.soap.error("ServiceException while shutting down servlet " + name, e);
+        } catch (RuntimeException e) {
+            ZimbraLog.soap.error("Unchecked Exception while shutting down servlet " + name, e);
+            throw e;
         }
         // FIXME: we might want to add mEngine.destroy()
         // to allow the mEngine to cleanup?
@@ -190,8 +197,10 @@ public class SoapServlet extends ZimbraServlet {
         service.registerHandlers(mEngine.getDocumentDispatcher());
     }
     
+    private static final StatsFile STATS_FILE =
+        new StatsFile("perf_soap", new String[] { "response" }, true);
+    
     public void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        ZimbraLog.clearContext();
         long startTime = ZimbraPerf.STOPWATCH_SOAP.start();
         
         // Performance
@@ -201,13 +210,26 @@ public class SoapServlet extends ZimbraServlet {
 
         int len = req.getContentLength();
         byte[] buffer;
-        if (len == -1) {
+        
+        // resuming from a Jetty Continuation does *not* reset the HttpRequest's input stream -
+        // therefore we store the read buffer in the Continuation, and use the stored buffer
+        // if we're resuming
+        Continuation continuation = ContinuationSupport.getContinuation(req, null);
+        if (continuation.isResumed()) {
+            buffer = (byte[])continuation.getObject(); 
+        } else if (len == -1) {
             buffer = readUntilEOF(req.getInputStream());
         } else {
             buffer = new byte[len];
-            readFully(req.getInputStream(), buffer, 0, len);
+            readFully(req.getInputStream(), buffer, 0, len);             
         }
+        continuation.setObject(buffer);
+
+        ZimbraLog.clearContext();
+        
+        boolean loggedRequest = false;
         if (ZimbraLog.soap.isDebugEnabled()) {
+            loggedRequest = true;
             ZimbraLog.soap.debug("SOAP request:\n" + new String(buffer, "utf8"));
         }
 
@@ -218,8 +240,11 @@ public class SoapServlet extends ZimbraServlet {
 
         Element envelope = null;
         try {
-            envelope = mEngine.dispatch(req.getRequestURI(), buffer, context);
+            envelope = mEngine.dispatch(req.getRequestURI(), buffer, context, loggedRequest);
         } catch (Throwable e) {
+            // don't interfere with Jetty Continuations -- pass the exception right up
+            if (e.getClass().getName().equals("org.mortbay.jetty.RetryRequest"))
+                throw ((RuntimeException)e);
             if (e instanceof OutOfMemoryError) {
                 Zimbra.halt("handler exception", e);
             }
@@ -242,6 +267,14 @@ public class SoapServlet extends ZimbraServlet {
         resp.setContentLength(soapBytes.length);
         resp.setStatus(statusCode);
         resp.getOutputStream().write(soapBytes);
+        
+        ZimbraLog.clearContext();
+
+        // If perf logging is enabled, track server response times
+        if (ZimbraPerf.isPerfEnabled()) {
+            String responseName = soapProto.getBodyElement(envelope).getName();
+            ZimbraPerf.writeStats(STATS_FILE, responseName);
+        }
 
         ZimbraPerf.STOPWATCH_SOAP.stop(startTime);
     }

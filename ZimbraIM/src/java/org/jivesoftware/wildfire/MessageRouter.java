@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: MessageRouter.java,v $
+ * $Revision: 3007 $
+ * $Date: 2005-10-31 13:29:25 -0300 (Mon, 31 Oct 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
 import org.jivesoftware.wildfire.auth.UnauthorizedException;
@@ -32,6 +19,7 @@ import org.xmpp.packet.JID;
 import org.xmpp.packet.Message;
 import org.xmpp.packet.PacketError;
 
+import java.util.Collection;
 import java.util.StringTokenizer;
 
 /**
@@ -50,13 +38,15 @@ public class MessageRouter extends BasicModule {
     private SessionManager sessionManager;
     private MulticastRouter multicastRouter;
 
-    private String serverName;
-
     /**
      * Constructs a message router.
      */
     public MessageRouter() {
         super("XMPP Message Router");
+    }
+    
+    private Collection<String> getServerNames() {
+        return XMPPServer.getInstance().getServerNames();
     }
 
     /**
@@ -83,9 +73,9 @@ public class MessageRouter extends BasicModule {
             JID recipientJID = packet.getTo();
 
             // Check if the message was sent to the server hostname
-            if (recipientJID != null && recipientJID.getNode() == null &&
+            if (recipientJID != null && recipientJID.toBareJID() == null &&
                     recipientJID.getResource() == null &&
-                    serverName.equals(recipientJID.getDomain())) {
+                    getServerNames().contains(recipientJID.getDomain())) {
                 if (packet.getElement().element("addresses") != null) {
                     // Message includes multicast processing instructions. Ask the multicastRouter
                     // to route this packet
@@ -100,7 +90,8 @@ public class MessageRouter extends BasicModule {
             }
 
             try {
-                routingTable.getBestRoute(recipientJID).process(packet);
+                ChannelHandler route = routingTable.getBestRoute(recipientJID);
+                route.process(packet);
             }
             catch (Exception e) {
                 try {
@@ -147,9 +138,9 @@ public class MessageRouter extends BasicModule {
                 if (username.contains("@")) {
                     // Use the specified bare JID address as the target address
                     forward.setTo(username);
-                }
-                else {
-                    forward.setTo(username + "@" + serverName);
+                } else {
+                    Log.error("Could not forward packet to admin '"+username+
+                    "' because bare JIDs are not allowed in xmpp.forward.admins");
                 }
                 route(forward);
             }
@@ -170,6 +161,5 @@ public class MessageRouter extends BasicModule {
         routingTable = server.getRoutingTable();
         sessionManager = server.getSessionManager();
         multicastRouter = server.getMulticastRouter();
-        serverName = server.getServerInfo().getName();
     }
 }

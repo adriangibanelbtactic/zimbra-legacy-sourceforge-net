@@ -32,7 +32,6 @@
 package com.zimbra.cs.redolog.logger;
 
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Iterator;
@@ -42,12 +41,17 @@ import java.util.Set;
 
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
+import com.zimbra.common.util.ZimbraLog;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.localconfig.DebugConfig;
+import com.zimbra.cs.redolog.CommitId;
+import com.zimbra.cs.redolog.RedoCommitCallback;
 import com.zimbra.cs.redolog.RedoConfig;
 import com.zimbra.cs.redolog.RedoLogManager;
 import com.zimbra.cs.redolog.RolloverManager;
+import com.zimbra.cs.redolog.op.CommitTxn;
 import com.zimbra.cs.redolog.op.RedoableOp;
 import com.zimbra.cs.util.Zimbra;
 
@@ -86,11 +90,11 @@ public class FileLogWriter implements LogWriter {
 
     private File mFile;
     private RandomAccessFile mRAF;
-    private FileDescriptor mFD;
     private long mFileSize;
     private long mLastLogTime;
 
     private long mFsyncIntervalMS;          // how many milliseconds fsync thread sleeps after each fync
+    private boolean mFsyncDisabled;
 
     private FsyncThread mFsyncer;   // fsync thread
 
@@ -101,6 +105,8 @@ public class FileLogWriter implements LogWriter {
     private int mLogCount;          // how many times log was called
     private int mFsyncCount;        // how many times fsync was called
     private long mFsyncTime;        // sum of sync durations
+
+    private CommitNotifyQueue mCommitNotifyQueue;
 
     public FileLogWriter(RedoLogManager redoLogMgr,
                          File logfile,
@@ -113,9 +119,12 @@ public class FileLogWriter implements LogWriter {
         mLastLogTime = mFile.lastModified();
 
         mFsyncIntervalMS = fsyncIntervalMS;
+        mFsyncDisabled = DebugConfig.disableRedoLogFsync;
 
         mFsyncCount = mLogCount = 0;
         mFsyncTime = 0;
+
+        mCommitNotifyQueue = new CommitNotifyQueue(100);
     }
 
     public long getSequence() {
@@ -185,7 +194,6 @@ public class FileLogWriter implements LogWriter {
             if (mRAF != null) return;  // already open
 
             mRAF = new RandomAccessFile(mFile, "rw");
-            mFD = mRAF.getFD();
 
             if (mRAF.length() >= FileHeader.HEADER_LEN) {
                 mHeader.read(mRAF);
@@ -222,7 +230,7 @@ public class FileLogWriter implements LogWriter {
                 mHeader.setFileSize(mRAF.length());
                 mHeader.write(mRAF);
 
-                mFD = null;
+                mRAF.getChannel().force(true);
                 mRAF.close();
                 mRAF = null;
             } else
@@ -295,6 +303,22 @@ public class FileLogWriter implements LogWriter {
                     mFileSize += buf.length;
                 }
             }
+
+            // We do this with log writer lock held, so the commits and any
+            // callbacks made on their behalf are truly in the correct order.
+            if (op instanceof CommitTxn) {
+                CommitTxn cmt = (CommitTxn) op;
+                RedoCommitCallback cb = cmt.getCallback();
+                if (cb != null) {
+                    long redoSeq = mRedoLogMgr.getRolloverManager().getCurrentSequence();
+                    CommitId cid = new CommitId(redoSeq, (CommitTxn) op);
+                    Notif notif = new Notif(cb, cid);
+                    // We queue it instead making the callback right away.
+                    // Call it only after the commit record has been fsynced.
+                    mCommitNotifyQueue.push(notif);
+                }
+            }
+
             mLastLogTime = System.currentTimeMillis();
         }
 
@@ -321,6 +345,10 @@ public class FileLogWriter implements LogWriter {
             // case 3
             fsync();
         }
+    }
+
+    public void flush() throws IOException {
+        fsync();
     }
 
     private boolean mNoStat;
@@ -398,7 +426,7 @@ public class FileLogWriter implements LogWriter {
     }
 
     private synchronized void startFsyncThread() {
-        if (mFsyncer == null) {
+        if (mFsyncer == null && mFsyncIntervalMS > 0) {
             mFsyncer = new FsyncThread(mFsyncIntervalMS);
             mFsyncer.start();
         }
@@ -421,27 +449,30 @@ public class FileLogWriter implements LogWriter {
                     throw new IOException("Redolog file closed");
                 fsyncNeeded = true;
                 seq = mLogSeq;
-                mFsyncCount++;
+                if (!mFsyncDisabled)
+                    mFsyncCount++;
             }
         }
-        // no need to synchronize threads for fsync call; just need to get the
-        // mFD value in synchronized block
         if (fsyncNeeded) {
-            long start = System.currentTimeMillis();
-            FileDescriptor fd;
-            synchronized (mLock) {
-                fd = mFD;
+            if (!mFsyncDisabled) {
+                long start = System.currentTimeMillis();
+                synchronized (mLock) {
+                    if (mRAF != null)
+                        mRAF.getChannel().force(false);
+                    else
+                        throw new IOException("Redolog file closed");
+                    mCommitNotifyQueue.flush(false);
+                }
+                long elapsed = System.currentTimeMillis() - start;
+                mFsyncTime += elapsed;
             }
-            if (fd == null)
-                throw new IOException("log file closed (null file descriptor)");
-            fd.sync();
-            long elapsed = System.currentTimeMillis() - start;
-            mFsyncTime += elapsed;
             synchronized (mLock) {
                 mFsyncSeq = seq;
             }
-            synchronized (mFsyncCond) {
-                mFsyncCond.notifyAll();
+            if (mFsyncIntervalMS > 0) {
+                synchronized (mFsyncCond) {
+                    mFsyncCond.notifyAll();
+                }
             }
         }
     }
@@ -495,6 +526,70 @@ public class FileLogWriter implements LogWriter {
                 join();
             } catch (InterruptedException e) {
                 mLog.warn("InterruptedException while stopping FsyncThread", e);
+            }
+        }
+    }
+
+
+    // Commit callback handling
+
+    private static class Notif {
+        private RedoCommitCallback mCallback;
+        private CommitId mCommitId;
+
+        public Notif(RedoCommitCallback callback, CommitId cid) {
+            mCallback = callback;
+            mCommitId = cid;
+        }
+        public RedoCommitCallback getCallback() { return mCallback; }
+        public CommitId getCommitId() { return mCommitId; }
+    }
+
+    private class CommitNotifyQueue {
+        private Notif[] mQueue = new Notif[100];
+        private int mHead;  // points to first entry
+        private int mTail;  // points to just after last entry (first empty slot)
+        private boolean mFull;
+
+        public CommitNotifyQueue(int size) {
+            mQueue = new Notif[size];
+            mHead = mTail = 0;
+            mFull = false;
+        }
+
+        public synchronized void push(Notif notif) throws IOException {
+            if (notif != null) {
+                if (mFull) flush(true);  // queue is full
+                assert(!mFull);
+                mQueue[mTail] = notif;
+                mTail++;
+                mTail %= mQueue.length;
+                mFull = mTail == mHead;
+            }
+        }
+
+        private synchronized Notif pop() {
+            if (mHead == mTail && !mFull) return null;  // queue is empty
+            Notif n = mQueue[mHead];
+            mQueue[mHead] = null;  // help with GC
+            mHead++;
+            mHead %= mQueue.length;
+            mFull = false;
+            return n;
+        }
+
+        public synchronized void flush(boolean fsync) throws IOException {
+            if (fsync)
+                fsync();
+            Notif notif;
+            while ((notif = pop()) != null) {
+                RedoCommitCallback cb = notif.getCallback();
+                assert(cb != null);
+                try {
+                    cb.callback(notif.getCommitId());
+                } catch (Throwable t) {
+                    ZimbraLog.misc.error("Error while making commit callback", t);
+                }
             }
         }
     }

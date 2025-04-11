@@ -21,7 +21,7 @@
  *
  * 12/3/2004 At this point, it only needs AjxEnv to be loaded.
  */
-function AjxUtil () {
+AjxUtil = function() {
 };
 
 AjxUtil.FLOAT_RE = /^[+\-]?((\d+(\.\d*)?)|((\d*\.)?\d+))([eE][+\-]?\d+)?$/;
@@ -49,8 +49,9 @@ AjxUtil.isNonNegativeLong   = function(aThing) { return (AjxUtil.isNumeric(aThin
 //			common use that do not follow the RFC patterns (e.g. domain
 //			names that start with digits).
 AjxUtil.IP_ADDRESS_RE = /^\d{1,3}(\.\d{1,3}){3}(\.\d{1,3}\.\d{1,3})?$/;
+AjxUtil.IP_ADDRESS_WITH_PORT_RE = /^\d{1,3}(\.\d{1,3}){3}(\.\d{1,3}\.\d{1,3})?:\d{1,5}$/;
 AjxUtil.DOMAIN_NAME_SHORT_RE = /^[A-Za-z0-9\-]{2,}$/;
-AjxUtil.DOMAIN_NAME_FULL_RE = /^[A-Za-z0-9\-]{2,}(\.[A-Za-z0-9\-]{2,}){1,}$/;
+AjxUtil.DOMAIN_NAME_FULL_RE = /^[A-Za-z0-9\-]{1,}(\.[A-Za-z0-9\-]{2,}){1,}$/;
 AjxUtil.HOST_NAME_RE = /^[A-Za-z0-9\-]{2,}(\.[A-Za-z0-9\-]{1,})*(\.[A-Za-z0-9\-]{2,})*$/;
 AjxUtil.HOST_NAME_WITH_PORT_RE = /^[A-Za-z0-9\-]{2,}(\.[A-Za-z0-9\-]{2,})*:([0-9])+$/;
 AjxUtil.EMAIL_SHORT_RE = /^[^@\s]+$/;
@@ -513,3 +514,17 @@ AjxUtil.parseQueryString = function() {
 	return params;
 	
 }
+
+AjxUtil.getFirstElement = function(parent, ename, aname, avalue) {
+    for (var child = parent.firstChild; child; child = child.nextSibling) {
+        if (child.nodeType != AjxUtil.ELEMENT_NODE) continue;
+        if (ename && child.nodeName != ename) continue;
+        if (aname) {
+            var attr = child.getAttributeNode(aname);
+            if (attr.nodeName != aname) continue;
+            if (avalue && attr.nodeValue != avalue) continue;
+        }
+        return child;
+    }
+    return null;
+};

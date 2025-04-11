@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: $
+ * $Revision: 2705 $
+ * $Date: 2005-08-22 19:00:05 -0300 (Mon, 22 Aug 2005) $
+ *
+ * Copyright (C) 2005 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire;
 
 import org.dom4j.Element;
@@ -109,7 +96,9 @@ public class MulticastRouter extends BasicModule implements ServerFeaturesProvid
         List<String> targets = new ArrayList<String>();
         Packet localBroadcast = packet.createCopy();
         Element addresses = getAddresses(localBroadcast);
-        String localDomain = "@" + server.getServerInfo().getName();
+        //String localDomain = "@" + server.getServerInfo().getName();
+        Collection<String> localDomains = server.getServerInfo().getNames();
+        
         // Build the <addresses> element to be included for local users and identify
         // remote domains that should receive the packet too
         for (Iterator it=addresses.elementIterator("address");it.hasNext();) {
@@ -119,11 +108,19 @@ public class MulticastRouter extends BasicModule implements ServerFeaturesProvid
                 continue;
             }
             String jid = address.attributeValue("jid");
+            boolean hasLocal = false;
+            for (String s : localDomains) { 
+                if (jid.contains('@'+s)) {
+                    hasLocal = true;
+                    break;
+                }
+            }
+            
             // Only send to local users and if packet has not already been delivered
-            if (jid.contains(localDomain) && address.attributeValue("delivered") == null) {
+            if (hasLocal && address.attributeValue("delivered") == null) {
                 targets.add(jid);
             }
-            else if (!jid.contains(localDomain)) {
+            else if (!hasLocal) {
                 remoteServers.add(new JID(jid).getDomain());
             }
             // Set as delivered
@@ -197,7 +194,7 @@ public class MulticastRouter extends BasicModule implements ServerFeaturesProvid
             // supports JEP-33 (Extended Stanza Addressing). The reply to the disco
             // request is going to be process in #receivedAnswer(IQ packet)
             IQ iq = new IQ(IQ.Type.get);
-            iq.setFrom(server.getServerInfo().getName());
+            iq.setFrom(server.getServerInfo().getDefaultName());
             iq.setTo(domain);
             iq.setChildElement("query", "http://jabber.org/protocol/disco#info");
             // Indicate that we are searching for info of the specified domain
@@ -315,7 +312,7 @@ public class MulticastRouter extends BasicModule implements ServerFeaturesProvid
                 if (isRoot && IQ.Type.error != packet.getType()) {
                     // Discover node items with the hope that a sub-item supports JEP-33
                     IQ iq = new IQ(IQ.Type.get);
-                    iq.setFrom(server.getServerInfo().getName());
+                    iq.setFrom(server.getServerInfo().getDefaultName());
                     iq.setTo(packet.getFrom());
                     iq.setChildElement("query", "http://jabber.org/protocol/disco#items");
                     // Send the disco#items request to the remote server or component. The reply will be
@@ -370,7 +367,7 @@ public class MulticastRouter extends BasicModule implements ServerFeaturesProvid
                 for (Element item : items) {
                     // Discover if remote server supports JEP-33 (Extended Stanza Addressing)
                     IQ iq = new IQ(IQ.Type.get);
-                    iq.setFrom(server.getServerInfo().getName());
+                    iq.setFrom(server.getServerInfo().getDefaultName());
                     iq.setTo(item.attributeValue("jid"));
                     Element child = iq.setChildElement("query", "http://jabber.org/protocol/disco#info");
                     if (item.attributeValue("node") != null) {

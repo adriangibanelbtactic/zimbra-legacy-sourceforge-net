@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: IQDiscoInfoHandler.java,v $
+ * $Revision: 2859 $
+ * $Date: 2005-09-22 02:30:39 -0300 (Thu, 22 Sep 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.disco;
 
 import org.dom4j.DocumentHelper;
@@ -108,7 +95,7 @@ public class IQDiscoInfoHandler extends IQHandler {
         // DiscoInfoProvider responsibility to provide information about the JID's name together 
         // with any possible requested node.  
         DiscoInfoProvider infoProvider = getProvider(packet.getTo() == null ?
-                XMPPServer.getInstance().getServerInfo().getName() : packet.getTo().getDomain());
+                XMPPServer.getInstance().getServerInfo().getDefaultName() : packet.getTo().getDomain());
         if (infoProvider != null) {
             // Get the JID's name
             String name = packet.getTo() == null ? null : packet.getTo().getNode();
@@ -260,7 +247,7 @@ public class IQDiscoInfoHandler extends IQHandler {
         for (ServerFeaturesProvider provider : server.getServerFeaturesProviders()) {
             addServerFeaturesProvider(provider);
         }
-        setProvider(server.getServerInfo().getName(), getServerInfoProvider());
+        setProvider(server.getServerInfo().getDefaultName(), getServerInfoProvider());
     }
 
     /**

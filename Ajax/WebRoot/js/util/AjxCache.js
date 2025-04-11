@@ -24,7 +24,7 @@
 *
 * @author Conrad Damon
 */
-function AjxCache() {
+AjxCache = function() {
 	this._cache = new Object();
 }
 
@@ -85,6 +85,7 @@ function() {
 AjxCache.prototype.clear =
 function(key) {
 	this._cache[key] = null;
+	delete this._cache[key];
 }
 
 /*

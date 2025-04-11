@@ -30,7 +30,7 @@
 * @param app
 * @author Greg Solovyev
 **/
-function ZaCosXFormView (parent, app) {
+ZaCosXFormView = function(parent, app) {
 	ZaTabView.call(this, parent, app, "ZaCosXFormView");	
 	this.initForm(ZaCos.myXModel,this.getMyXForm());
 }
@@ -46,11 +46,12 @@ ZaCosXFormView.themeChoices = new XFormChoices([], XFormChoices.SIMPLE_LIST);
 **/
 ZaCosXFormView.prototype.setObject =
 function(entry) {
-	//handle the special attributes to be displayed in xform
-	entry.manageSpecialAttrs();
-	
 	this._containedObject = new Object();
 	this._containedObject.attrs = new Object();
+	
+	this._containedObject.name = entry.name;
+	this._containedObject.type = entry.type ;
+	
 	if(entry.id)
 		this._containedObject.id = entry.id;
 		
@@ -173,6 +174,7 @@ function(entry) {
 		this._containedObject[ZaModel.currentTab] = entry[ZaModel.currentTab];
 		
 	this._localXForm.setInstance(this._containedObject);
+	this.updateTab();
 }
 
 ZaCosXFormView.gotSkins = function () {
@@ -226,7 +228,10 @@ ZaCosXFormView.myXFormModifier = function(xFormObject) {
 								items:[	
 									{ref:ZaCos.A_zimbraFeatureContactsEnabled, type:_CHECKBOX_, msgName:ZaMsg.NAD_FeatureContactsEnabled,label:ZaMsg.NAD_FeatureContactsEnabled,trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},							
 									{ref:ZaCos.A_zimbraFeatureCalendarEnabled, type:_CHECKBOX_, msgName:ZaMsg.NAD_FeatureCalendarEnabled,label:ZaMsg.NAD_FeatureCalendarEnabled,  trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},														
-									{ref:ZaCos.A_zimbraFeatureNotebookEnabled, type:_CHECKBOX_, msgName:ZaMsg.NAD_zimbraFeatureNotebookEnabled,label:ZaMsg.NAD_zimbraFeatureNotebookEnabled,  trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged}
+									{ref:ZaCos.A_zimbraFeatureTasksEnabled, type:_CHECKBOX_, msgName:ZaMsg.NAD_FeatureTaskEnabled,label:ZaMsg.NAD_FeatureTaskEnabled,  trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},														
+									{ref:ZaCos.A_zimbraFeatureNotebookEnabled, type:_CHECKBOX_, msgName:ZaMsg.NAD_zimbraFeatureNotebookEnabled,label:ZaMsg.NAD_zimbraFeatureNotebookEnabled,  trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},
+
+									{ref:ZaCos.A_zimbraFeatureIMEnabled, type:_CHECKBOX_, msgName:ZaMsg.NAD_zimbraFeatureIMEnabled,label:ZaMsg.NAD_zimbraFeatureIMEnabled,  trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged}
 								]
 							},
 							{type:_ZAGROUP_,id:"cos_form_features_group2",
@@ -381,11 +386,16 @@ ZaCosXFormView.myXFormModifier = function(xFormObject) {
 							},					
 
 							{type:_ZA_PLAIN_GROUPER_, id:"cos_prefs_calendar_general",items :[
+								{ref:ZaCos.A_zimbraPrefTimeZoneId, type:_OSELECT1_,
+									 msgName:ZaMsg.NAD_zimbraPrefTimeZoneId,label:ZaMsg.NAD_zimbraPrefTimeZoneId+":", 
+									 labelLocation:_LEFT_, onChange:ZaTabView.onFormFieldChanged,
+									 labelCssStyle:"white-space:normal;",nowrap:false,labelWrap:true
+								},
 								{ref:ZaCos.A_zimbraPrefCalendarApptReminderWarningTime, type:_OSELECT1_,
 									 msgName:ZaMsg.NAD_zimbraPrefCalendarApptReminderWarningTime,label:ZaMsg.NAD_zimbraPrefCalendarApptReminderWarningTime+":", 
 									 labelLocation:_LEFT_, onChange:ZaTabView.onFormFieldChanged,
 									 labelCssStyle:"white-space:normal;",nowrap:false,labelWrap:true
-								 },							
+								},							
 								{ref:ZaCos.A_zimbraPrefCalendarAlwaysShowMiniCal, type:_CHECKBOX_, 
 									msgName:ZaMsg.NAD_alwaysShowMiniCal,label:ZaMsg.NAD_alwaysShowMiniCal, 
 									trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged,
@@ -394,12 +404,6 @@ ZaCosXFormView.myXFormModifier = function(xFormObject) {
 
 								{ref:ZaCos.A_zimbraPrefCalendarUseQuickAdd, type:_CHECKBOX_, msgName:ZaMsg.NAD_useQuickAdd,
 									label:ZaMsg.NAD_useQuickAdd, trueValue:"TRUE", falseValue:"FALSE", 
-									onChange:ZaTabView.onFormFieldChanged
-								},							
-								{ref:ZaCos.A_zimbraPrefTimeZoneId, type:_OSELECT1_, labelLocation:_LEFT_, 
-									msgName:ZaMsg.NAD_zimbraPrefTimeZoneId,
-									label:ZaMsg.NAD_zimbraPrefTimeZoneId,
-									choices: ZaModel.TIME_ZONE_CHOICES,
 									onChange:ZaTabView.onFormFieldChanged
 								},							
 								{ref:ZaCos.A_zimbraPrefUseTimeZoneListInCalendar, type:_CHECKBOX_, 

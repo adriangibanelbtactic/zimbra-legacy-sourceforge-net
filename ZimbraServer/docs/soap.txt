@@ -35,7 +35,7 @@ urn:zimbra  -- top-level namespace for global attributes/elements
     </context>
   </soap:Header>
   <soap:Body>
-   <FooRequest ... [id="{client-generated-id}"]>
+   <FooRequest ... [requestId="{client-generated-id}"]>
    </FooRequest>
   </soap:Body>
 </soap:Envelope>
@@ -135,14 +135,14 @@ element involving the session.)  If there is a session, there will be a
      </context>
    <soap:/Header>] 
   <soap:Body>
-   <FooResponse ... [id="{client-generated-id}"]>
+   <FooResponse ... [requestId="{client-generated-id}"]>
    </FooResponse>  
   </soap:Body>
 </soap:Envelope>
 
 
 
-NOTES: The id="..." attribute is optional in the request body. If present, the server will 
+NOTES: The requestId="..." attribute is optional in the request body. If present, the server will 
        include it in the response body element.
        
 batch requests:
@@ -158,9 +158,9 @@ batch requests:
   </soap:Header>
  <soap:Body>
   <BatchRequest xmlns="urn:zimbra" onerror="continue*|stop">
-    <FooRequest id="1">
+    <FooRequest requestId="1">
     </FooRequest>
-    <BarRequest id="2">
+    <BarRequest requestId="2">
     </BarRequest>
   </BatchRequest>
  </soap:Body>
@@ -203,9 +203,9 @@ response:
    <soap:/Header>] 
  <soap:Body>
   <BatchResponse xmlns="urn:zimbra">
-    <soap:Fault id="1">
+    <soap:Fault requestId="1">
     </soap:Fault>
-    <BarResponse ... id="2">
+    <BarResponse ... requestId="2">
     </BarResponse>
   </BatchResponse>
  </soap:Body>
@@ -353,6 +353,7 @@ an authToken can be passed instead of account/password/preauth to validate an ex
 </GetInfoRequest>
  
 <GetInfoResponse>
+   <version>{version}</version>
    <id>{account-id}</id>
    <name>{account-name}</name>
    <lifetime>...</lifetime>   
@@ -390,13 +391,16 @@ an authToken can be passed instead of account/password/preauth to validate an ex
    </identities>
    <dataSources>
      <pop3 id="{id}" name="My POP3 Account" isEnabled="0|1" host="pop3.myisp.com" port="110"
-        username="mylogin" l="{folder-id}"/>
+        username="mylogin" l="{folder-id}" [pollingInterval="10m"]/>
      ...
    </dataSources>*
+   <childAccounts>
+        <childAccount name="{child-account-name}" visible="0|1" id="{child-account-id}"></childAccount>*
+   </childAccounts>
    [<license status="inGracePeriod|bad"/>]
 </GetInfoResponse>
  
-  {version} = server version: <major>[.<minor>[.<maintenance>]][build] <release> <date>
+  {version} = server version (4.5.5)
   {account-name} = email address (user@domain)
   {life-time} = number of milliseconds until auth token expires
   {used} = mailbox quota used in bytes
@@ -755,24 +759,27 @@ Conversations:
                  
 Folders:
 
-  <folder id="{folder-id}" name="{folder-name}" l="{parent-id}" [f="{flags}"] [color="{color}"] u="{unread}" n="{msg-count}" [view="{default-type}"] [url="{remote-url}"] [perm="{effective-perms}"] [rest="{rest-url}"]>
-    [<acl> <grant perm="{rights}" gt="{grantee-type}" zid="{zimbra-id}" d="{grantee-name}" [inh="0|1"] [args="{args}"]/>* </acl>]
+  <folder id="{folder-id}" name="{folder-name}" l="{parent-id}" [f="{flags}"] [color="{color}"]
+  		 u="{unread}" n="{msg-count}" s="{total-size}" [view="{default-type}"]
+  		 [url="{remote-url}"] [perm="{effective-perms}"] [rest="{rest-url}"]>
+    [<acl> <grant perm="{rights}" gt="{grantee-type}" zid="{zimbra-id}" d="{grantee-name}" [args="{args}"]/>* </acl>]
   </folder>
 
   {folder-name}  = name of folder; max length 128; whitespace is trimmed by server;
                    cannot contain ':', '"', '/', or any character below 0x20
   {parent-id}    = id of parent folder (absent for root folder)
-  {flags}        = checked in UI (#), exclude free/(b)usy info, IMAP subscribed (*)
+  {flags}        = checked in UI (#), exclude free/(b)usy info, IMAP subscribed (*), does not (i)nherit rights from parent
   {color}        = numeric; range 0-127; defaults to 0 if not present; client can display only 0-7
   {unread}       = number of unread messages in folder
-  {msg-count}    = number of messages/invites in folder
+  {msg-count}    = number of non-subfolder items in folder
+  {total-size}   = total size of all of non-subfolder items in folder
   {default-type} = (optional) default type for the folder; used by web client to decide which view to use;
-                   possible values are the same as <SearchRequest>'s {types}: conversation|message|contact|appointment|note
+                   possible values are the same as <SearchRequest>'s {types}: conversation|message|contact|etc
   {remote-url}   = url (RSS, iCal, etc.) this folder syncs its contents to
   {rest-url}     = url to the folder on rest interface for rest-enabled apps (such as wiki and notebook)
   {effective-perms} = for remote folders, the access rights the authenticated user has on the folder
                         - will contain the calculated (c)reate folder permission if the user has
-                          both (i)nsert and inherited (r)ead access on the folder
+                          both (i)nsert and (r)ead access on the folder
 
   folders can have an optional ACL set on them for sharing.  if they do (and the authenticated
     user has (a)dminister rights on the folder), an <acl> element will be returned containing
@@ -784,7 +791,6 @@ Folders:
                      "guest" (non-Zimbra email address and password)
     {grantee-name} = the display name (*not* the zimbra id) of the principal being granted rights;
                      optional if {grantee-type} is "all"
-    {inherit}      = boolean; whether rights granted on this folder are also granted on all subfolders
     {args}         = optional argument.  password when {grantee-type} is "guest"
 
 Mountpoints:
@@ -800,7 +806,8 @@ Mountpoints:
   {id-of-shared-item} = item id of the linked-to resource in the remote mailbox
   {color}        = numeric; range 0-127; defaults to 0 if not present; client can display only 0-7
   {default-type} = (optional) default type for the folder; used by web client to decide which view to use;
-                   possible values are the same as <SearchRequest>'s {types}: conversation|message|contact|appointment|note
+                   possible values are the same as <SearchRequest>'s {types}:
+                   conversation|message|contact|appointment|note|task|etc
 
 Tags:
 
@@ -814,9 +821,16 @@ Tags:
  
 ----------
 
-<SearchRequest [limit="..."] [offset="..."] [sortBy="{sort-by}"] [groupBy="{group-by}"] [types="{types}"] [recip="*0|1"]
-			   [fetch="1|all"] [html="*0|1"] [read="*0|1"] [neuter="0|*1"] [field={default_field}]>
-  [<cursor id="prevId" sortVal="prevSortValue" endSortVal="endSortValue"/> ] // end val is NON-INCLUSIVE
+<SearchRequest [limit="..."] [offset="..."] [sortBy="{sort-by}"] [groupBy="{group-by}"]
+               [types="{types}"] [recip="*0|1"] [fetch="1|all"] [html="*0|1"]
+               [read="*0|1"] [neuter="0|*1"] [field={default_field}]
+               [calExpandInstStart=TIME_IN_MSEC] [calExpandInstEnd=TIME_IN_MSEC]
+               >
+  *(<header n="{header-name}/>)
+  [<cursor id="prevId" sortVal="prevSortValue" endSortVal="endSortValue"/> ] 
+          // sortVal should be set to the value of the 'sf' (SortField) attribute of the last
+          // hit on the previous 'page' of search results.
+          // end val is NON-INCLUSIVE
   
   [   // OPTIONAL: client timezone identification (necessary to time-correct a user-specified date/time query)
   
@@ -883,9 +897,10 @@ For a response, the order of the returned results represents the sorted order.  
 
 if fetch="1" (or fetch="first") is specified, the first hit will be expanded inline (messages only at present)
 if fetch="all", all hits are expanded inline
-    + if html="1" is also specified, the inlined first hit will return HTML parts if available
-    + if read="1" is also specified, the inlined first hit will be marked as read
+    + if html="1" is also specified, inlined hits will return HTML parts if available
+    + if read="1" is also specified, inlined hits will be marked as read
     + if neuter="0" is also specified, images in inlined HTML parts will not be "neutered"
+    + if <header>s are requested, any matching headers are included in inlined message hits
 
 if recip="1" is specified
     + returned sent messages will contain the set of "To:" recipients instead of the sender
@@ -911,6 +926,19 @@ if recip="1" is specified
             available in query.txt, e.g. 'content:' [the default] or 'subject:', etc.  The date operators
             (date, after, before) and the "item:" operator should not be specified as default fields
             because of quirks in the search grammar.
+
+calExpandInstStart and calExpandInstEnd:
+   If these are specified, and the search types include calendar item
+   types (e.g. appointment), then the search results include the
+   instances for calendar items within that range in the form
+   described below.
+
+   ***IMPORTANT NOTE: Calendar Items that have no instances within
+   that range are COMPLETELY EXCLUDED from the results (e.g. not even
+   an <appt> element>.  Calendar Items with no data (such as Tasks
+   with no date specified) are included, but with no instance
+   information***
+   
             
   
 For the optional <cursor> element:
@@ -958,6 +986,7 @@ message result:
      <e .../>*  <!- from only -->
      <su>{subject}</su>
      <fr>{fragment}</fr>
+    *(<header n="{header-name}">header content</header>)
      [<mp>...</mp>] // if fetch=1, the <mp>'s of the hit (first hit only) 
      <hp part="{mime-part-name}"/>+ // Hit Part -- indicator that the named part matched the search string
    </m>
@@ -980,7 +1009,73 @@ DOCUMENT ME
 
 appointment result:
 -------------------
-DOCUMENT ME
+
+<appt id="appointment_mail_item_id"
+       t="{tags}" f="{flags}" s="{size}" d="{date}" cid="{conv-id}" // standard hit data
+       l="{location}" score="..." [mbx="UID"] sf="SORT-FIELD-VALUE" // standard hit data    
+       [fba="F|B|T|U"]
+       [transp="O|T"]
+       status="TENT|CONF|CANC"
+       ptst="NE|TE|AC|DE|DG"
+       [allDay="1"]             // if set, this is an "all day" appointment
+       [otherAtt="1"]           // if set, this appointment has other attendees
+       [alarm="1"] [recur="1"]
+       [name="NAME"] [loc="LOCATION"] 
+       invId="default_invite_mail_item_id" compNum="default_invite_component_number"
+       isOrg="default_am_i_organizer_flag"
+       [priority="num"]
+       [percentComplete="num"]
+       [dur="duration"]  // default duration
+   >
+     [<or d="friendly name" a="address">] // organizer, if available
+     [<fr>DEFAULT FRAGMENT</fr>]
+
+Expanded instance data -- only if calExpandInstStart and
+    calExpandInstEnd are requested in the SearchRequest:
+
+[    <inst
+          [recurId="recurId"]
+          [s="START_SECS_GMT"]
+          [tzo="ms"]  // offset from GMT in milliseconds for start time in the
+                    // time zone of the instance; this is useful because the
+                    // instance time zone may not be the same as the time zone
+                    // of the requesting client; when rendering an all-day
+                    // appointment, the client must shift the appointment by
+                    // the difference between the instance time zone and its
+                    // local time zone to determine the correct date to render
+                    // the all-day block
+          [ex="1"]
+          [ANY CHANGED PARAMETERS]
+      >
+          [<f>FRAGMENT IF DIFFERENT FROM DEFAULT</f>]
+          [<dur DURATION>] // duration this instance if not same as default
+          [<isOrg>] // isOrg flag if not same as default
+          [<otherAtt>] // otherAtt flag if not same as default
+    </inst>
+]+
+        
+</apt> 
+
+   -- fba: actual free-busy status: Free, Busy, busy-Tentative, busy-Unavailable (a.k.a. OutOfOffice)
+           While free-busy status is simply a property of an event that
+           is set during creation/update, "actual" free-busy status is the true
+           free-busy state that depends on appt/invite free-busy, event scheduling
+           status (confirmed vs. tentative vs. cancel), and more importantly, the
+           attendee's participation status.  For example, actual free-busy is
+           busy-Tentative for an event with Busy free-busy value until the attendee
+           has acted on the invite.
+   -- transp: transparency: Opaque, Transparent
+   -- status: status of event: TENTative, CONFirmed or CANCelled
+   -- ptst: **your** participation status: NEeds-action, TEntative, ACcept, DEclined, DG (delegated)
+   -- get the summary of appointments for a specified time period...
+   -- otherAtt: 1 if there are other attendees to the meeting
+   -- alarm: 1 if there are some alarms
+   -- recur: 1 if this is a recurring appointment
+   -- id is mail_item id of APPOINTMENT object
+   -- invId is mail_item id of invite message with detailed information
+   -- comp is component number (invite # within the message)
+   -- parameters in the apptSum are "defaults" -- are same in instance unless specified
+
 
 message-part result:
 --------------------
@@ -997,6 +1092,7 @@ message-part result:
 
 <SearchConvRequest cid="conversation-id" [limit="..."] [offset="..."] [sortBy="{sort-by}"] [types="{types}"] [nest="0|1"]
 				   [fetch="1|hits|all"] [html="1"] [read="1"] [neuter="0"]>
+  *(<header n="{header-name}/>)
   <query>{query-string}</query>
 </SearchConvRequest>
 
@@ -1012,14 +1108,15 @@ if fetch="all", all messages are expanded inline
 if nest="0" on the request, response looks like this:
 
 <SearchConvResponse sortBy="sort-by" offset="..." more="{more-flag}">
-   [<info>...</info>]
-   <m id="{message-id}" [cm="1"] f="{flags}" s="{size}" d="{date}" cid="{conv-id}" score="..." sf="SORT-FIELD-VALUE">
-     <e .../>  <!- from only -->
-     <su>{subject}</su>
-     <fr>{fragment}</fr>
-     [<mp>...</mp>] // if fetch=1, the <mp>'s of the hit (first hit only) 
-     <hp part="{mime-part-name}"/> // Hit Part -- indicator that the named part matched the search string
-   </m>*
+  [<info>...</info>]
+  <m id="{message-id}" [cm="1"] f="{flags}" s="{size}" d="{date}" cid="{conv-id}" score="..." sf="SORT-FIELD-VALUE">
+    <e .../>  <!- from only -->
+    <su>{subject}</su>
+    <fr>{fragment}</fr>
+    *(<header n="{header-name}">header content</header>)
+    [<mp>...</mp>] // if fetch=1, the <mp>'s of the hit (first hit only) 
+    <hp part="{mime-part-name}"/> // Hit Part -- indicator that the named part matched the search string
+  </m>*
 </SearchConvResponse>
 
 if nest="1" on the request, response looks like this:
@@ -1070,7 +1167,7 @@ if nest="1" on the request, response looks like this:
 
 <GetItemRequest>
   [<item [id="{item-id}"] [path="{fully-qualified-path}"] [l="{folder-id}" name="{item-name}]/>]
-</GetFolderRequest>
+</GetItemRequest>
 
   the caller must specify one of:
     - an {item-id},
@@ -1086,13 +1183,20 @@ if nest="1" on the request, response looks like this:
 
 ----------
 
-<GetFolderRequest>
+<GetFolderRequest [visible="0|1"]>
   [<folder [l="{base-folder-id}"] [path="{fully-qualified-path}"]/>]
 </GetFolderRequest>
 
-  either a {base-folder-id} or a {fully-qualified-path} can optionally be specified;
-  if neither is present, the descent of the folder hierarchy begins at the mailbox's
-  root folder (id 1).
+  - either a {base-folder-id} or a {fully-qualified-path} can optionally be specified;
+      if neither is present, the descent of the folder hierarchy begins at the mailbox's root folder (id 1).
+
+  - if "visible" is 1, we include all visible subfolders of the specified folder
+      when you have full rights on the mailbox, this is indistinguishable from the normal <GetFolderResponse>
+      when you don't: folders you can see appear normally,
+                      folders you can't see (and can't see any subfolders) are omitted
+                      folders you can't see (but *can* see >=1 subfolder) appear as <folder id="{id}" name="{name}"> hierarchy placeholders
+
+  - if *no* folders are visible and visible=1, the response looks like <GetFolderResponse/>
 
 <GetFolderResponse>
   <folder ...>
@@ -1110,7 +1214,9 @@ folder ID that folder element will represent the virtual root folder.
 ----------
 
 <GetConvRequest>
-  <c id="{conv-id}" [fetch="1|all" html="0|1"]/>
+  <c id="{conv-id}" [fetch="1|all" html="0|1"]>
+    *(<header n="{header-name}/>)
+  </c>
 </GetConvRequest>
 
 GetConvRequest gets information about the 1 conversation named by id's value.
@@ -1118,6 +1224,9 @@ It will return exactly 1 conversation element.
 
 if fetch="1|all" is included, the full expanded message structure is inlined
     for the first (or for all) messages in the conversation
+
+if <header>s are requested, any matching headers are inlined into the response
+    (not available when raw="1")
 
 <GetConvResponse>
   <c id="{conv-id}" [t="{tags}"] n="{num-msgs}" [total="{all-msgs}"] [f="{flags}"]>
@@ -1132,7 +1241,9 @@ if fetch="1|all" is included, the full expanded message structure is inlined
 ------------
 
 <GetMsgRequest>
-  <m id="{msg-id}" [read="1"] [raw="1"] [html="1"] [neuter="0"] [part="{part}"]/>
+  <m id="{msg-id}" [read="1"] [raw="1"] [html="1"] [neuter="0"] [part="{part}"]>
+    *(<header n="{header-name}/>)
+  </m>
 </GetMsgRequest>
 
     The {msg-id} can contain a subpart identifier (e.g. "775-778") to return
@@ -1151,6 +1262,9 @@ neuter="1" to "neuter" <IMG> tags returned in HTML content; this involves switch
 supply a "part" and the retrieved data will be on the specified message/rfc822 subpart.
     if the part does not exist or is not a message/rfc822 part, mail.NO_SUCH_PART
 
+if <header>s are requested, any matching headers are inlined into the response
+    (not available when raw="1")
+
 <GetMsgResponse>
   <m id="{message-id}" [origid="..." rt="r|w"] [part="{part}"] f="{flags}" t="{tags}" s="{size}" [d="{received-date}"] sd="{date-header}" l="{folder}" (cid="{conv}")>
     <e .../>*
@@ -1158,6 +1272,7 @@ supply a "part" and the retrieved data will be on the specified message/rfc822 s
     <fr>{fragment}</fr>
     [<irt>{Message-ID header for message being replied to}</irt>]
     <mid>{Message-ID header}</mid>
+    *(<header n="{header-name}">header content</header>)
     [<mp>...</mp>]
     [<content (url="...")>...</content>]
   </m>
@@ -1190,19 +1305,21 @@ origid/rt/irt are present only on drafts
 ---------
 
 <CreateFolderRequest>
-  <folder name="..." l="{parent-folder}" [fie="1"] [view="{default-type}"] [color="{color}"] [f="{flags}"] [url="{url}"]>
-    [<acl> <grant perm="{rights}" gt="{grantee-type}" zid="{zimbra-id}" d="{grantee-name}" [inh="0|1"] [args="{args}"]/>* </acl>]
+  <folder name="..." [l="{parent-folder}"] [fie="1"] [view="{default-type}"] [color="{color}"] [f="{flags}"] [url="{url}"]>
+    [<acl> <grant perm="{rights}" gt="{grantee-type}" zid="{zimbra-id}" d="{grantee-name}" [args="{args}"]/>* </acl>]
   </folder>
 </CreateFolderRequest>
+
+  - if l is unset, name is the full path of the new folder; otherwise, name may not contain the folder separator '/'
+  - if fie="1" is set, the server will fetch the folder if it already exists rather than throwing mail.ALREADY_EXISTS
 
 <CreateFolderResponse>
   <folder id="..." name="..." l="{parent-folder}" [u="{unread count}"] [n="{msg count}"]/>
 </CreateFolderResponse>
 
-u and/or n attributes are present iff count > 0
-name and l are omitted for root folder
+  - name and l are omitted on response for root folder
+  - u and/or n attributes are present on response iff count > 0
 
-if fie="1" is set, the server will fetch the folder if it already exists rather than throwing mail.ALREADY_EXISTS
 ---------
 
 <CreateNoteRequest>
@@ -1221,11 +1338,12 @@ if fie="1" is set, the server will fetch the folder if it already exists rather 
 
 <ItemActionRequest>
   <!-- action can be preceeded by a "!" to negate it" -->
-  <action id="{list}" op="delete|read|flag|tag|move|update" [tag="..."] [l="{folder}"] [tcon="[-]{constraint}" [f="{flags}"] [t="{tag-list}"]/>
+  <action id="{list}" op="delete|read|flag|tag|move|trash|rename|update" [tag="..."] [l="{folder}"] [name="{item-name}"] [color="{color}"]
+                                                                   [tcon="[-]{constraint}"] [f="{flags}"] [t="{tag-list}"]/>
 </ItemActionRequest>
 
 <ItemActionResponse>
-  <action id="{list}" op="delete|read|flag|tag|move|update"/>
+  <action id="{list}" op="delete|read|flag|tag|move|trash|rename|update"/>
 </ItemActionResponse>
 
   {list} = on input, list of items to act on, on output, list of
@@ -1237,17 +1355,17 @@ if fie="1" is set, the server will fetch the folder if it already exists rather 
         o - include items in any other folder
     a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)
 
-  for op="update", caller can specify any or all of: l="{folder}", t="{tag-list}", f="{flags}"
+  for op="update", caller can specify any or all of: l="{folder}", name="{name}", color="{color}", t="{tag-list}", f="{flags}"
 
 ---------
 
 <MsgActionRequest>
   <!-- action can be preceeded by a "!" to negate it" -->
-  <action id="{list}" op="delete|read|flag|tag|move|update|spam" [tag="..."] [l="{folder}"] [f="{flags}"] [t="{tag-list}"] [color="{color}"]/>
+  <action id="{list}" op="delete|read|flag|tag|move|update|spam|trash" [tag="..."] [l="{folder}"] [f="{flags}"] [t="{tag-list}"] [color="{color}"]/>
 </MsgActionRequest>
 
 <MsgActionResponse>
-  <action id="{list}" op="delete|read|flag|tag|move|update|spam"/>
+  <action id="{list}" op="delete|read|flag|tag|move|update|spam|trash"/>
 </MsgActionResponse>
 
   {list} = on input, list of messages to act on, on output, list of
@@ -1260,11 +1378,11 @@ if fie="1" is set, the server will fetch the folder if it already exists rather 
 
 <ConvActionRequest>
   <!-- action can be preceeded by a "!" to negate it" -->
-  <action id="{list}" op="delete|read|flag|tag|move|spam" [tag="..."] [l="{folder}"] [tcon="{constraint}"] [tcon="[-]{constraint}"]/>
+  <action id="{list}" op="delete|read|flag|tag|move|spam|trash" [tag="..."] [l="{folder}"] [tcon="{constraint}"] [tcon="[-]{constraint}"]/>
 </ConvActionRequest>
 
 <ConvActionResponse>
-  <action id="{list}" op="delete|read|flag|tag|move|spam"/>
+  <action id="{list}" op="delete|read|flag|tag|move|spam|trash"/>
 </ConvActionResponse>
 
   {list} = on input, list of conversations to act on, on output, list of
@@ -1281,34 +1399,71 @@ if fie="1" is set, the server will fetch the folder if it already exists rather 
 ---------
 
 <FolderActionRequest>
-  <action id="{list}" op="read|delete|rename|move|empty|color|grant|url|import|sync|fb|[!]check|update" name="..." [l="{target-folder}"]
+  <action id="{list}" op="read|delete|rename|move|trash|empty|color|grant|url|import|sync|fb|[!]check|update" [l="{target-folder}"]
                       [name="{new-name}"] [color="{new-color}"] [zid="{grantee-zimbra-id}"] [url="{target-url}"]
                       [excludeFreeBusy="{exclude-free-busy-boolean}">
-    [<grant perm="..." gt="..." d="..." [inh="0|1"] [args="..."]/>]
+    [<grant perm="..." gt="..." d="..." [args="..."]/>]
   </action>
 </FolderActionRequest>
 
 <FolderActionResponse>
-  <action id="{list}" op="read|delete|empty|rename|move|color|grant|url|import|sync|fb|[!]check|update" [zid="{grantee-zimbra-id}"]/>
+  <action id="{list}" op="read|delete|empty|rename|move|trash|color|grant|url|import|sync|fb|[!]check|update" [zid="{grantee-zimbra-id}"]/>
 </FolderActionResponse>
 
-  Actions:
-    op="read" - mark all items in the folder as read
-    op="delete" - hard-delete the folder, all items in the folder, and all the folder's subfolders
-    op="empty" - hard-delete all items in the folder and all the folder's subfolders
-    op="rename" - change the folder's name; if {new-name} begins with '/', the folder is moved to the new path and any missing path elements are created
-    op="move" - move the folder to be a child of {target-folder}
-    op="color" - change the folder's color to {new-color}
-    op="grant" - add the <grant> object to the folder
-    op="!grant" - revoke access from {grantee-zimbra-id} 
-                  (you can use "00000000-0000-0000-0000-000000000000" to revoke acces granted to "all"
-                   or use "99999999-9999-9999-9999-999999999999" to revoke acces granted to "pub" )
-    op="url" - set the synchronization url on the folder to {target-url}, empty the folder, and synchronize the folder's contents to the remote feed, also sets {exclude-free-busy-boolean} 
-    op="sync" - synchronize the folder's contents to the remote feed specified by the folder's {url}
-    op="import" - add the contents to the remote feed at {target-url} to the folder [1-time action]
-    op="fb" - set the excludeFreeBusy boolean for this folder (must specify {exclude-free-busy-boolean})
-    op="check" (or "!check") - set or unset the "checked" state of the folder in the UI
-    op="update" - do several operations at once:
+Actions:
+  <action op="read" id="{list}"/>
+    - mark all items in the folder as read
+
+  <action op="delete" id="{list}"/>
+    - hard-delete the folder, all items in the folder, and all the folder's subfolders
+
+  <action op="empty" id="{list}" [recusive="{delete-subfolders}"]/>
+    - hard-delete all items in the folder (and all the folder's subfolders if "recursive" is set)
+
+  <action op="rename" id="{list}" name="{new-name}" [l="{new-folder}"]/>
+    - change the folder's name (and optionally location);
+      if {new-name} begins with '/', the folder is moved to the new path and any missing path elements are created
+
+  <action op="move" id="{list}" l="{new-folder}"/>
+    - move the folder to be a child of {target-folder}
+
+  <action op="trash" id="{list}"/>
+    - move the folder to the Trash, marking all contents as read and
+      renaming the folder if a folder by that name is already present in the Trash
+
+  <action op="color" id="{list}" color="{new-color}"/>
+    - change the folder's color to {new-color}
+
+  <action op="grant" id="{list}">
+    <grant perm="..." gt="..." d="..." [args="..."]/>
+  </action>
+    - add the <grant> object to the folder
+
+  <action op="!grant" id="{list}" zid="{grantee-zimbra-id}"/>
+    - revoke access from {grantee-zimbra-id} 
+        (you can use "00000000-0000-0000-0000-000000000000" to revoke acces granted to "all"
+        or use "99999999-9999-9999-9999-999999999999" to revoke acces granted to "pub" )
+
+  <action op="url" id="{list}" url="{target-url}" [excludeFreeBusy="{exclude-free-busy-boolean}"]/>
+    - set the synchronization url on the folder to {target-url}, empty the folder, and\
+      synchronize the folder's contents to the remote feed, also sets {exclude-free-busy-boolean} 
+
+  <action op="sync" id="{list}"/>
+    - synchronize the folder's contents to the remote feed specified by the folder's {url}
+
+  <action op="import" id="{list}" url="{target-url}"/>
+    - add the contents to the remote feed at {target-url} to the folder [1-time action]
+
+  <action op="fb" id="{list}" excludeFreeBusy="{exclude-free-busy-boolean}"/>
+    - set the excludeFreeBusy boolean for this folder (must specify {exclude-free-busy-boolean})
+
+  <action op="[!]check" id="{list}"/>
+    - set or unset the "checked" state of the folder in the UI
+
+  <action op="update" id="{list}" [f="{new-flags}"] [name="{new-name}"] [l="{target-folder}"] [color="{new-color}"]>
+    [<acl><grant .../>*</acl>]
+  </action>
+    - do several operations at once:
           name="{new-name}"        to change the folder's name
           l="{target-folder}"      to change the folder's location
           color="{new-color}"      to set the folder's color
@@ -1321,16 +1476,16 @@ if fie="1" is set, the server will fetch the folder if it already exists rather 
 
 output of "grant" action includes the zimbra id the rights were granted on
 
-note that "delete", "empty", "rename", "move", "color" can be used on search folders as well as standard folders
+note that "delete", "empty", "rename", "move", "color", "update" can be used on search folders as well as standard folders
 
 ---------
 
 <NoteActionRequest>
-  <action id="{list}" op="delete|edit|move|repos|flag|tag|color|update" [tag="..."] [l="{target-folder}"] [color="{color}"] [pos="{x,y,width,height}"]/>
+  <action id="{list}" op="delete|edit|move|trash|repos|flag|tag|color|update" [tag="..."] [l="{target-folder}"] [color="{color}"] [pos="{x,y,width,height}"]/>
 </NoteActionRequest>
 
 <NoteActionResponse>
-  <action id="{list}" op="delete|edit|move|repos|flag|tag|color|update"/>
+  <action id="{list}" op="delete|edit|move|trash|repos|flag|tag|color|update"/>
 </NoteActionResponse>
 
   {list} = on input, list of notes to act on, on output, list of
@@ -1338,6 +1493,18 @@ note that "delete", "empty", "rename", "move", "color" can be used on search fol
            list may only have 1 element for actions "edit", "repos", "color"
 
   for op="update", caller can specify any or all of: l="{folder}", t="{tag-list}", f="{flags}", color="{color}", pos="{x,y,width,height}"
+
+---------
+
+<TagActionRequest>
+  <action op="read|rename|color|delete|update" id="..." [name="..."] [color="..."]/>
+</TagActionRequest>
+
+  - if op="update", the caller can specify "name" and/or "color"
+
+<TagActionResponse>
+  <action op="read|rename|color|delete|update" id="..."/> <!-- iff op was successful -->
+</TagActionResponse>
 
 --------------
 
@@ -1357,18 +1524,6 @@ u attribute is present iff count > 0
 <CreateTagResponse>
   <tag (same as GetTagResponse)/>
 </CreateTagResponse>
-
----------
-
-<TagActionRequest>
-  <action op="read|rename|color|delete|update" id="..." [name="..."] [color="..."]/>
-</TagActionRequest>
-
-  - if op="update", the caller can specify "name" and/or "color"
-
-<TagActionResponse>
-  <action op="read|rename|color|delete|update" id="..."/> <!-- iff op was successful -->
-</TagActionResponse>
 
 ---------
 
@@ -1555,8 +1710,8 @@ needCalendarSentByFixup - Add SENT-BY parameter to ORGANIZER and/or ATTENDEE
 Contacts: 
  
   <cn id="{contact-id}" [t="{tags}"] [f="{flags}"] md="{modified-date}" [l="{folder}"] [fileAsStr="{file-as}"]>
-    <a [n="{attr-name}" id="{attr-id}"] [ref="{attr-id}"]>{attr-data}</a>+
-    <!-- <mp>...</mp>* -->
+    <a n="{attr-name}">{attr-data}</a>+
+    <a n="{attr-name}" aid="{upload-id}"/>*
   </cn>
 
   {contact-id} = unique contact id
@@ -1566,12 +1721,22 @@ Contacts:
   {attr-name} = name of the attribute (firstName, etc)
   {attr-id} = for the scope of a response, a unique id assigned to the attr-name. The first contact with
                a given attr will include the name and id, the second will only include the ref.
-  
-  <mp>....</mp> = zero or more (non-nested) mime parts if this contact has attachments
+
   {folder-id} = id of folder to create contact in. Un-specified means use the default Contacts folder.
+
+  to add attachments, specify an {upload-id} instead of providing {attr-data} on the attr
+
+
+  when contacts are returned, they look like:
+
+  <cn id="{contact-id}" t="{tags}" f="{flags}" md="{modified-date}" l="{folder}" fileAsStr="{file-as}">
+    <a n="{attr-name}">{attr-data}</a>+
+    <a n="{attr-name}" size="{attach-size}" ctype="{attach-content-type}" filename="{attach-filename}" part="{part-id}"/>*
+  </cn>
+
 ----------
 
-<CreateContactRequest>
+<CreateContactRequest [verbose="0|1"]>
   <cn [l="{folder-id}"] [t="{tags}"]>
      <a>...</a>+
   </cn>
@@ -1582,7 +1747,7 @@ Contacts:
     -- mid/part attributes specifying an existing message part
     -- aid attribute specifying an uploaded text/calendar file
 
-<CreateContactRequest>
+<CreateContactRequest [verbose="0|1"]>
   <cn [l="{folder-id}"] [t="{tags}"]>
     <vcard [mid="{message-id}" part="{part-identifier}] [aid={uploaded-attachment-id"}"]>
 [BEGIN:VCARD
@@ -1592,6 +1757,7 @@ END:VCARD]
   </cn>
 </CreateContactRequest>
 
+
 <CreateContactResponse>
    (<cn> definition above)
 </CreateContactResponse>
@@ -1599,9 +1765,12 @@ END:VCARD]
   {folder-id} = id of folder to create contact in. Un-specified means use the default Contacts folder.
   {tags} = list of tags to apply to the created contact
 
+  -- if "verbose='0'" (defaults to '1') was specified on the request, the returned <cn>
+         is just a placeholder containing the new contact ID (i.e. <cn id="{id}"/>)
+
 ----------
 
-<ModifyContactRequest replace="{replace-mode}">
+<ModifyContactRequest [replace="{replace-mode}"] [verbose="0|1"]>
   <cn id="...">
     <a>{attr-value}</a>+
   </cn>
@@ -1615,11 +1784,16 @@ END:VCARD]
   the attrs are merged with the existing contact.
 
 <ModifyContactResponse>
-   <cn id="..." s="..." cd="..."/>
+   <cn ...>
+     <a n="...">...</a>
+     ...
+   </cn>
 </ModifyContactResponse>
 
 NOTE: should we return modified attrs in response?
 
+  -- if verbose='0' (defaults to '1') was specified on the request, the returned <cn>
+         is just a placeholder containing the contact ID (i.e. <cn id="{id}"/>)
 
 ----------
 
@@ -1641,11 +1815,11 @@ NOTE: should we return modified attrs in response?
 
 <ContactActionRequest>
   <!-- some actions can be preceeded by a "!" to negate them -->
-  <action id="{list}" op="move|delete|flag|tag|update" tag="..." l="..."/>
+  <action id="{list}" op="move|delete|flag|trash|tag|update" tag="..." l="..."/>
 </ContactActionRequest>
 
 <ContactActionResponse>
-  <action id="{list}" op="move|delete|flag|tag|update"/>
+  <action id="{list}" op="move|delete|flag|trash|tag|update"/>
 </ContactActionResponse>
 
   {list} = on input, list of contacts to act on, on output, list of
@@ -1791,12 +1965,17 @@ EXAMPLE:
 
 -----------------------
 
- <NoOpRequest/>
+ <NoOpRequest [wait='1']/>
 
  <NoOpResponse/>
 
 A request that does nothing and always returns nothing. Used to keep a session alive, and return
 any pending notifications.
+
+If "wait" is set, and if the current session allows them, this request will block until there are
+new notifications for the client.  Note that the soap envelope must reference an existing session
+that has notifications enabled, and the notification sequencing number should be specified.
+
 
 ---------------------------
 
@@ -1844,12 +2023,22 @@ java.util.Locale.getAvailableLocales(), sorted by display name (name attribute).
 <TestDataSourceRequest>
   <pop3 host="pop.myisp.com" port="110" connectionType="cleartext|ssl"
     username="mylogin" password="mypassword"/>
+    
+  or
+  
+  <imap host="imap.myisp.com" port="143" connectionType="cleartext|ssl"
+    username="mylogin" password="mypassword"/>
 </TestDataSourceRequest>
 
 or
 
 <TestDataSourceRequest>
   <pop3 id="{id}" [host="pop.myisp.com"] [port="110"] [connectionType="cleartext|ssl"]
+    [username="mylogin"] [password="mypassword"]/>
+
+  or
+  
+  <imap id="{id}" [host="imap.myisp.com"] [port="143"] [connectionType="cleartext|ssl"]
     [username="mylogin"] [password="mypassword"]/>
 </TestDataSourceRequest>
 
@@ -1865,23 +2054,31 @@ instead of the saved values.
 <CreateDataSourceRequest/>
   <pop3 name="My POP3 Account" isEnabled="0|1" host="pop.myisp.com" port="110"
     connectionType="cleartext|ssl" username="mylogin" password="mypassword" l="{folder-id}"
-    leaveOnServer="0|1"/>
+    leaveOnServer="0|1" [pollingInterval="10m"]/>
+    
+  or
+  
+  <imap name="My IMAP Account" isEnabled="0|1" host="imap.myisp.com" port="143"
+    connectionType="cleartext|ssl" username="mylogin" password="mypassword" l="{folder-id}"
+    [pollingInterval="10m"]/>
 </CreateDataSourceRequest>
 
 <CreateDataSourceResponse>
   <pop3 id="{id}"/>
 </CreateDataSourceResponse>
 
-Creates a data source that imports mail items into the specified folder.  Currently
-the only protocol supported is POP3.
+Creates a data source that imports mail items into the specified folder via
+the POP3 or IMAP protocol.  Only one data source is allowed per request.
 
 ---------------------------
 
 <GetDataSourcesRequest/>
 
 <GetDataSourcesResponse>
-  <pop3 id="{id}" name="My POP3 Account" isEnabled="0|1" host="pop3.myisp.com" port="110"
-    username="mylogin" l="{folder-id}" leaveOnServer="0|1"/>
+  *[<pop3 id="{id}" name="My POP3 Account" isEnabled="0|1" host="pop3.myisp.com" port="110"
+    username="mylogin" l="{folder-id}" leaveOnServer="0|1" [pollingInterval="10m"]/>]
+  *[<imap name="My IMAP Account" isEnabled="0|1" host="imap.myisp.com" port="143"
+    connectionType="cleartext|ssl" username="mylogin" l="{folder-id}" [pollingInterval="10m"]/>]
   ...
 </GetDataSourcesResponse>
 
@@ -1891,32 +2088,42 @@ every attribute value is returned except password.
 ---------------------------
 
 <ModifyDataSourceRequest>
-  <pop3 id="{id}" [name="My POP3 Account"] [isEnabled="0|1"] [host="pop3.myisp.com"]
+  *[<pop3 id="{id}" [name="My POP3 Account"] [isEnabled="0|1"] [host="pop3.myisp.com"]
     [port="110"] [connectionType="cleartext|ssl"] [username="mylogin"]
-    [password="mypassword"] [l="{folder-id}"] [leaveOnServer="0|1"]/>
+    [password="mypassword"] [l="{folder-id}"] [leaveOnServer="0|1"] 
+    [pollingInterval="10m"]/>]
+  *[<imap name="My IMAP Account" isEnabled="0|1" host="imap.myisp.com" port="143"
+    connectionType="cleartext|ssl" username="mylogin" password="mypassword" l="{folder-id}"
+    [pollingInterval="10m"]/>]
 </ModifyDataSourceRequest>
 
 <ModifyDataSourceResponse/>
 
 Changes attributes of the given data source.  Only the attributes specified in the request
-are modified.
+are modified.  If the username, host or leaveOnServer settings are modified, the server
+wipes out saved state for this data source.  As a result, any previously downloaded
+messages that are still stored on the remote server will be downloaded again.
 
 ---------------------------
 
 <DeleteDataSourceRequest>
   *[<dsrc [id="{data-source-id}" | name="{data-source-name}"]/>]
   *[<pop3 [id="{data-source-id}" | name="{data-source-name}"]/>]
+  *[<imap [id="{data-source-id}" | name="{data-source-name}"]/>]
+  ...
 </DeleteDataSourceRequest>
 
 <DeleteDataSourceResponse/>
 
-<-- must specify eith -->
-<-- must specify either 'name' or 'id' -->
+Deletes the given data sources.  The name or id of each data source must
+be specified.
 
 ---------------------------
 
 <ImportDataRequest>
-  <pop3 id="{id}"/>
+  *[<dsrc id="{id}"/>]
+  *[<pop3 id="{id}"/>]
+  *[<imap id="{id}"/>]
   ...
 </ImportDataRequest>
 
@@ -1933,7 +2140,8 @@ the second request is ignored.
 <GetImportStatusRequest/>
 
 <GetImportStatusResponse>
-  <pop3 id="{id}" isRunning="0|1" [success="0|1"] [error="Error message"]/>
+  *[<pop3 id="{id}" isRunning="0|1" [success="0|1"] [error="Error message"]/>]
+  *[<imap id="{id}" isRunning="0|1" [success="0|1"] [error="Error message"]/>]
   ...
 </GetImportStatusResponse>
 
@@ -1948,3 +2156,17 @@ error:     If the last import failed, the error message that was returned.
 
 
 ---------------------------
+
+WaitSet: scalable mechanism for listening for changes to one or more accounts
+
+<CreateWaitSetRequest>
+<CreateWaitSetResponse>
+<WaitSetRequest>
+<WaitSetResponse>
+<DestroyWaitSet>
+<DestroyWaitSetResponse>
+
+***See soap-waitset.txt for WaitSet API documentation***
+
+---------------------------
+

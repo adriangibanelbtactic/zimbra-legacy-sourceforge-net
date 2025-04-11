@@ -36,10 +36,11 @@ import javax.net.ssl.SSLSocketFactory;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
 
+import com.zimbra.common.util.CliUtil;
 import com.zimbra.common.util.DummySSLSocketFactory;
+import com.zimbra.common.util.EasySSLProtocolSocketFactory;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Server;
-import com.zimbra.cs.httpclient.EasySSLProtocolSocketFactory;
 import com.zimbra.cs.util.Zimbra;
 
 
@@ -275,7 +276,7 @@ extends TestCase {
     
     public static void main(String[] args)
     throws Exception {
-        Zimbra.toolSetup();
-        TestUtil.runTest(new TestSuite(TestPop3ImapAuth.class), null);        
+        CliUtil.toolSetup();
+        TestUtil.runTest(new TestSuite(TestPop3ImapAuth.class));        
     }
 }

@@ -38,15 +38,19 @@ import java.util.List;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
+import javax.mail.Message.RecipientType;
 import javax.mail.MessagingException;
 import javax.mail.internet.ContentType;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 
+import org.apache.lucene.document.Field;
+
 import com.zimbra.cs.account.Account;
-import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.db.DbMailItem;
+import com.zimbra.cs.index.LuceneFields;
+import com.zimbra.cs.localconfig.DebugConfig;
 import com.zimbra.cs.mailbox.calendar.CalendarMailSender;
 import com.zimbra.cs.mailbox.calendar.ICalTimeZone;
 import com.zimbra.cs.mailbox.calendar.IcalXmlStrMap;
@@ -64,8 +68,8 @@ import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.mime.Mime;
 import com.zimbra.cs.mime.MimeVisitor;
 import com.zimbra.cs.mime.ParsedMessage;
+import com.zimbra.cs.redolog.op.IndexItem;
 import com.zimbra.cs.session.PendingModifications.Change;
-import com.zimbra.cs.store.StoreManager;
 import com.zimbra.cs.util.AccountUtil;
 import com.zimbra.cs.util.JMSession;
 import com.zimbra.common.service.ServiceException;
@@ -100,7 +104,7 @@ public abstract class CalendarItem extends MailItem {
     private TimeZoneMap mTzMap;
 
     private List<Invite> mInvites;
-
+    
     private ReplyList mReplyList;
     protected ReplyList getReplyList() { return mReplyList; }
 
@@ -120,6 +124,20 @@ public abstract class CalendarItem extends MailItem {
         return (mRecurrence != null);
     }
 
+    @Override
+    public String getSender() {
+        String sender = null;
+        Invite firstInvite = this.getDefaultInviteOrNull();
+        if (firstInvite != null) {
+            ZOrganizer org = firstInvite.getOrganizer();
+            if (org != null) 
+                sender = org.getIndexString();
+        }
+        if (sender == null)
+            sender = "";
+        return sender;
+    }
+
     public long getStartTime() {
         return mStartTime;
     }
@@ -129,13 +147,14 @@ public abstract class CalendarItem extends MailItem {
     }
     
     public void saveMetadata() throws ServiceException {
-        super.saveMetadata();
+//        super.saveMetadata();
+        reanalyze(null);
     }
-    
+
     public void markItemModified(int reason) {
         mMailbox.markItemModified(this, reason);
     }
-    
+
 
     boolean isTaggable()       { return true; }
     boolean isCopyable()       { return false; }
@@ -143,15 +162,88 @@ public abstract class CalendarItem extends MailItem {
     public boolean isMutable() { return true; }
     boolean isIndexed()        { return true; }
     boolean canHaveChildren()  { return false; }
-
-
+    
+    @Override
+    public void reindex(IndexItem redo, boolean deleteFirst, Object indexData) throws ServiceException {
+        if (DebugConfig.disableIndexing)
+            return;
+        
+        List<org.apache.lucene.document.Document> docs = getLuceneDocuments();
+        
+        mMailbox.getMailboxIndex().indexCalendarItem(mMailbox, redo, deleteFirst, this, 
+            docs, this.getDate());
+    }
+    
+    protected List<org.apache.lucene.document.Document> getLuceneDocuments() throws ServiceException {
+        List<org.apache.lucene.document.Document> toRet = 
+            new ArrayList<org.apache.lucene.document.Document>();
+        
+        Invite defaultInvite = this.getDefaultInviteOrNull();
+        
+        String defaultLocation = "";
+        if (defaultInvite != null && defaultInvite.getLocation() != null)
+            defaultLocation = defaultInvite.getLocation();
+        
+        for (Invite inv : this.getInvites()) {
+            MimeMessage mm = inv.getMimeMessage();
+            if (mm == null)
+                continue;
+            
+            try {
+                StringBuilder s = new StringBuilder();
+                for (ZAttendee at : inv.getAttendees()) {
+                    mm.addRecipient(RecipientType.TO, at.getFriendlyAddress());
+                    s.append(at.getIndexString()).append(' ');
+                }
+                
+                if (inv.getLocation() != null) {
+                    s.append(inv.getLocation()).append(' ');
+                }  else {
+                    s.append(defaultLocation).append(' ');
+                }
+                
+                mm.saveChanges();
+                
+                ParsedMessage pm = new ParsedMessage(mm, mMailbox.attachmentsIndexingEnabled());
+                List<org.apache.lucene.document.Document> docs = pm.getLuceneDocuments();
+                for (org.apache.lucene.document.Document doc : docs) {
+                    doc.add(new Field(LuceneFields.L_CONTENT, s.toString(), Field.Store.NO, Field.Index.TOKENIZED));
+                    toRet.add(doc);
+                }
+            } catch(MessagingException e) {
+                throw ServiceException.FAILURE("Failure Indexing: "+this.toString(), e);
+            }
+        }
+        
+        return toRet;
+    }
+    
     static CalendarItem create(int id, Folder folder, short volumeId, int flags, long tags, String uid, ParsedMessage pm, Invite firstInvite)
     throws ServiceException {
         if (!folder.canAccess(ACL.RIGHT_INSERT))
             throw ServiceException.PERM_DENIED("you do not have the required rights on the folder");
         Mailbox mbox = folder.getMailbox();
+        
+        if (pm.hasAttachments()) {
+            firstInvite.setHasAttachment(true);
+            flags |= Flag.BITMASK_ATTACHED;
+        } else {
+            firstInvite.setHasAttachment(false);
+            flags &= ~Flag.BITMASK_ATTACHED;
+        }
 
         byte type = firstInvite.isEvent() ? TYPE_APPOINTMENT : TYPE_TASK;
+        
+        String sender = null;
+        ZOrganizer org = firstInvite.getOrganizer();
+        if (org != null) 
+            sender = org.getIndexString();
+        if (sender == null)
+            sender = "";
+        
+        String subject = firstInvite.getName();
+        if (subject == null)
+            subject= "";
 
         List<Invite> invites = new ArrayList<Invite>();
         invites.add(firstInvite);
@@ -187,10 +279,9 @@ public abstract class CalendarItem extends MailItem {
         data.date     = mbox.getOperationTimestamp();
         data.flags    = flags & Flag.FLAGS_GENERIC;
         data.tags     = tags;
-        data.sender   = uid;
-        data.metadata = encodeMetadata(DEFAULT_COLOR, uid, startTime, endTime,
-                                       recur, invites, firstInvite.getTimeZoneMap(),
-                                       new ReplyList());
+        data.sender   = sender;
+        data.subject = subject;
+        data.metadata = encodeMetadata(DEFAULT_COLOR, uid, startTime, endTime, recur, invites, firstInvite.getTimeZoneMap(), new ReplyList());
         data.contentChanged(mbox);
         DbMailItem.create(mbox, data);
 
@@ -221,19 +312,12 @@ public abstract class CalendarItem extends MailItem {
             // now, go through the list of invites and find all the exceptions
             for (Iterator iter = mInvites.iterator(); iter.hasNext();) {
                 Invite cur = (Invite) iter.next();
+                
                 if (cur != firstInv) {
-                    String method = cur.getMethod();
-                    if (cur.isCancel()) {
-                        assert(cur.hasRecurId());
-                        if (cur.hasRecurId()) {
-                            Recurrence.CancellationRule cancelRule =   
-                                new Recurrence.CancellationRule(cur.getRecurId());
-                            
-                            ((Recurrence.RecurrenceRule) mRecurrence).addException(cancelRule);
-                        }
-                    } else if (method.equals(ICalTok.REQUEST.toString()) ||
-                               method.equals(ICalTok.PUBLISH.toString())) {
+                    
+                    if (cur.getMethod().equals(ICalTok.REQUEST.toString()) || (cur.getMethod().equals(ICalTok.PUBLISH.toString()))) {
                         assert (cur.hasRecurId());
+                        
                         if (cur.hasRecurId() && cur.getStartTime() != null) {
                             Recurrence.ExceptionRule exceptRule = (Recurrence.ExceptionRule) cur.getRecurrence();
                             if (exceptRule == null) {
@@ -251,6 +335,14 @@ public abstract class CalendarItem extends MailItem {
                             ((Recurrence.RecurrenceRule) mRecurrence).addException(exceptRule);
                         } else {
                             sLog.debug("Got second invite with no RecurID: " + cur.toString());
+                        }
+                    } else if (cur.getMethod().equals(ICalTok.CANCEL.toString())) {
+                        assert(cur.hasRecurId());
+                        if (cur.hasRecurId()) {
+                            Recurrence.CancellationRule cancelRule =   
+                                new Recurrence.CancellationRule(cur.getRecurId());
+                            
+                            ((Recurrence.RecurrenceRule) mRecurrence).addException(cancelRule);
                         }
                     }
                 }
@@ -290,7 +382,7 @@ public abstract class CalendarItem extends MailItem {
         mUid = meta.get(Metadata.FN_UID, null);
         mInvites = new ArrayList<Invite>();
         
-        ICalTimeZone accountTZ = Provisioning.getInstance().getTimeZone(getMailbox().getAccount()); 
+        ICalTimeZone accountTZ = ICalTimeZone.getAccountTimeZone(getMailbox().getAccount()); 
         if (mdVersion < 6) {
             mStartTime = 0;
             mEndTime = 0;
@@ -322,21 +414,14 @@ public abstract class CalendarItem extends MailItem {
     }
 
     Metadata encodeMetadata(Metadata meta) {
-        return encodeMetadata(meta, mColor, mUid, mStartTime, mEndTime,
-                              mRecurrence, mInvites, mTzMap, mReplyList);
+        return encodeMetadata(meta, mColor, mUid, mStartTime, mEndTime, mRecurrence, mInvites, mTzMap, mReplyList);
     }
     private static String encodeMetadata(byte color, String uid, long startTime, long endTime,
-                                         Recurrence.IRecurrence recur,
-                                         List /*Invite */ invs, TimeZoneMap tzmap,
-                                         ReplyList replyList) {
-        return encodeMetadata(new Metadata(), color, uid, startTime, endTime, recur, invs, tzmap,
-                              replyList).toString();
+                                         Recurrence.IRecurrence recur, List /*Invite */ invs, TimeZoneMap tzmap, ReplyList replyList) {
+        return encodeMetadata(new Metadata(), color, uid, startTime, endTime, recur, invs, tzmap, replyList).toString();
     }
-    static Metadata encodeMetadata(Metadata meta, byte color, String uid,
-                                   long startTime, long endTime,
-                                   Recurrence.IRecurrence recur,
-                                   List /*Invite */ invs, TimeZoneMap tzmap,
-                                   ReplyList replyList) {
+    static Metadata encodeMetadata(Metadata meta, byte color, String uid, long startTime, long endTime,
+                                   Recurrence.IRecurrence recur, List /*Invite */ invs, TimeZoneMap tzmap, ReplyList replyList) {
         meta.put(Metadata.FN_TZMAP, tzmap.encodeAsMetadata());
         meta.put(Metadata.FN_UID, uid);
         meta.put(Metadata.FN_CALITEM_START, startTime);
@@ -344,7 +429,7 @@ public abstract class CalendarItem extends MailItem {
         meta.put(Metadata.FN_NUM_COMPONENTS, invs.size());
         
         meta.put(Metadata.FN_REPLY_LIST, replyList.encodeAsMetadata());
-
+        
         int num = 0;
         for (Iterator iter = invs.iterator(); iter.hasNext();) {
             Invite comp = (Invite) iter.next();
@@ -575,11 +660,22 @@ public abstract class CalendarItem extends MailItem {
         return first;
     }
 
-    void processNewInvite(ParsedMessage pm,
+    /**
+     * @param pm
+     * @param invite
+     * @param force
+     * @param folderId
+     * @param volumeId
+     * @return 
+     *            TRUE if an update calendar was written, FALSE if the CalendarItem is 
+     *            unchanged or deleted 
+     * @throws ServiceException
+     */
+    boolean processNewInvite(ParsedMessage pm,
                           Invite invite,
                           boolean force, int folderId, short volumeId)
     throws ServiceException {
-        processNewInvite(pm, invite, force, folderId, volumeId, false);
+        return processNewInvite(pm, invite, force, folderId, volumeId, false);
     }
 
     /**
@@ -590,40 +686,76 @@ public abstract class CalendarItem extends MailItem {
      * @param invite
      * @param force if true, then force update to this appointment/task,
      *              otherwise use RFC2446 sequencing rules
+     * @return 
+     *            TRUE if an update calendar was written, FALSE if the CalendarItem is 
+     *            unchanged or deleted 
      */
-    void processNewInvite(ParsedMessage pm,
+    boolean processNewInvite(ParsedMessage pm,
                           Invite invite,
                           boolean force, int folderId, short volumeId,
                           boolean replaceExistingInvites)
     throws ServiceException {
-        String method = invite.getMethod();
-        if (method.equals(ICalTok.REQUEST.toString()) ||
-            method.equals(ICalTok.CANCEL.toString()) ||
-            method.equals(ICalTok.PUBLISH.toString())) {
-            processNewInviteRequestOrCancel(pm, invite, force, folderId, volumeId,
-                                            replaceExistingInvites);
-        } else if (method.equals("REPLY")) {
-            processNewInviteReply(invite, force);
-        } else {
-            ZimbraLog.calendar.warn("Unsupported METHOD " + method);
+        ZOrganizer originalOrganizer = null;
+        Invite defInv = getDefaultInviteOrNull();
+        if (defInv != null)
+            originalOrganizer = defInv.getOrganizer();
+        if (replaceExistingInvites) {
+            mInvites.clear();
+            //saveMetadata();
         }
+        invite.setHasAttachment(pm.hasAttachments());
+        
+        String method = invite.getMethod();
+        if (method.equals(ICalTok.REQUEST.toString()) || method.equals(ICalTok.CANCEL.toString()) || method.equals(ICalTok.PUBLISH.toString())) {
+            return processNewInviteRequestOrCancel(originalOrganizer, pm, invite, force, folderId, volumeId);
+        } else if (method.equals("REPLY")) {
+            return processNewInviteReply(invite, force);
+        }
+        return false;
     }
-
-    private void processNewInviteRequestOrCancel(ParsedMessage pm,
+    
+    private boolean processNewInviteRequestOrCancel(ZOrganizer originalOrganizer,
+                                                 ParsedMessage pm,
                                                  Invite newInvite,
                                                  boolean force,
                                                  int folderId,
-                                                 short volumeId,
-                                                 boolean replaceExistingInvites)
+                                                 short volumeId)
     throws ServiceException {
-        // Remove everyone that is made obsolete by this request
+
+        // Remove everyone that is made obselete by this request
         boolean addNewOne = true;
         boolean isCancel = newInvite.isCancel();
 
         if (!canAccess(isCancel ? ACL.RIGHT_DELETE : ACL.RIGHT_WRITE))
             throw ServiceException.PERM_DENIED("you do not have sufficient permissions on this appointment/task");
 
-        organizerChangeCheck(newInvite);
+        // Look for potentially malicious change in organizer.
+        if (newInvite.hasOrganizer()) {
+            String newOrgAddr = newInvite.getOrganizer().getAddress();
+            if (originalOrganizer == null) {
+                // If organizer was previously unset, it means the appointment/task
+                // had no attendee, i.e. a personal event.  When attendees are
+                // added to a personal event, organizer must be set and only
+                // to self.
+                if (!newInvite.thisAcctIsOrganizer(getAccount()))
+                    throw ServiceException.INVALID_REQUEST(
+                            "Changing organizer of an appointment/task to another user is not allowed: old=(unspecified), new=" + newOrgAddr, null);
+            } else {
+                // Both old and new organizers are set.  They must be the
+                // same address.
+                String origOrgAddr = originalOrganizer.getAddress();
+                if (!newOrgAddr.equalsIgnoreCase(origOrgAddr))
+                    throw ServiceException.INVALID_REQUEST(
+                            "Changing organizer of an appointment/task is not allowed: old=" + origOrgAddr + ", new=" + newOrgAddr, null);
+            }
+        } else {
+            // Allow unsetting organizer only when previously set organizer
+            // is self.
+            if (originalOrganizer != null &&
+                !AccountUtil.addressMatchesAccount(getAccount(), originalOrganizer.getAddress()))
+                throw ServiceException.INVALID_REQUEST(
+                        "Removing organizer of an appointment/task is not allowed", null);
+        }
 
         // If modifying recurrence series (rather than an instance) and the
         // start time (HH:MM:SS) is changing, we need to update the time
@@ -632,7 +764,7 @@ public abstract class CalendarItem extends MailItem {
         ParsedDateTime oldDtStart = null;
         ParsedDuration dtStartMovedBy = null;
         ArrayList<Invite> toUpdate = new ArrayList<Invite>();
-        if (!replaceExistingInvites && !isCancel && newInvite.isRecurrence()) {
+        if (!isCancel && newInvite.isRecurrence()) {
             Invite defInv = getDefaultInviteOrNull();
             if (defInv != null) {
                 oldDtStart = defInv.getStartTime();
@@ -660,12 +792,11 @@ public abstract class CalendarItem extends MailItem {
             //
             // See RFC2446: 2.1.5 Message Sequencing
             //
-            if (replaceExistingInvites ||
-                (cur.getRecurId() != null && cur.getRecurId().equals(newInvite.getRecurId())) ||
-                (cur.getRecurId() == null && newInvite.getRecurId() == null)) {
-                if (replaceExistingInvites || force ||
-                    (cur.getSeqNo() < newInvite.getSeqNo()) ||
-                    (cur.getSeqNo() == newInvite.getSeqNo() && cur.getDTStamp() <= newInvite.getDTStamp())) 
+            if ((cur.getRecurId() != null && cur.getRecurId().equals(newInvite.getRecurId())) ||
+                    (cur.getRecurId() == null && newInvite.getRecurId() == null)) {
+                if (force ||
+                        (cur.getSeqNo() < newInvite.getSeqNo()) ||
+                        (cur.getSeqNo() == newInvite.getSeqNo() && cur.getDTStamp() <= newInvite.getDTStamp())) 
                 {
                     Invite inf = mInvites.get(i);
                     toRemove.add(inf);
@@ -674,8 +805,8 @@ public abstract class CalendarItem extends MailItem {
                     // that way the numbers all match up as the list contracts!
                     idxsToRemove.add(0, new Integer(i));
                     
-                    // clean up any old REPLYs that have been made obsolete by this new invite
-                    mReplyList.removeObsceleteEntries(newInvite.getRecurId(), newInvite.getSeqNo(), newInvite.getDTStamp());
+                    // clean up any old REPLYs that have been made obscelete by this new invite
+                    mReplyList.removeObsoleteEntries(newInvite.getRecurId(), newInvite.getSeqNo(), newInvite.getDTStamp());
                     
                     prev = cur;
                     modifiedCalItem = true;
@@ -687,14 +818,14 @@ public abstract class CalendarItem extends MailItem {
                     // the passed-in one!
                     addNewOne = false;
                 }
-//              break; // don't stop here!  new Invite *could* obsolete multiple existing ones! 
+//              break; // don't stop here!  new Invite *could* obscelete multiple existing ones! 
             } else if (needRecurrenceIdUpdate) {
                 RecurId rid = cur.getRecurId();
                 // Translate the date/time in RECURRENCE-ID to the timezone in
                 // original recurrence DTSTART.  If they have the same HHMMSS
                 // part, the RECURRENCE-ID need to be adjusted by the diff of
                 // old and new recurrence DTSTART.
-                if (rid != null && rid.getDt() != null && oldDtStart != null) {
+                if (rid != null && rid.getDt() != null) {
                     ParsedDateTime ridDt = (ParsedDateTime) rid.getDt().clone();
                     ICalTimeZone oldTz = oldDtStart.getTimeZone();
                     if (oldTz != null) {
@@ -709,7 +840,10 @@ public abstract class CalendarItem extends MailItem {
         boolean callProcessPartStat = false;
         if (addNewOne) {
             newInvite.setCalendarItem(this);
-            if (prev!=null && !newInvite.isOrganizer() && newInvite.sentByMe()) {
+            Account account = getMailbox().getAccount();
+            boolean thisAcctIsOrganizer =
+                newInvite.thisAcctIsOrganizer(account);
+            if (prev!=null && !thisAcctIsOrganizer && newInvite.sentByMe()) {
                 // A non-organizer attendee is modifying data on his/her
                 // appointment/task.  Any information that is tracked in
                 // metadata rather than in the iCal MIME part must be
@@ -748,10 +882,10 @@ public abstract class CalendarItem extends MailItem {
                 }
             }
 
-            modifyBlob(toRemove, replaceExistingInvites, toUpdate, pm, newInvite, volumeId, isCancel);
+            modifyBlob(toRemove, toUpdate, pm, newInvite, volumeId);
             modifiedCalItem = true;
         } else {
-            modifyBlob(toRemove, replaceExistingInvites, toUpdate, null, null, volumeId, isCancel);
+            modifyBlob(toRemove, toUpdate, null, null, volumeId);
         }
         
         // now remove the inviteid's from our list  
@@ -765,30 +899,30 @@ public abstract class CalendarItem extends MailItem {
             Folder folder = getMailbox().getFolderById(folderId);
             move(folder);
         }
-
+        
+        boolean hasAttachments = false;
         boolean hasRequests = false;
         for (Iterator iter = mInvites.iterator(); iter.hasNext();) {
             Invite cur = (Invite)iter.next();
-            String method = cur.getMethod();
-            if (method.equals(ICalTok.REQUEST.toString()) ||
-                method.equals(ICalTok.PUBLISH.toString())) {
+            if (cur.getMethod().equals(ICalTok.REQUEST.toString()) ||
+                    cur.getMethod().equals(ICalTok.PUBLISH.toString())) {
                 hasRequests = true;
-                break;
+            }
+            if (cur.hasAttachment()) {
+                hasAttachments = true;
             }
         }
         
         if (!hasRequests) {
-            if (!isCancel)
-                ZimbraLog.calendar.warn(
-                        "Invalid state: deleting calendar item " + getId() +
-                        " in mailbox " + getMailboxId() + " while processing a non-cancel request");
-            delete();  // delete this appointment/task from the table,
-                       // it doesn't have anymore REQUESTs!
+            this.delete(); // delete this appointment/task from the table, it
+                            // doesn't have anymore REQUESTs!
+            return false;
         } else {
             if (modifiedCalItem) {
                 if (!updateRecurrence()) {
                     // no default invite!  This appointment/task no longer valid
-                    delete();
+                    this.delete();
+                    return false;
                 } else {
                     if (callProcessPartStat) {
                         // processPartStat() must be called after
@@ -798,92 +932,25 @@ public abstract class CalendarItem extends MailItem {
                                         false,
                                         newInvite.getPartStat());
                     }
-                    saveMetadata();
-                }
-            }
-        }
-    }
-
-    /**
-     * Check to make sure the new invite doesn't change the organizer in a disallowed way.
-     * @param newInvite
-     * @throws ServiceException
-     */
-    private void organizerChangeCheck(Invite newInvite) throws ServiceException {
-        Invite originalInvite = null;
-        if (!newInvite.hasRecurId()) {
-            // New invite is not for an exception.
-            originalInvite = getDefaultInviteOrNull();
-        } else {
-            // New invite is for an exception.
-            boolean found = false;
-            RecurId newRid = newInvite.getRecurId();
-            for (Invite inv : mInvites) {
-                if (inv.hasRecurId() && newRid.equals(inv.getRecurId())) {
-                    originalInvite = inv;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                // If no invite with matching RECURRENCE-ID was found, use the default invite.
-                originalInvite = getDefaultInviteOrNull();
-            }
-        }
-        if (originalInvite == null) {
-            // If no "default" invite was found, use the first one.
-            if (mInvites.size() > 0)
-                originalInvite = mInvites.get(0);
-            if (originalInvite == null) {
-                // Still no invite.  Something is seriously wrong.  Return without any further
-                // checks in this method.
-                return;
-            }
-        }
-
-        ZOrganizer originalOrganizer = originalInvite.getOrganizer();
-        if (!originalInvite.isOrganizer()) {
-            // This account WAS NOT the organizer.  Prevent organizer change.
-            if (newInvite.hasOrganizer()) {
-                String newOrgAddr = newInvite.getOrganizer().getAddress();
-                if (originalOrganizer == null) {
-                    throw ServiceException.INVALID_REQUEST(
-                            "Changing organizer of an appointment/task to another user is not allowed: old=(unspecified), new=" + newOrgAddr, null);
-                } else {
-                    // Both old and new organizers are set.  They must be the
-                    // same address.
-                    String origOrgAddr = originalOrganizer.getAddress();
-                    if (newOrgAddr == null || !newOrgAddr.equalsIgnoreCase(origOrgAddr))
-                        throw ServiceException.INVALID_REQUEST(
-                                "Changing organizer of an appointment/task is not allowed: old=" + origOrgAddr + ", new=" + newOrgAddr, null);
-                }
-            } else if (originalOrganizer != null) {
-                throw ServiceException.INVALID_REQUEST(
-                        "Removing organizer of an appointment/task is not allowed", null);
-            }
-        } else {
-            // Even for the organizer account, don't allow changing the organizer field
-            // to an arbitrary address.
-            if (newInvite.hasOrganizer()) {
-                if (!newInvite.isOrganizer()) {
-                    String newOrgAddr = newInvite.getOrganizer().getAddress();
-                    if (originalOrganizer != null) {
-                        String origOrgAddr = originalOrganizer.getAddress();
-                        throw ServiceException.INVALID_REQUEST(
-                                "Changing organizer of an appointment/task to another user is not allowed: old=" +
-                                origOrgAddr + ", new=" + newOrgAddr, null);
+                    if (hasAttachments) {
+                        this.mData.flags |= Flag.BITMASK_ATTACHED;
                     } else {
-                        throw ServiceException.INVALID_REQUEST(
-                                "Changing organizer of an appointment/task to another user is not allowed: old=(unspecified), new=" +
-                                newOrgAddr, null);
+                        this.mData.flags &= ~Flag.BITMASK_ATTACHED;
                     }
+                    this.saveMetadata();
+                    return true;
                 }
+            } else {
+                return false;
             }
         }
     }
-
+    
+    /**
+     * ParsedMessage DataSource -- for writing a ParsedMessage (new invite)
+     * into our combined multipart/alternative Appointment store
+     */
     private static class PMDataSource implements DataSource {
-        
         private ParsedMessage mPm;
         
         public PMDataSource(ParsedMessage pm) {
@@ -927,24 +994,25 @@ public abstract class CalendarItem extends MailItem {
     
     private void storeUpdatedBlob(MimeMessage mm, short volumeId)
     throws ServiceException, IOException {
-        ParsedMessage pm = new ParsedMessage(mm, true);
+        ParsedMessage pm = new ParsedMessage(mm, mMailbox.attachmentsIndexingEnabled());
         try {
-            byte[] data = pm.getRawData();
-            if (data == null)
-                ZimbraLog.calendar.warn(
-                        "Invalid state: updating blob with null data for calendar item " + getId() +
-                        " in mailbox " + getMailboxId());
-            setContent(data, pm.getRawDigest(), volumeId, pm);
+            setContent(pm.getRawData(), pm.getRawDigest(), volumeId, pm);
         } catch (MessagingException me) {
             throw MailServiceException.MESSAGE_PARSE_ERROR(me);
         }
     }
     
     void reanalyze(Object data) throws ServiceException {
-        if (!(data instanceof ParsedMessage))
-            throw ServiceException.FAILURE("cannot reanalyze non-ParsedMessage object", null);
-        ParsedMessage pm = (ParsedMessage) data;
-        saveData(pm.getParsedSender().getSortString());
+        String subject = null;
+        Invite firstInvite = this.getDefaultInviteOrNull();
+        if (firstInvite != null) {
+            subject = firstInvite.getName();
+        }
+        if (subject == null)
+            subject= "";
+        
+        mData.subject = subject;
+        saveData(getSender());
     }
 
     /**
@@ -990,22 +1058,17 @@ public abstract class CalendarItem extends MailItem {
      * new invite had no ParsedMessage: IE because it didn't actually come in via an RFC822 msg
      * 
      * @param toRemove
-     * @param removeAllExistingInvites if true, all existing invites are removed regardless of
-     *                                 what's passed in toRemove list
      * @param toUpdate
      * @param invPm
      * @param newInv
      * @param volumeId
-     * @param isCancel if the method is being called while processing a cancel request
      * @throws ServiceException
      */
     private void modifyBlob(List<Invite> toRemove,
-                            boolean removeAllExistingInvites,
                             List<Invite> toUpdate,
                             ParsedMessage invPm,
                             Invite newInv,
-                            short volumeId,
-                            boolean isCancel)
+                            short volumeId)
     throws ServiceException
     {
         // TODO - as an optimization, should check to see if the invite's MM is already in here! (ie
@@ -1015,10 +1078,8 @@ public abstract class CalendarItem extends MailItem {
             MimeMessage mm;
             
             try {
-                mm = new MimeMessage(getMimeMessage());
+                mm = getMimeMessage();
             } catch (ServiceException e) {
-                ZimbraLog.calendar.error("Error reading blob for calendar item " + getId() +
-                                         " in mailbox " + getMailboxId(), e);
                 if (newInv != null) {
                     // if the blob isn't already there, and we're going to add one, then
                     // just go into create
@@ -1033,40 +1094,29 @@ public abstract class CalendarItem extends MailItem {
             boolean updated = false;
 
             // remove invites
-            if (removeAllExistingInvites) {
-                int numParts = mmp.getCount();
-                if (numParts > 0) {
-                    for (int i = numParts - 1; i >= 0; i--) {
-                        mmp.removeBodyPart(i);
+            for (Invite inv: toRemove) {
+                int matchedIdx;
+                do {
+                    // find the matching parts...
+                    int numParts = mmp.getCount();
+                    matchedIdx = -1;
+                    for (int i = 0; i < numParts; i++) {
+                        MimeBodyPart mbp = (MimeBodyPart)mmp.getBodyPart(i);
+                        String[] hdrs = mbp.getHeader("invId");
+                        if (hdrs == null || hdrs.length == 0) {
+                            matchedIdx = i;
+                            break;
+                        }
+                        if (hdrs != null && hdrs.length > 0 && (Integer.parseInt(hdrs[0])==inv.getMailItemId())) {
+                            matchedIdx = i;
+                            break;
+                        }
                     }
-                    updated = true;
-                }
-            } else {
-                // Remove specific invites.
-                for (Invite inv: toRemove) {
-                    int matchedIdx;
-                    do {
-                        // find the matching parts...
-                        int numParts = mmp.getCount();
-                        matchedIdx = -1;
-                        for (int i = 0; i < numParts; i++) {
-                            MimeBodyPart mbp = (MimeBodyPart)mmp.getBodyPart(i);
-                            String[] hdrs = mbp.getHeader("invId");
-                            if (hdrs == null || hdrs.length == 0) {
-                                matchedIdx = i;
-                                break;
-                            }
-                            if (hdrs != null && hdrs.length > 0 && (Integer.parseInt(hdrs[0])==inv.getMailItemId())) {
-                                matchedIdx = i;
-                                break;
-                            }
-                        }
-                        if (matchedIdx > -1) {
-                            mmp.removeBodyPart(matchedIdx);
-                            updated = true;
-                        }
-                    } while(matchedIdx > -1);
-                }
+                    if (matchedIdx > -1) {
+                        mmp.removeBodyPart(matchedIdx);
+                        updated = true;
+                    }
+                } while(matchedIdx > -1);
             }
 
             // Update some invites.
@@ -1130,18 +1180,11 @@ public abstract class CalendarItem extends MailItem {
                 return;
             
             if (mmp.getCount() == 0) {
-                if (!isCancel)
-                    ZimbraLog.calendar.warn(
-                            "Invalid state: deleting blob for calendar item " + getId() +
-                            " in mailbox " + getMailboxId() + " while processing a non-cancel request");
-                StoreManager sm = StoreManager.getInstance();
-                sm.delete(getBlob());
+                markBlobForDeletion();
             } else {
                 // must call this explicitly or else new part won't be added...
                 mm.setContent(mmp);
-                
                 mm.saveChanges();
-                
                 storeUpdatedBlob(mm, volumeId);
             }
         } catch (MessagingException e) {
@@ -1149,7 +1192,6 @@ public abstract class CalendarItem extends MailItem {
         } catch (IOException e) {
             throw ServiceException.FAILURE("IOException", e);
         }
-        
     }
 
     public static class ReplyInfo {
@@ -1239,7 +1281,7 @@ public abstract class CalendarItem extends MailItem {
             for (int i = 0; i < mReplies.size(); i++) {
                 String fn = FN_REPLY_INFO + i;
                 
-                meta.put(fn, ((ReplyInfo)(mReplies.get(i))).encodeAsMetadata());
+                meta.put(fn, mReplies.get(i).encodeAsMetadata());
             }
             return meta;
         }
@@ -1255,7 +1297,7 @@ public abstract class CalendarItem extends MailItem {
             return toRet;
         }
         
-        void removeObsceleteEntries(RecurId recurId, int seqNo, long dtStamp) {
+        void removeObsoleteEntries(RecurId recurId, int seqNo, long dtStamp) {
             for (Iterator iter = mReplies.iterator(); iter.hasNext();) {
                 ReplyInfo cur = (ReplyInfo)iter.next();
                 
@@ -1478,7 +1520,7 @@ public abstract class CalendarItem extends MailItem {
      * @return
      * @throws ServiceException
      */
-    public List /*ReplyInfo*/ getReplyInfo(Invite inv) {
+    public List<ReplyInfo> getReplyInfo(Invite inv) {
         return mReplyList.getReplyInfo(inv);
     }
     
@@ -1493,7 +1535,7 @@ public abstract class CalendarItem extends MailItem {
     public String getEffectivePartStat(Invite inv, Instance inst) throws ServiceException {
         Account acct = getMailbox().getAccount();
         ZAttendee at = mReplyList.getEffectiveAttendee(acct, inv, inst);
-        if (at == null || inv.isOrganizer()) {
+        if (at == null || inv.isOrganizer(at)) {
             return inv.getPartStat();
         }
 
@@ -1527,7 +1569,7 @@ public abstract class CalendarItem extends MailItem {
         mReplyList.modifyPartStat(acctOrNull, recurId, cnStr, addressStr, cutypeStr, roleStr, partStatStr, needsReply, seqNo, dtStamp);
     }
     
-    void processNewInviteReply(Invite reply, boolean force)
+    public boolean processNewInviteReply(Invite reply, boolean force)
     throws ServiceException {
         if (!canAccess(ACL.RIGHT_ACTION))
             throw ServiceException.PERM_DENIED("you do not have sufficient permissions to change this appointment/task's state");
@@ -1561,7 +1603,7 @@ public abstract class CalendarItem extends MailItem {
                     
                     sLog.info("Invite-Reply "+reply.toString()+" is outdated, ignoring!");
                     // this reply is OLD, ignore it
-                    return;
+                    return false;
                 }
                 
                 // update the ATTENDEE record in the invite
@@ -1586,75 +1628,35 @@ public abstract class CalendarItem extends MailItem {
         if (dirty) {
             saveMetadata();
             getMailbox().markItemModified(this, Change.MODIFIED_INVITE);
+            return true;
+        } else {
+            return false;
         }
     }
     
     public InputStream getRawMessage() throws ServiceException {
         return MessageCache.getRawContent(this);
     }
-    
-//    void appendRawCalendarData(Calendar cal) throws ServiceException {
-//        for (Iterator invIter = mInvites.iterator(); invIter.hasNext();) {
-//            Invite inv = (Invite)invIter.next();
-//            
-////            Calendar invCal = getCalendar(inv.getMailItemId());
-////            Calendar invCal = inv.toICalendar();
-//            
-////            for (Iterator compIter = invCal.getComponents().iterator(); compIter.hasNext();) {
-////                Component comp = (Component)compIter.next();
-////                cal.getComponents().add(comp);
-////            }
-//            Component comp = inv.toVEvent();
-//            cal.getComponents().add(comp);
-//        }
-//    }
-    
 
-    void appendRawCalendarData(ZVCalendar cal, boolean useOutlookCompatMode)
+    void appendRawCalendarData(ZVCalendar cal,
+                               boolean useOutlookCompatMode,
+                               boolean ignoreErrors)
     throws ServiceException {
         for (Iterator invIter = mInvites.iterator(); invIter.hasNext();) {
             Invite inv = (Invite)invIter.next();
-            
-//            Calendar invCal = getCalendar(inv.getMailItemId());
-//            Calendar invCal = inv.toICalendar();
-            
-//            for (Iterator compIter = invCal.getComponents().iterator(); compIter.hasNext();) {
-//                Component comp = (Component)compIter.next();
-//                cal.getComponents().add(comp);
-//            }
-//            Component comp = inv.toVEvent();
-//            cal.getComponents().add(comp);
-            cal.addComponent(inv.newToVComponent(useOutlookCompatMode));
+            try {
+                cal.addComponent(inv.newToVComponent(useOutlookCompatMode));
+            } catch (ServiceException e) {
+                if (ignoreErrors) {
+                    ZimbraLog.calendar.warn(
+                            "Error retrieving iCalendar data for item " +
+                            inv.getMailItemId() + ": " + e.getMessage(), e);
+                } else
+                    throw e;
+            }
         }
     }
     
-    
-//    Calendar getCalendar(int invId) throws ServiceException {
-//        try {
-//            MimeMessage mm = getMimeMessage(invId);
-//            
-//            List parts = Mime.getParts(mm);
-//            for (int i=0; i<parts.size(); i++) {
-//                MPartInfo partInfo = (MPartInfo) parts.get(i);
-//                if (partInfo.getContentType().match(Mime.CT_TEXT_CALENDAR)) {
-//                    java.io.InputStream is = partInfo.getMimePart().getInputStream();
-//                    CalendarBuilder builder = new CalendarBuilder();
-//                    Calendar iCal = builder.build(is);
-//                    return iCal;
-//                }
-//            }
-//            throw ServiceException.FAILURE("Could not parse detailed iCalendar data for mailbox "+
-//                    getMailboxId()+" calItem "+getId(), null);
-//        } catch (IOException e) {
-//            throw ServiceException.FAILURE("reading mime message", e);
-//        } catch (ParserException e) {
-//            throw ServiceException.FAILURE("parsing iCalendar", e);
-//        } catch (MessagingException e) {
-//            throw ServiceException.FAILURE("reading mime message", e);
-//        }
-//    }
-    
-
     public MimeMessage getMimeMessage() throws ServiceException {
         InputStream is = null;
         MimeMessage mm = null;

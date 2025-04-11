@@ -1,27 +1,14 @@
-/*
- * ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
- * 
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 ("License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.zimbra.com/license
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * The Original Code is: Zimbra Collaboration Suite Server.
- * 
- * The Initial Developer of the Original Code is Zimbra, Inc.
- * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
- * All Rights Reserved.
- * 
- * Contributor(s):
- * 
- * ***** END LICENSE BLOCK *****
+/**
+ * $RCSfile: OutgoingServerSession.java,v $
+ * $Revision: 3188 $
+ * $Date: 2005-12-12 00:28:19 -0300 (Mon, 12 Dec 2005) $
+ *
+ * Copyright (C) 2004 Jive Software. All rights reserved.
+ *
+ * This software is published under the terms of the GNU Public License (GPL),
+ * a copy of which is included in this distribution.
  */
+
 package org.jivesoftware.wildfire.server;
 
 import com.jcraft.jzlib.JZlib;
@@ -38,6 +25,7 @@ import org.jivesoftware.wildfire.auth.UnauthorizedException;
 import org.jivesoftware.wildfire.net.DNSUtil;
 import org.jivesoftware.wildfire.net.MXParser;
 import org.jivesoftware.wildfire.net.SocketConnection;
+import org.jivesoftware.wildfire.net.StdSocketConnection;
 import org.jivesoftware.wildfire.spi.BasicStreamIDFactory;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -184,13 +172,12 @@ public class OutgoingServerSession extends Session {
                             int index = hostname.indexOf('.');
                             while (index > -1 && index < hostname.length()) {
                                 String newHostname = hostname.substring(index + 1);
-                                String serverName = XMPPServer.getInstance().getServerInfo()
-                                        .getName();
+                                Collection<String> localNames = XMPPServer.getInstance().getServerNames();
                                 if ("com".equals(newHostname) || "net".equals(newHostname) ||
                                         "org".equals(newHostname) ||
                                         "gov".equals(newHostname) ||
                                         "edu".equals(newHostname) ||
-                                        serverName.equals(newHostname)) {
+                                        localNames.contains(newHostname)) {
                                     return false;
                                 }
                                 session = createOutgoingSession(domain, newHostname, port);
@@ -252,7 +239,7 @@ public class OutgoingServerSession extends Session {
 
         if (useTLS) {
             // Connect to remote server using TLS + SASL
-            SocketConnection connection = null;
+            StdSocketConnection connection = null;
             String realHostname = null;
             int realPort = port;
             Socket socket = new Socket();
@@ -276,7 +263,7 @@ public class OutgoingServerSession extends Session {
 
             try {
                 connection =
-                        new SocketConnection(XMPPServer.getInstance().getPacketDeliverer(), socket,
+                        new StdSocketConnection(XMPPServer.getInstance().getPacketDeliverer(), socket,
                                 false);
 
                 // Send the stream header
@@ -290,7 +277,7 @@ public class OutgoingServerSession extends Session {
 
                 // Set a read timeout (of 5 seconds) so we don't keep waiting forever
                 int soTimeout = socket.getSoTimeout();
-                socket.setSoTimeout(5000);
+                socket.setSoTimeout(RemoteServerManager.getSocketTimeout());
 
                 XMPPPacketReader reader = new XMPPPacketReader();
                 reader.getXPPParser().setInput(new InputStreamReader(socket.getInputStream(),
@@ -366,7 +353,7 @@ public class OutgoingServerSession extends Session {
     }
 
     private static OutgoingServerSession secureAndAuthenticate(String hostname,
-            SocketConnection connection, XMPPPacketReader reader, StringBuilder openingStream,
+            StdSocketConnection connection, XMPPPacketReader reader, StringBuilder openingStream,
             String domain) throws Exception {
         Element features;
         Log.debug("OS - Indicating we want TLS to " + hostname);

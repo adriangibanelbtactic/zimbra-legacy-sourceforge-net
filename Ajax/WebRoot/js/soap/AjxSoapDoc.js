@@ -16,7 +16,7 @@
 
 
 // Don't directly instantiate SoapDoc, use one of the create factory methods instead
-function AjxSoapDoc() {
+AjxSoapDoc = function() {
 	this._soapURI = AjxSoapDoc._SOAP_URI;
 }
 
@@ -141,7 +141,8 @@ function(name, value, parent, namespace) {
 			for (i in value)
 				this.set(i, value[i], p);
 		} else {
-			if (AjxEnv.isSafari) value = AjxStringUtil.xmlEncode(value);
+			if (AjxEnv.isSafari && !AjxEnv.isSafariNightly)
+				value = AjxStringUtil.xmlEncode(value);
 			p.appendChild(doc.createTextNode(value));
 		}
 	}

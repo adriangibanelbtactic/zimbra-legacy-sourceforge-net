@@ -28,11 +28,14 @@ import java.util.List;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.account.Account;
-import com.zimbra.cs.mailbox.DataSourceManager;
-import com.zimbra.cs.mailbox.ImportStatus;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.cs.account.DataSource;
+import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.datasource.DataSourceManager;
+import com.zimbra.cs.datasource.ImportStatus;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -43,19 +46,22 @@ public class GetImportStatus extends MailDocumentHandler {
     throws ServiceException, SoapFaultException {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Account account = getRequestedAccount(zsc);
+        Provisioning prov = Provisioning.getInstance();
         
         List<ImportStatus> statusList = DataSourceManager.getImportStatus(account);
-        Element response = zsc.createElement(MailService.GET_IMPORT_STATUS_RESPONSE);
+        Element response = zsc.createElement(MailConstants.GET_IMPORT_STATUS_RESPONSE);
 
         for (ImportStatus status : statusList) {
-            Element ePop3 = response.addElement(MailService.E_DS_POP3);
-            ePop3.addAttribute(MailService.A_ID, status.getDataSourceId());
-            ePop3.addAttribute(MailService.A_DS_IS_RUNNING, status.isRunning());
+            DataSource ds = prov.get(
+                account, Provisioning.DataSourceBy.id, status.getDataSourceId());
+            Element eDataSource = response.addElement(ds.getType().name());
+            eDataSource.addAttribute(MailConstants.A_ID, status.getDataSourceId());
+            eDataSource.addAttribute(MailConstants.A_DS_IS_RUNNING, status.isRunning());
             
             if (status.hasRun() && !status.isRunning()) { // Has finished at least one run
-                ePop3.addAttribute(MailService.A_DS_SUCCESS, status.getSuccess());
+                eDataSource.addAttribute(MailConstants.A_DS_SUCCESS, status.getSuccess());
                 if (!status.getSuccess() && status.getError() != null) { // Failed, error available
-                    ePop3.addAttribute(MailService.A_DS_ERROR, status.getError());
+                    eDataSource.addAttribute(MailConstants.A_DS_ERROR, status.getError());
                 }
             }
         }

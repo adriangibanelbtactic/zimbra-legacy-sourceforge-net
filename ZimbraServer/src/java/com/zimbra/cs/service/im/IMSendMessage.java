@@ -27,8 +27,9 @@ package com.zimbra.cs.service.im;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
+import com.zimbra.common.soap.IMConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapFaultException;
 
 import com.zimbra.cs.im.IMAddr;
 import com.zimbra.cs.im.IMMessage;
@@ -39,26 +40,25 @@ import com.zimbra.soap.ZimbraSoapContext;
 
 public class IMSendMessage extends IMDocumentHandler {
 
-    public Element handle(Element request, Map<String, Object> context) throws ServiceException, SoapFaultException 
-    {
+    public Element handle(Element request, Map<String, Object> context) throws ServiceException, SoapFaultException {
         ZimbraSoapContext lc = getZimbraSoapContext(context);
 
-        Element response = lc.createElement(IMService.IM_SEND_MESSAGE_RESPONSE);
+        Element response = lc.createElement(IMConstants.IM_SEND_MESSAGE_RESPONSE);
 
-        Element msgElt = request.getElement(IMService.E_MESSAGE);
+        Element msgElt = request.getElement(IMConstants.E_MESSAGE);
         
-        String threadId = msgElt.getAttribute(IMService.A_THREAD_ID, null);
-        String addr = msgElt.getAttribute(IMService.A_ADDRESS);
+        String threadId = msgElt.getAttribute(IMConstants.A_THREAD_ID, null);
+        String addr = msgElt.getAttribute(IMConstants.A_ADDRESS);
         
         String subject = null;
         String body = null;
         
-        Element subjElt = msgElt.getOptionalElement(IMService.E_SUBJECT);
+        Element subjElt = msgElt.getOptionalElement(IMConstants.E_SUBJECT);
         if (subjElt != null) {
             subject = subjElt.getText();
         }
         
-        Element bodyElt = msgElt.getOptionalElement(IMService.E_BODY);
+        Element bodyElt = msgElt.getOptionalElement(IMConstants.E_BODY);
         if (bodyElt != null) {
             body = bodyElt.getText();
         }
@@ -75,7 +75,7 @@ public class IMSendMessage extends IMDocumentHandler {
             persona.sendMessage(oc, new IMAddr(addr), threadId, msg);
         }
         
-        response.addAttribute(IMService.A_THREAD_ID, threadId);
+        response.addAttribute(IMConstants.A_THREAD_ID, threadId);
         
         return response;        
     }

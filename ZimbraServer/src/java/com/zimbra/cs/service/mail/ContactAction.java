@@ -32,21 +32,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapFaultException;
+import com.zimbra.common.util.Pair;
 import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
+import com.zimbra.cs.mailbox.Contact.Attachment;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
-import com.zimbra.cs.operation.ContactActionOperation;
-import com.zimbra.cs.operation.Operation.Requester;
+import com.zimbra.cs.mime.ParsedContact;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.session.SessionCache;
-import com.zimbra.cs.session.SoapSession;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapFaultException;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -61,8 +62,8 @@ public class ContactAction extends ItemAction {
 	public Element handle(Element request, Map<String, Object> context) throws ServiceException, SoapFaultException {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
 
-        Element action = request.getElement(MailService.E_ACTION);
-        String operation = action.getAttribute(MailService.A_OPERATION).toLowerCase();
+        Element action = request.getElement(MailConstants.E_ACTION);
+        String operation = action.getAttribute(MailConstants.A_OPERATION).toLowerCase();
 
         if (operation.endsWith(OP_READ) || operation.endsWith(OP_SPAM))
             throw ServiceException.INVALID_REQUEST("invalid operation on contact: " + operation, null);
@@ -72,46 +73,48 @@ public class ContactAction extends ItemAction {
         else
             successes = handleCommon(context, request, operation, MailItem.TYPE_CONTACT);
 
-        Element response = zsc.createElement(MailService.CONTACT_ACTION_RESPONSE);
-        Element actionOut = response.addUniqueElement(MailService.E_ACTION);
-        actionOut.addAttribute(MailService.A_ID, successes);
-        actionOut.addAttribute(MailService.A_OPERATION, operation);
+        Element response = zsc.createElement(MailConstants.CONTACT_ACTION_RESPONSE);
+        Element actionOut = response.addUniqueElement(MailConstants.E_ACTION);
+        actionOut.addAttribute(MailConstants.A_ID, successes);
+        actionOut.addAttribute(MailConstants.A_OPERATION, operation);
         return response;
     }
 
     private String handleContact(Map<String,Object> context, Element request, String operation)
     throws ServiceException, SoapFaultException {
-        Element action = request.getElement(MailService.E_ACTION);
+        Element action = request.getElement(MailConstants.E_ACTION);
 
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
-        SoapSession session = (SoapSession) zsc.getSession(SessionCache.SESSION_SOAP);
         OperationContext octxt = zsc.getOperationContext();
-
 
         // figure out which items are local and which ones are remote, and proxy accordingly
         ArrayList<Integer> local = new ArrayList<Integer>();
         HashMap<String, StringBuffer> remote = new HashMap<String, StringBuffer>();
-        partitionItems(zsc, action.getAttribute(MailService.A_ID), local, remote);
+        partitionItems(zsc, action.getAttribute(MailConstants.A_ID), local, remote);
         StringBuffer successes = proxyRemoteItems(action, remote, request, context);
 
         if (!local.isEmpty()) {
             String localResults;
             if (operation.equals(OP_UPDATE)) {
                 // duplicating code from ItemAction.java for now...
-                String folderId = action.getAttribute(MailService.A_FOLDER, null);
+                String folderId = action.getAttribute(MailConstants.A_FOLDER, null);
                 ItemId iidFolder = new ItemId(folderId == null ? "-1" : folderId, zsc);
                 if (!iidFolder.belongsTo(mbox))
                     throw ServiceException.INVALID_REQUEST("cannot move item between mailboxes", null);
                 else if (folderId != null && iidFolder.getId() <= 0)
                     throw MailServiceException.NO_SUCH_FOLDER(iidFolder.getId());
-                String flags = action.getAttribute(MailService.A_FLAGS, null);
-                String tags  = action.getAttribute(MailService.A_TAGS, null);
-                byte color = (byte) action.getAttributeLong(MailService.A_COLOR, -1);
-                Map<String, String> fields = ModifyContact.parseFields(action.listElements(MailService.E_ATTRIBUTE));
+                String flags = action.getAttribute(MailConstants.A_FLAGS, null);
+                String tags  = action.getAttribute(MailConstants.A_TAGS, null);
+                byte color = (byte) action.getAttributeLong(MailConstants.A_COLOR, -1);
+                ParsedContact pc = null;
+                if (!action.listElements(MailConstants.E_ATTRIBUTE).isEmpty()) {
+                    Pair<Map<String,String>, List<Attachment>> cdata = CreateContact.parseContact(zsc, action);
+                    pc = new ParsedContact(cdata.getFirst(), cdata.getSecond());
+                }
 
-                localResults = ContactActionOperation.UPDATE(zsc, session, octxt, mbox, Requester.SOAP,
-                                                             local, iidFolder, flags, tags, color, fields).getResult();
+                localResults = ContactActionHelper.UPDATE(zsc, octxt, mbox,
+                                                             local, iidFolder, flags, tags, color, pc).getResult();
             } else {
                 throw ServiceException.INVALID_REQUEST("unknown operation: " + operation, null);
             }

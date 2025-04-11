@@ -31,9 +31,10 @@ package com.zimbra.cs.service.mail;
 import java.util.Map;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.filter.RuleManager;
-import com.zimbra.soap.Element;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
@@ -46,9 +47,9 @@ public class GetRules extends MailDocumentHandler {
 		// FIXME: need to check that account exists
         Account account = getRequestedAccount(lc);
 
-        Element response = lc.createElement(MailService.GET_RULES_RESPONSE);
+        Element response = lc.createElement(MailConstants.GET_RULES_RESPONSE);
         RuleManager mgr = RuleManager.getInstance();
-        Element rules = mgr.getRulesAsXML(response, account);
+        Element rules = mgr.getRulesAsXML(response.getFactory(), account);
         response.addUniqueElement(rules);
         return response;
     }
