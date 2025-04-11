@@ -46,10 +46,18 @@ ZmZimletMgr._RE_REMOTE = /^((https?|ftps?):\x2f\x2f|\x2f)/;
 // Public methods
 //
 
+ZmZimletMgr.prototype.isLoaded = function() {
+    return this.loaded;
+};
+
 ZmZimletMgr.prototype.loadZimlets =
 function(zimletArray, userProps) {
-	if(!zimletArray || !zimletArray.length) {return;}
-	for (var i = 0; i < zimletArray.length; i++)
+	if(!zimletArray || !zimletArray.length) {
+        this.loaded = true;
+        return;
+    }
+
+    for (var i = 0; i < zimletArray.length; i++)
 		this._ZIMLETS_BY_ID[zimletArray[i].zimlet[0].name] = true;
 	for(var i=0; i < zimletArray.length; i++) {
 		var z = new ZmZimletContext(i, zimletArray[i], this._appCtxt);
@@ -69,7 +77,7 @@ function(zimletArray, userProps) {
 		var zimletTree = this._appCtxt.getZimletTree();
 	 	if (!zimletTree) {
 	 		zimletTree = new ZmFolderTree(this._appCtxt, ZmOrganizer.ZIMLET);
-	 		this._appCtxt.setZimletTree(zimletTree);
+	 		this._appCtxt.setTree(ZmOrganizer.ZIMLET, zimletTree);
 	 	}
 	 	zimletTree.reset();
 	 	zimletTree.loadFromJs(panelZimlets, "zimlet");
@@ -195,6 +203,7 @@ ZmZimletMgr.prototype._loadIncludes = function(zimletArray, zimletNames) {
 };
 
 ZmZimletMgr.prototype._finished_loadIncludes = function(zimletNames) {
+    this.loaded = true;
     var zimlets = this.getZimletsHash();
     for (var i = 0; i < zimletNames.length; i++) {
         var name = zimletNames[i];
@@ -224,29 +233,42 @@ ZmZimletMgr.prototype._loadStyles = function(zimletArray, zimletNames) {
 //
 
 ZmZimletMgr.prototype.__getIncludes = function(zimletArray, zimletNames, isJS) {
-    // add remote urls
-    var includes = [];
-    for (var i = 0; i < zimletArray.length; i++) {
-        var zimlet = zimletArray[i].zimlet[0];
-        var links = (isJS ? zimlet.include : zimlet.includeCSS) || [];
-        for (var j = 0; j < links.length; j++) {
-            var url = links[j]._content;
-            if (ZmZimletMgr._RE_REMOTE.test(url)) {
-                var fullurl = [ ZmZimletBase.PROXY, AjxStringUtil.urlComponentEncode(url) ].join("");
-                includes.push(fullurl);
-            }
-        }
-    }
+	// add remote urls
+	var includes = [];
+	for (var i = 0; i < zimletArray.length; i++) {
+		var zimlet = zimletArray[i].zimlet[0];
+		// include messages
+		if (appDevMode) {
+			if (isJS) {
+				includes.push([appContextPath, "/js/msgs/", zimlet.name, ".js"].join(""));
+			}
+		}
+		// include links
+		var links = (isJS ? zimlet.include : zimlet.includeCSS) || [];
+		for (var j = 0; j < links.length; j++) {
+			var url = links[j]._content;
+			if (ZmZimletMgr._RE_REMOTE.test(url)) {
+				var fullurl = [ ZmZimletBase.PROXY, AjxStringUtil.urlComponentEncode(url) ].join("");
+				includes.push(fullurl);
+				continue;
+			}
+			if (appDevMode) {
+				includes.push(["/service/zimlet/", zimlet.name, "/", url].join(""));
+			}
+		}
+	}
 
-    // add link to aggregated files
-    includes.push( [
-        "/service/zimlet/res/zimlet", isJS ? ".js"+appExtension : ".css"
-    ].join("") );
+	// add link to aggregated files
+	if (!appDevMode) {
+		includes.push( [
+			"/service/zimlet/res/zimlet", isJS ? ".js"+appExtension : ".css"
+		].join("") );
+	}
 
-    // add cache killer to each url
-    for (var i = 0; i < includes.length; i++) {
-        includes[i] = [ includes[i], "?v=", cacheKillerVersion ].join("");
-    }
+	// add cache killer to each url
+	for (var i = 0; i < includes.length; i++) {
+		includes[i] = [ includes[i], "?v=", cacheKillerVersion ].join("");
+	}
 
-    return includes;
+	return includes;
 };

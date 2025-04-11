@@ -25,6 +25,7 @@
 package com.zimbra.cs.taglib.tag;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.VoiceConstants;
 import com.zimbra.cs.taglib.ZJspSession;
 import com.zimbra.cs.taglib.bean.ZFolderBean;
 import com.zimbra.cs.taglib.bean.ZTagBean;
@@ -33,6 +34,7 @@ import com.zimbra.cs.zclient.ZMailbox;
 import com.zimbra.cs.zclient.ZSearchFolder;
 import com.zimbra.cs.zclient.ZSearchParams;
 import com.zimbra.cs.zclient.ZTag;
+import com.zimbra.cs.zclient.ZPhoneAccount;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.jsp.JspException;
@@ -40,6 +42,7 @@ import javax.servlet.jsp.JspTagException;
 import javax.servlet.jsp.PageContext;
 import javax.servlet.jsp.jstl.fmt.LocaleSupport;
 import java.io.IOException;
+import java.util.List;
 
 public class ComputeSearchContextTag extends ZimbraSimpleTag {
 
@@ -123,7 +126,7 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
         }
     }
 
-    private ZSearchParams determineParams(SearchContext result, ServletRequest req, int so, ZMailbox mailbox) throws ServiceException {
+    private ZSearchParams determineParams(SearchContext result, ServletRequest trareq, int so, ZMailbox mailbox) throws ServiceException {
         //String so = req.getParameter(QP_SEARCH_OFFSET);
         ZSearchParams params = new ZSearchParams(result.getQuery());
 
@@ -182,7 +185,7 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
         if (sq == null && sti == null && sfi == null) {
             if (ZSearchParams.TYPE_CONTACT.equals(mTypes))
                 sfi = ZFolder.ID_CONTACTS;
-            else {
+            else if (!ZSearchParams.TYPE_VOICE_MAIL.equals(mTypes)) {
                 if (mailbox.getFeatures().getInitialSearchPreference()) {
                     sq = mailbox.getPrefs().getMailInitialSearch();
                     if (sq != null && sq.equalsIgnoreCase("in:inbox")) {
@@ -196,6 +199,12 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
 
         result.setTypes(mTypes);
         
+        if (ZSearchParams.TYPE_VOICE_MAIL.equals(st) ||
+            ZSearchParams.TYPE_CALL.equals(st)) {
+            determineVoiceQuery(mailbox, sq, result);
+            return;
+        }
+
         if (sq != null) {
             result.setTitle(sq);
             result.setBackTo(LocaleSupport.getLocalizedMessage(pageContext, "backToSearch"));
@@ -233,5 +242,53 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
         throw new JspTagException("unable to determine query");
     }
 
- 
+    private void determineVoiceQuery(ZMailbox mailbox, String sq, SearchContext result) throws ServiceException {
+        List<ZPhoneAccount> accounts = mailbox.getAllPhoneAccounts();
+        ZPhoneAccount account = getAccountFromVoiceQuery(mailbox, sq);
+        String query = sq;
+        if (query == null && account != null) {
+            query = "phone:" + account.getPhone().getName();
+        }
+        result.setQuery(query);
+        if (account != null) {
+            String folderName = VoiceConstants.FNAME_VOICEMAILINBOX;
+            if (sq != null) {
+                if (sq.indexOf(VoiceConstants.FNAME_MISSEDCALLS) != -1) {
+                    folderName = VoiceConstants.FNAME_MISSEDCALLS;
+                }
+                else if (sq.indexOf(VoiceConstants.FNAME_ANSWEREDCALLS) != -1) {
+                    folderName = VoiceConstants.FNAME_ANSWEREDCALLS;
+                }
+                else if (sq.indexOf(VoiceConstants.FNAME_PLACEDCALLS) != -1) {
+                    folderName = VoiceConstants.FNAME_PLACEDCALLS;
+                }
+                else if (sq.indexOf(VoiceConstants.FNAME_TRASH) != -1) {
+                    folderName = VoiceConstants.FNAME_TRASH;
+                }
+            }
+            ZFolder folder = account.getRootFolder().getSubFolderByPath(folderName);
+            result.setFolder(new ZFolderBean(folder));
+            result.setSelectedId(folder.getId());
+            result.setTitle(folder.getName());
+        }
+    }
+
+    private ZPhoneAccount getAccountFromVoiceQuery(ZMailbox mailbox, String query) throws ServiceException {
+        if (query != null) {
+            String phone = "phone:";
+            int match = query.indexOf(phone);
+            if (match != -1) {
+                int startIndex = match + phone.length();
+                int endIndex = query.indexOf(' ', startIndex);
+                if (endIndex == -1) {
+                    endIndex = query.length();
+                }
+                String name = query.substring(startIndex, endIndex);
+                return mailbox.getPhoneAccount(name);
+            }
+        }
+        List<ZPhoneAccount> accounts = mailbox.getAllPhoneAccounts();
+        return (accounts.size() > 0) ? accounts.get(0) : null;
+    }
+
 }

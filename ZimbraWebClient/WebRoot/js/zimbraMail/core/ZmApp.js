@@ -31,10 +31,10 @@
 * functionality, such as mail, address book, or calendar. Looked at another way, an app is a 
 * collection of one or more controllers.
 *
-* @param name				the name of the app
-* @param appCtxt			global app context
-* @param container			the element that contains everything but the banner (aka _composite)
-* @param parentController	this is an optional parent window controller set by the child window
+* @param name				[string]		the name of the app
+* @param appCtxt			[ZmAppCtxt]		global app context
+* @param container			[DwtControl]	control that contains components
+* @param parentController	[ZmController]*	parent window controller (set by the child window)
 */
 ZmApp = function(name, appCtxt, container, parentController) {
 
@@ -45,19 +45,23 @@ ZmApp = function(name, appCtxt, container, parentController) {
 	this._appViewMgr = appCtxt.getAppViewMgr();
 	this._container = container;
 	this._parentController = parentController;
+	this._active = false;
 
 	this._deferredFolders = [];
 	this._deferredFolderHash = {};
 	this._deferredNotifications = [];
 	
 	this._defineAPI();
-	if (!parentController)
+	if (!parentController) {
 		this._registerSettings();
+	}
 	this._registerOperations();
 	this._registerItems();
 	this._registerOrganizers();
 	this._setupSearchToolbar();
 	this._registerApp();
+
+	this._opc = this._appCtxt.getOverviewController();
 }
 
 // app information ("_R" means "reverse map")
@@ -169,6 +173,7 @@ function(app, params) {
 	
 	if (params.actionCodes) {
 		for (var ac in params.actionCodes) {
+			if (!ac) { continue; }
 			ZmApp.ACTION_CODES_R[ac] = app;
 			ZmApp.ACTION_CODES[ac] = params.actionCodes[ac];
 		}
@@ -176,6 +181,7 @@ function(app, params) {
 	
 	if (params.newItemOps) {
 		for (var op in params.newItemOps) {
+			if (!op) { continue; }
 			ZmApp.OPS_R[op] = app;
 			ZmOperation.NEW_ITEM_OPS.push(op);
 			ZmOperation.NEW_ITEM_KEY[op] = params.newItemOps[op];
@@ -183,6 +189,7 @@ function(app, params) {
 	}
 	if (params.newOrgOps) {
 		for (var op in params.newOrgOps) {
+			if (!op) { continue; }
 			ZmApp.OPS_R[op] = app;
 			ZmOperation.NEW_ORG_OPS.push(op);
 			ZmOperation.NEW_ORG_KEY[op] = params.newOrgOps[op];
@@ -196,7 +203,7 @@ function(app, params) {
 	}
 };
 
-// Public instance methodss
+// Public instance methods
 
 ZmApp.prototype.toString = 
 function() {
@@ -215,12 +222,12 @@ ZmApp.prototype._registerPrefs		= function() {};							// called when Preference
 
 // Functions that apps can override in response to certain events
 ZmApp.prototype.startup				= function(result) {};						// run during startup
-ZmApp.prototype.refresh				= function(refresh) {};						// run when a <refresh> block arrives
 ZmApp.prototype.preNotify			= function(notify) {};						// run before handling notifications
 ZmApp.prototype.deleteNotify		= function(ids) {};							// run on delete notifications
 ZmApp.prototype.createNotify		= function(list) {};						// run on create notifications
 ZmApp.prototype.modifyNotify		= function(list) {};						// run on modify notifications
 ZmApp.prototype.postNotify			= function(notify) {};						// run after handling notifications
+ZmApp.prototype.refresh				= function(refresh) {};						// run when a <refresh> block arrives
 ZmApp.prototype.handleOp			= function(op, params) {};					// handle an operation
 
 /**
@@ -268,12 +275,169 @@ function(type, obj, tree, path) {
 };
 
 /**
+ * Creates the overview content for this app. The default implementation creates a ZmOverview
+ * with standard options. Other apps may want to use different options, or create a DwtAccordion
+ * or DwtComposite instead.
+ * 
+ * @param id	[string]*	unique identifier for overview object
+ */
+ZmApp.prototype.getOverviewPanelContent =
+function() {
+	if (!this._overviewPanelContent) {
+		var params = this._getOverviewParams();
+		var overview = this._overviewPanelContent = this._opc.createOverview(params);
+		overview.set(this._getOverviewTrees());
+	}
+	return this._overviewPanelContent;
+};
+
+/**
+ * Sets the overview tree to display this app's particular overview content.
+ * 
+ * @param reset		[boolean]*		if true, clear the content first
+ */
+ZmApp.prototype.setOverviewPanelContent =
+function(reset) {
+	if (reset) {
+		this._overviewPanelContent = null;
+	}
+	this._appCtxt.getAppViewMgr().setComponent(ZmAppViewMgr.C_TREE, this.getOverviewPanelContent());
+};
+
+/**
+ * Returns the ID of the top-level overview object.
+ */
+ZmApp.prototype.getOverviewPanelContentId =
+function() {
+	return this._name;
+};
+
+/**
+ * Returns the current ZmOverview, if any. Subclasses should ensure that a ZmOverview is returned.
+ */
+ZmApp.prototype.getOverview =
+function() {
+	return this._opc.getOverview(this.getOverviewId());
+};
+
+/**
+ * Resets the current ZmOverview, if any.
+ * 
+ * @param overviewId	[string]*		ID of overview to reset
+ */
+ZmApp.prototype.resetOverview =
+function(overviewId) {
+	var overview = overviewId ? this._opc.getOverview(overviewId) : this.getOverview();
+	if (overview) {
+		overview.clear();
+		overview.set(this._getOverviewTrees());
+	}
+};
+
+/**
+ * Returns the ID of the current ZmOverview, if any.
+ */
+ZmApp.prototype.getOverviewId =
+function() {
+	return this.getOverviewPanelContentId();
+};
+
+/**
+ * Returns a hash of params with the standard overview options.
+ */
+ZmApp.prototype._getOverviewParams =
+function() {
+	var params = {overviewId:this.getOverviewPanelContentId(), posStyle:Dwt.ABSOLUTE_STYLE,
+				  selectionSupported:true, actionSupported:true, dndSupported:true,
+				  showUnread:true, hideEmpty:this._getHideEmpty()};
+	return params;	
+};
+
+/**
+ * Returns the list of trees to show in the overview for this app. Don't show Folders unless
+ * mail is enabled. Other organizer types won't be created unless their apps are enabled, so
+ * we don't need to check for them.
+ */
+ZmApp.prototype._getOverviewTrees =
+function() {
+	var list = ZmApp.OVERVIEW_TREES[this._name];
+	var newList = [];
+	for (var i = 0, count = list.length; i < count; i++) {
+		if ((list[i] == ZmOrganizer.FOLDER) && !this._appCtxt.get(ZmSetting.MAIL_ENABLED)) { continue; }
+		newList.push(list[i]);
+	}
+	return newList;
+};
+
+/**
+ * Returns a hash detailing which tree views to not show if they are empty.
+ */
+ZmApp.prototype._getHideEmpty =
+function() {
+	var hideEmpty = {};
+	hideEmpty[ZmOrganizer.SEARCH] = true;
+	hideEmpty[ZmOrganizer.ZIMLET] = true;
+
+	return hideEmpty;
+};
+
+/**
+ * Handles a click on on accordion item.
+ * 
+ * @param ev	[DwtUiEvent]	the click event
+ */
+ZmApp.prototype._accordionSelectionListener =
+function(ev) {
+	var accordionItem = ev.detail;
+	if (accordionItem == this.accordionItem) { return false; }
+	if (accordionItem.data.appName != this._name) { return false; }
+
+	this.accordionItem = accordionItem;
+
+	DBG.println(AjxDebug.DBG1, "Accordion switching to item: " + accordionItem.title);
+	return true;
+};
+
+/**
+ * Expands an accordion item by adding an overview to it and then populating the overview.
+ * 
+ * @param item		[DwtAccordionItem]		item to expand
+ */
+ZmApp.prototype._activateAccordionItem =
+function(item) {
+	this.accordionItem = item;
+	var accordion = item.accordion;
+	accordion.expandItem(item.id);
+	var overviewId = this.getOverviewId();
+	if (!this._opc.getOverview(overviewId)) {
+		var params = this._getOverviewParams();
+		params.overviewId = overviewId;
+		var overview = this._opc.createOverview(params);
+		overview.set(this._getOverviewTrees());
+		accordion.setItemContent(item.id, overview);
+	}
+};
+
+/**
  * Default function to run after an app's main package has been loaded.
  */
 ZmApp.prototype._postLoad =
 function(type) {
 	this._createDeferredFolders(type);
 	this._handleDeferredNotifications();
+};
+
+/**
+ * Standard method for handling arrival of <refresh> block by resetting
+ * the overview content.
+ * 
+ * @param refresh	[object]	refresh object (JSON)
+ */
+ZmApp.prototype._handleRefresh =
+function(refresh) {
+	if (this._overviewPanelContent) {
+		this.resetOverview();
+	}
 };
 
 /**
@@ -362,7 +526,7 @@ function(create, org) {
 	}
 };
 
-// Abstract methods
+// Abstract/protected methods
 
 /**
 * Launches an app, which creates a view and shows it.
@@ -379,11 +543,15 @@ function(callback) {
 */
 ZmApp.prototype.activate =
 function(active) {
-}
+	this._active = active;
+	if (active) {
+		this.setOverviewPanelContent();
+	}
+};
 
 /**
 * Clears an app's state.
 */
 ZmApp.prototype.reset =
 function(active) {
-}
+};

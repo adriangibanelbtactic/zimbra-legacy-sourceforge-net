@@ -28,9 +28,9 @@ ZmChatMultiWindowView = function(parent, className, posStyle, controller) {
 	className = className ? className : "ZmChatMultiWindowView";
 	posStyle = posStyle ? posStyle : Dwt.ABSOLUTE_STYLE;
 	ZmChatBaseView.call(this, parent, className, posStyle, controller, ZmController.IM_CHAT_TAB_VIEW);
-	var dropTgt = new DwtDropTarget(["ZmRosterTreeItem", "ZmRosterTreeGroup"]);
+	var dropTgt = new DwtDropTarget([ "ZmRosterItem" ]);
 	this.setDropTarget(dropTgt);
-	dropTgt.addDropListener(new AjxListener(this, this._dropListener));
+	dropTgt.addDropListener(new AjxListener(this, this._dropListener, [ dropTgt ]));
 
 	this.setScrollStyle(DwtControl.CLIP);
 //	this.setScrollStyle(DwtControl.SCROLL);
@@ -67,8 +67,14 @@ ZmChatMultiWindowView.prototype.getShellWindowManager = function() {
 	return this._shellWm;
 };
 
+ZmChatMultiWindowView.prototype.getActiveWM = function() {
+	return this._appCtxt.getCurrentAppName() != "IM"
+		? this.getShellWindowManager()
+		: this.getWindowManager();
+};
+
 ZmChatMultiWindowView.prototype.__createChatWidget = function(chat, win) {
-	var activeApp = this._appCtxt.getAppController().getActiveApp();
+	var activeApp = this._appCtxt.getCurrentAppName();
 	if (!win)
 		win = this.__useTab;
 	this.__useTab = null;
@@ -109,8 +115,78 @@ ZmChatMultiWindowView.prototype._postSet = function() {
 
 ZmChatMultiWindowView.prototype._createHtml =
 function() {
-   // this._content = new DwtComposite(this, "ZmChatMultiWindow", Dwt.RELATIVE_STYLE);
-    //this.getHtmlElement().innerHTML = "<div id='"+this._contentId+"'></div>";
+	var gws = AjxDispatcher.run("GetRoster").getGateways();
+	var cont = new DwtComposite(this, null, Dwt.ABSOLUTE_STYLE);
+	var s = cont.getHtmlElement().style;
+	// s.left = "100%";
+	// s.top = "100%";
+	s.right = s.bottom = "20px";
+	var toolbar = new DwtToolBar(cont, null, null, 10);
+	for (var i = 1; i < gws.length; ++i) {
+		var gw = gws[i];
+
+		var tb2 = new DwtComposite(toolbar);
+
+		var btnReconnect = new DwtButton(tb2, null);
+		btnReconnect.setVisibility(gw.getState() == ZmImGateway.STATE.BOOTED_BY_OTHER_LOGIN);
+		btnReconnect.setText(ZmMsg.imReconnect);
+
+		btnReconnect.addSelectionListener(new AjxListener(this, function(gw, ev) {
+			gw.reconnect();
+		}, [ gw ]));
+
+		var cls = "ZmChatGwIcon Img" + AjxStringUtil.capitalize(gw.type) + "Big";
+		var btn = new DwtControl(tb2, cls);
+		btn._setMouseEventHdlrs();
+		btn.condClassName(!gw.isOnline(), "ZmChatGwIcon-offline");
+		btn.setToolTipContent("-");
+		btn.gateway = gw;
+
+		btn.getToolTipContent = function() {
+			var gw = this.gateway;
+			var nick = gw.isOnline();
+			var tooltip;
+			if (nick)
+				tooltip = ZmMsg.imGwOnlineTooltip;
+			else
+				tooltip = ZmMsg.imGwOfflineTooltip;
+			return AjxMessageFormat.format(tooltip, [ AjxStringUtil.capitalize(gw.type), nick ]);
+		};
+
+		btn.addListener(DwtEvent.ONMOUSEDOWN, new AjxListener(this, function(gw, ev) {
+			var imApp = this._appCtxt.getApp(ZmApp.IM);
+			var treeController = imApp.getRosterTreeController();
+			treeController._imGatewayLoginListener({ gwType : gw.type });
+		}, [ gw ]));
+
+		btn.addListener(DwtEvent.ONMOUSEOVER, new AjxListener(btn, function(ev) {
+			this.addClassName("ZmChatGwIcon-hover");
+		}));
+
+		btn.addListener(DwtEvent.ONMOUSEOUT, new AjxListener(btn, function(ev) {
+			this.delClassName("ZmChatGwIcon-hover");
+		}));
+
+		gw.addListener(ZmImGateway.EVENT_SET_STATE,
+			       new AjxListener(this, function(gwBtn, btnReconnect, ev) {
+				       var gw = ev.gw;
+				       gwBtn.condClassName(!gw.isOnline(), "ZmChatGwIcon-offline");
+				       btnReconnect.setVisibility(gw.getState() == ZmImGateway.STATE.BOOTED_BY_OTHER_LOGIN);
+			// no blinking -- looks ugly.
+// 			if (gw.isOnline()) {
+// 				var blink = 4;
+// 				var timer = setInterval(function() {
+// 					this.setVisibility(!(--blink & 1));
+// 					if (blink == 0)
+// 						clearInterval(timer);
+// 				}, 100);
+// 			}
+			       }, [ btn, btnReconnect ]));
+
+	}
+	// var size = toolbar.getSize();
+	// cont.marginLeft = -size.x + "px";
+	// cont.marginTop = -size.y + "px";
 };
 
 /**
@@ -211,15 +287,11 @@ function(chat) {
 	this._controller.endChat(chat);
 };
 
-ZmChatMultiWindowView.prototype._dropListener =
-function(ev) {
+ZmChatMultiWindowView.prototype._dropListener = function(dropTgt, ev) {
+	if (!ev.srcData)
+		return false;
 	if (ev.action == DwtDropEvent.DRAG_ENTER) {
-		var srcData = ev.srcData;
-		if (!( (srcData instanceof ZmRosterTreeItem) ||
-			(srcData instanceof ZmRosterTreeGroup) )) {
-			ev.doIt = false;
-			return;
-		}
+		ev.doIt = dropTgt.isValidTarget(ev.srcData);
 	} else if (ev.action == DwtDropEvent.DRAG_DROP) {
         	var srcData = ev.srcData;
 		var mouseEv = DwtShell.mouseEvent;
@@ -229,12 +301,13 @@ function(ev) {
 			       y: mouseEv.docY - pos.y };
 		this._nextInitX = newPos.x
             	this._nextInitY = newPos.y;
-		if (srcData instanceof ZmRosterTreeItem) {
-			this._controller.chatWithRosterItem(srcData.getRosterItem());
+		if (srcData instanceof ZmRosterItem) {
+			this._controller.chatWithRosterItem(srcData);
 		}
-		if (srcData instanceof ZmRosterTreeGroup) {
-			this._controller.chatWithRosterItems(srcData.getRosterItems(), srcData.getName()+" "+ZmMsg.imGroupChat);
-		}
+		// FIXME: not implemented
+		// 		if (srcData instanceof ZmRosterTreeGroup) {
+		// 			this._controller.chatWithRosterItems(srcData.getRosterItems(), srcData.getName()+" "+ZmMsg.imGroupChat);
+		// 		}
 	}
 };
 

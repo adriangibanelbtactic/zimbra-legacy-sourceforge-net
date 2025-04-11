@@ -51,10 +51,14 @@ ZmShortcutsPage = function(parent, appCtxt, view, controller) {
 	this._appCtxt = appCtxt;
 	this._view = view; // which preferences page we are
 	this._controller = controller;
-	this._title = [ZmMsg.zimbraTitle, ZmMsg.options, ZmPrefView.TAB_NAME[view]].join(": ");
-	this._prefId = ZmPrefView.PREFS[ZmPrefView.SHORTCUTS][0]; // our sole pref
+    var section = ZmPref.getPrefSectionMap()[view];
+    this._title = [ZmMsg.zimbraTitle, ZmMsg.options, section.title].join(": ");
+	this._prefId = section.prefs[0]; // our sole pref
 
-	this._organizers = [ZmOrganizer.FOLDER];
+	this._organizers = [];
+	if (appCtxt.get(ZmSetting.MAIL_ENABLED)) {
+		this._organizers.push(ZmOrganizer.FOLDER);
+	}
 	if (appCtxt.get(ZmSetting.SAVED_SEARCHES_ENABLED)) {
 		this._organizers.push(ZmOrganizer.SEARCH);
 	}
@@ -62,15 +66,11 @@ ZmShortcutsPage = function(parent, appCtxt, view, controller) {
 		this._organizers.push(ZmOrganizer.TAG);
 	}
 
-//	this._createHtml();
-	
 	this._scTabView = new ZmShortcutsPageTabView(this, appCtxt, controller, this._organizers, this._prefId );
 	var element = this._scTabView.getHtmlElement();
 	element.parentNode.removeChild(element);
 	var parent = document.getElementById(this._scTabViewId);
 	parent.appendChild(element);
-
-//	controller.getPrefsView().addControlListener(new AjxListener(this, this._controlListener));
 
 	this._rendered = false;
 	this._hasRendered = false;
@@ -205,7 +205,11 @@ ZmShortcutsPageTabView = function(parent, appCtxt, controller, organizers, prefI
 
 	this._scTabView = {};
 	this._hasRendered = false;
+
 	this._setting = appCtxt.get(prefId);
+	var kbm = this._appCtxt.getKeyboardMgr();
+	var kmm = kbm.__keyMapMgr;
+	this._shortcuts = ZmShortcut.parse(this._setting, kmm);
 };
 
 ZmShortcutsPageTabView.SHORTCUTS_LIST = 0;
@@ -218,6 +222,11 @@ ZmShortcutsPageTabView.TAB_NAME[ZmOrganizer.TAG]						= ZmMsg.tagShortcuts;
 
 ZmShortcutsPageTabView.prototype = new DwtTabView;
 ZmShortcutsPageTabView.prototype.constructor = ZmShortcutsPageTabView;
+
+ZmShortcutsPageTabView.prototype.toString =
+function() {
+	return "ZmShortcutsPageTabView";
+};
 
 ZmShortcutsPageTabView.prototype.show =
 function() {
@@ -232,7 +241,7 @@ function() {
 	// custom shortcuts
 	for (var i = 0; i < this._organizers.length; i++) {
 		view = this._organizers[i];
-        viewObj = new ZmShortcutsPageTabViewCustom(this._parent, this._appCtxt, view, this._controller, this._setting);
+        viewObj = new ZmShortcutsPageTabViewCustom(this._parent, this._appCtxt, view, this._controller, this._setting, this._shortcuts);
 		this._scTabView[view] = viewObj;
 		this.addTab(ZmShortcutsPageTabView.TAB_NAME[view], this._scTabView[view]);
 	}
@@ -245,9 +254,26 @@ function() {
 ZmShortcutsPageTabView.prototype.getShortcuts =
 function() {
 	var shortcuts = [];
-	for (var i = 0; i < this._organizers.length; i++) {
-		var tv = this._scTabView[this._organizers[i]];
-		shortcuts = shortcuts.concat(tv.getShortcuts());
+	for (var i = 0, count = this._organizers.length; i < count; i++) {
+		var org = this._organizers[i];
+		var tv = this._scTabView[org];
+		var sc = (tv && tv._hasRendered) ? tv.getShortcuts() : this._getShortcutsFromSetting(org);
+		shortcuts = shortcuts.concat(sc);
+	}
+	return shortcuts;
+};
+
+ZmShortcutsPageTabView.prototype._getShortcutsFromSetting =
+function(org) {
+	var shortcuts = [];
+	if (!this._setting) { return shortcuts; }
+	var sc = this._setting.split("|");
+	if (!(sc && sc.length)) { return shortcuts; }
+	for (var i = 0, count = sc.length; i < count; i++) {
+		var p = sc[i].split(",");
+		if (p[0] == ZmShortcut.ORG_KEY[org]) {
+			shortcuts.push(sc[i]);
+		}
 	}
 	return shortcuts;
 };
@@ -438,7 +464,7 @@ function(ks) {
 		}
 		if (!done) {
 			// base can be: printable char, escaped char name (eg "Comma"), or NNN
-			if (base == "NNN") {
+			if (base == ZmShortcut.ALIAS) {
 				newParts.push("[n]");
 			} else if (/^[A-Z]$/.test(base)) {
 				newParts.push(base.toLowerCase());
@@ -478,8 +504,9 @@ function(key) {
  * @param organizer			[constant]					which organizer this page handles
  * @param controller		[ZmPrefController]			prefs controller
  * @param setting			[string]					value of user's custom shortcuts pref
+ * @param shortcuts			[array]						list of ZmShortcut (parsed from setting)
  */
-ZmShortcutsPageTabViewCustom = function(parent, appCtxt, organizer, controller, setting) {
+ZmShortcutsPageTabViewCustom = function(parent, appCtxt, organizer, controller, setting, shortcuts) {
 
 	DwtTabViewPage.call(this, parent, "ZmShortcutsPageTabViewCustom");
 	
@@ -487,6 +514,7 @@ ZmShortcutsPageTabViewCustom = function(parent, appCtxt, organizer, controller, 
 	this._organizer = organizer;
 	this._controller = controller;
 	this._setting = setting;
+	this._shortcuts = shortcuts;
 
 	this._dwtObjects = {};
 	this._createShortcutsPageHtml();
@@ -495,6 +523,7 @@ ZmShortcutsPageTabViewCustom = function(parent, appCtxt, organizer, controller, 
 
 	this._browseLstnr = new AjxListener(this, this._browseListener);
 	this._internalId = AjxCore.assignId(this);
+	this._orgKey = ZmShortcut.ORG_KEY[organizer];
 };
 
 ZmShortcutsPageTabViewCustom.DATA	= "_data_";
@@ -523,31 +552,10 @@ ZmShortcutsPageTabViewCustom.SAMPLE_SHORTCUTS[ZmOrganizer.FOLDER]	= ["mail.GoToF
 ZmShortcutsPageTabViewCustom.SAMPLE_SHORTCUTS[ZmOrganizer.TAG]		= ["global.GoToTag", "global.Tag"];
 ZmShortcutsPageTabViewCustom.SAMPLE_SHORTCUTS[ZmOrganizer.SEARCH]	= ["global.SavedSearch"];
 
-// List of actions for each organizer type
-ZmShortcutsPageTabViewCustom.ORG_ACTION = {};
-ZmShortcutsPageTabViewCustom.ORG_ACTION[ZmOrganizer.FOLDER]	= [ZmKeyMap.GOTO_FOLDER, ZmKeyMap.MOVE_TO_FOLDER];
-ZmShortcutsPageTabViewCustom.ORG_ACTION[ZmOrganizer.SEARCH]	= [ZmKeyMap.SAVED_SEARCH];
-ZmShortcutsPageTabViewCustom.ORG_ACTION[ZmOrganizer.TAG]	= [ZmKeyMap.GOTO_TAG, ZmKeyMap.TAG];
-
-// Reverse map of above
-ZmShortcutsPageTabViewCustom.ACTION_ORG = {};
-for (var org in ZmShortcutsPageTabViewCustom.ORG_ACTION) {
-	var actions = ZmShortcutsPageTabViewCustom.ORG_ACTION[org];
-	for (var j = 0; j < actions.length; j++) {
-		ZmShortcutsPageTabViewCustom.ACTION_ORG[actions[j]] = org;
-	}
-}
-delete org;
-
 ZmShortcutsPageTabViewCustom.DIALOG_TEXT = {};
 ZmShortcutsPageTabViewCustom.DIALOG_TEXT[ZmOrganizer.FOLDER]	= ZmMsg.chooseFolder;
 ZmShortcutsPageTabViewCustom.DIALOG_TEXT[ZmOrganizer.SEARCH]	= ZmMsg.chooseSearch;
 ZmShortcutsPageTabViewCustom.DIALOG_TEXT[ZmOrganizer.TAG]		= ZmMsg.chooseTag;
-
-ZmShortcutsPageTabViewCustom.ORG_MAP = {};
-ZmShortcutsPageTabViewCustom.ORG_MAP[ZmOrganizer.FOLDER]	= "mail";
-ZmShortcutsPageTabViewCustom.ORG_MAP[ZmOrganizer.SEARCH]	= "global";
-ZmShortcutsPageTabViewCustom.ORG_MAP[ZmOrganizer.TAG]		= "global";
 
 ZmShortcutsPageTabViewCustom.SAMPLE_KEY = 3;
 
@@ -627,20 +635,8 @@ function() {
 		var organizer = (this._organizer == ZmOrganizer.FOLDER) ? tree.getByPath(data, true) :
 																  tree.getByName(data);
 		if (!organizer) { continue; }
-		var mapName = ZmShortcutsPageTabViewCustom.ORG_MAP[this._organizer];
-		var actions = ZmShortcutsPageTabViewCustom.ORG_ACTION[this._organizer];
-		var len = actions.length;
-		for (var i = 0; i < len; i++) {
-			var left = [mapName, actions[i] + num, organizer.id].join(".");
-			var seqs = kmm.getKeySequences(ZmKeyMap.MAP_NAME[mapName], actions[i]);
-			for (var j = 0; j < seqs.length; j++) {
-				var ks = seqs[j];
-				var digits = num.split("");
-				var right = ks.replace(/NNN/, digits.join(","));
-				var sc = [left, right].join("=");
-				shortcuts.push(sc);
-			}
-		}
+
+		shortcuts.push([this._orgKey, organizer.id, num].join(","));
 	}
 	DBG.println(AjxDebug.DBG1, "shortcuts for org type " + this._organizer + ": " + shortcuts.join("|"));
 
@@ -812,11 +808,10 @@ function(ev) {
 ZmShortcutsPageTabViewCustom.prototype._renderTable =
 function() {
 	var org = this._organizer;
-	var shortcuts = this._setting ? this._setting.split('|') : [];
 	var done = {};
-	for (var i = 0; i < shortcuts.length; i++) {
-		var sc = ZmShortcut.parse(shortcuts[i]);
-		if (org != ZmShortcutsPageTabViewCustom.ACTION_ORG[sc.baseAction] || done[sc.num]) { continue; }
+	for (var i = 0, count = this._shortcuts.length; i < count; i++) {
+		var sc = this._shortcuts[i];
+		if (sc.orgType != org || done[sc.num]) { continue; }
 		var html = this._getRowHtml(sc);
 		var row = Dwt.parseHtmlFragment(html, true);
 		this._table.tBodies[0].appendChild(row);
@@ -931,7 +926,8 @@ function(ev) {
 		dialog = this._appCtxt.getChooseFolderDialog();
 		treeIds = [this._organizer];
 		var title = (this._organizer == ZmOrganizer.SEARCH) ? ZmMsg.chooseSearch : ZmMsg.chooseFolder;
-		params = {treeIds:treeIds, title:title};
+		var overviewId = [this.toString(), this._organizer].join("-");
+		params = {treeIds:treeIds, title:title, overviewId:overviewId};
 	}
 	dialog.reset();
 	dialog.setTitle(ZmShortcutsPageTabViewCustom.DIALOG_TEXT[this._organizer]);

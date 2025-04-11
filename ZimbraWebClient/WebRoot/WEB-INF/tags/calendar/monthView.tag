@@ -100,4 +100,15 @@
             </td>
         </tr>
     </table>
+    <app:keyboard cache="cal.monthView" globals="true" mailbox="${mailbox}" calendars="true" tags="true">
+        <zm:bindKey message="calendar.DayView" id="CAL_DAY"/>
+        <zm:bindKey message="calendar.WeekView" id="CAL_WEEK"/>
+        <zm:bindKey message="calendar.WorkWeekView" id="CAL_WORK"/>
+        <zm:bindKey message="calendar.MonthView" id="CAL_MONTH"/>
+        <zm:bindKey message="calendar.ScheduleView" id="CAL_SCHED"/>
+        <zm:bindKey message="calendar.Today" id="CAL_TODAY"/>
+        <zm:bindKey message="calendar.Refresh" id="CAL_REFRESH"/>
+        <zm:bindKey message="global.PreviousPage" id="PREV_PAGE"/>
+        <zm:bindKey message="global.NextPage" id="NEXT_PAGE"/>
+    </app:keyboard>
 </app:view>

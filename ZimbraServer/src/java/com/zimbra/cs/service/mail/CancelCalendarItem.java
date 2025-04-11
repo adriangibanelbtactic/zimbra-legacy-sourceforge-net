@@ -68,7 +68,7 @@ public class CancelCalendarItem extends CalendarRequest {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Account acct = getRequestedAccount(zsc);
         Mailbox mbox = getRequestedMailbox(zsc);
-        OperationContext octxt = zsc.getOperationContext();
+        OperationContext octxt = getOperationContext(zsc, context);
         
         ItemId iid = new ItemId(request.getAttribute(MailConstants.A_ID), zsc);
         int compNum = (int) request.getAttributeLong(MailConstants.E_INVITE_COMPONENT);
@@ -122,7 +122,7 @@ public class CancelCalendarItem extends CalendarRequest {
     void cancelInstance(ZimbraSoapContext zsc, OperationContext octxt, Element request, Account acct, Mailbox mbox, CalendarItem calItem, Invite defaultInv, RecurId recurId) 
     throws ServiceException {
         boolean onBehalfOf = zsc.isDelegatedRequest();
-        Account authAcct = zsc.getAuthtokenAccount();
+        Account authAcct = getAuthenticatedAccount(zsc);
         Locale locale = !onBehalfOf ? acct.getLocale() : authAcct.getLocale();
         String text = L10nUtil.getMessage(MsgKey.calendarCancelAppointmentInstance, locale);
 
@@ -151,8 +151,8 @@ public class CancelCalendarItem extends CalendarRequest {
             // the <inv> element is *NOT* allowed -- we always build it manually
             // based on the params to the <CancelCalendarItem> and stick it in the 
             // mbps (additionalParts) parameter...
-            dat.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, mbox, msgElem, mbps, 
-                    ParseMimeMessage.NO_INV_ALLOWED_PARSER, dat);
+            dat.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, octxt, mbox, msgElem, 
+                    mbps, ParseMimeMessage.NO_INV_ALLOWED_PARSER, dat);
             
         } else {
             List<Address> rcpts = CalendarMailSender.toListFromAttendees(defaultInv.getAttendees());
@@ -161,7 +161,7 @@ public class CancelCalendarItem extends CalendarRequest {
                     calItem, cancelInvite, text, iCal);
         }
         
-        if (!defaultInv.thisAcctIsOrganizer(acct)) {
+        if (!defaultInv.isOrganizer()) {
             try {
                 Address[] rcpts = dat.mMm.getAllRecipients();
                 if (rcpts != null && rcpts.length > 0) {
@@ -178,7 +178,7 @@ public class CancelCalendarItem extends CalendarRequest {
     protected void cancelInvite(ZimbraSoapContext zsc, OperationContext octxt, Element request, Account acct, Mailbox mbox, CalendarItem calItem, Invite inv)
     throws ServiceException {
         boolean onBehalfOf = zsc.isDelegatedRequest();
-        Account authAcct = zsc.getAuthtokenAccount();
+        Account authAcct = getAuthenticatedAccount(zsc);
         Locale locale = !onBehalfOf ? acct.getLocale() : authAcct.getLocale();
         String text = L10nUtil.getMessage(MsgKey.calendarCancelAppointment, locale);
 
@@ -205,14 +205,14 @@ public class CancelCalendarItem extends CalendarRequest {
             // the <inv> element is *NOT* allowed -- we always build it manually
             // based on the params to the <CancelCalendarItem> and stick it in the 
             // mbps (additionalParts) parameter...
-            csd.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, mbox, msgElem, mbps, ParseMimeMessage.NO_INV_ALLOWED_PARSER, csd);
+            csd.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, octxt, mbox, msgElem, mbps, ParseMimeMessage.NO_INV_ALLOWED_PARSER, csd);
             
         } else {
             List<Address> rcpts = CalendarMailSender.toListFromAttendees(inv.getAttendees());
             csd.mMm = CalendarMailSender.createCancelMessage(acct, rcpts, onBehalfOf, authAcct, calItem, inv, text, iCal);
         }
         
-        if (!inv.thisAcctIsOrganizer(acct)) {
+        if (!inv.isOrganizer()) {
             try {
                 Address[] rcpts = csd.mMm.getAllRecipients();
                 if (rcpts != null && rcpts.length > 0) {

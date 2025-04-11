@@ -503,10 +503,9 @@ function(x, y) {
 	if (!AjxEnv.isSafari)
 		main.style.display = "none";
 
-	// FUDGE: we must substract borders and paddings
-	var delta = 2 + 6;
-	if (this._mode == DwtHtmlEditor.HTML)
-		delta += 2;	// for some reason... yuck
+	// FUDGE: we must substract borders and paddings - yuck.
+	var delta = this._mode == DwtHtmlEditor.HTML ? 10 : 12;
+
 	x -= delta;
 
 	// subtract spellchecker DIV if applicable
@@ -617,7 +616,7 @@ ZmHtmlEditor.prototype._createToolbars =
 function() {
 	// NOTE: overload this method to place toolbars differently.
 	if (!this._toolbar1) {
-		var tb = this._toolbar1 = new DwtToolBar(this, "ToolBar", DwtControl.RELATIVE_STYLE, 2);
+		var tb = this._toolbar1 = new DwtToolBar(this, "ZToolbar", DwtControl.RELATIVE_STYLE, 2);
 		tb.setVisible(this._mode == DwtHtmlEditor.HTML);
 
 		// Default is to have ONE toolbar now
@@ -1631,4 +1630,4 @@ ZmHtmlEditorColorPicker = function(parent) {
 ZmHtmlEditorColorPicker.prototype = new DwtButtonColorPicker;
 ZmHtmlEditorColorPicker.prototype.constructor = ZmHtmlEditorColorPicker;
 
-ZmHtmlEditorColorPicker.prototype.TEMPLATE = "ajax.dwt.templates.Widgets#ZToolbarButtonColorPicker";
+ZmHtmlEditorColorPicker.prototype.TEMPLATE = "ajax.dwt.templates.Widgets#ZToolbarButton";

@@ -46,15 +46,58 @@ while(my $conn = $server->accept()) {
     # the connecting client completes the SMTP transaction.
     $client->process || next;
 
-    foreach my $to (@{$client->{TO}}) {
+    my %rcptsByDomain;
+    foreach my $rcpt (@{$client->{TO}}) {
+        my $domain;
 
-        if ($to =~ /.*\@$zimbra_hostname/i) {
+        # Strip <> if present
+        $rcpt =~ s/^<//;
+        $rcpt =~ s/>$//;
+
+        if ($rcpt =~ /\@([^\@<>]+)/) {
+            $domain = $1;
+            my $rcptList = $rcptsByDomain{$domain};
+            if (!defined($rcptList)) {
+                $rcptList = [];
+                $rcptsByDomain{$domain} = $rcptList;
+            }
+            push(@$rcptList, $rcpt);
+        }
+    }
+
+    # Initialize sender and strip <> if present
+    my $sender = $client->{FROM};
+    $sender =~ s/^<//;
+    $sender =~ s/>$//;
+    my $senderForLogging = "unknown sender";
+    if (length($sender) > 0) {
+        $senderForLogging = $sender;
+    }
+
+    foreach my $domain (keys(%rcptsByDomain)) {
+        my $rcptList = $rcptsByDomain{$domain};
+        my $rcptStr = join(', ', @$rcptList);
+        my $pid = fork();
+        if (!defined($pid)) {
+            print STDERR "Unable to fork child process; dropping message from $senderForLogging to $rcptStr\n";
+            next;
+        }
+        if ($pid != 0) {
+            # parent process
+            print "Forked child process $pid for message from $senderForLogging to $rcptStr\n";
+            next;
+        }
+
+        # child process
+        if (lc($domain) eq lc($zimbra_hostname)) {
             my $lmtp = Net::LMTP->new('localhost', 7025);
 
-            print "Got a local message from ".$client->{FROM}." to ".$to."\n";
+            print "Got a local message from $senderForLogging to $rcptStr\n";
 
-            $lmtp->mail($client->{FROM});
-            $lmtp->to($to);
+            $lmtp->mail($sender);
+            foreach my $rcpt (@$rcptList) {
+                $lmtp->to($rcpt);
+            }
 
             $lmtp->data();
             $lmtp->datasend($client->{MSG});
@@ -62,17 +105,16 @@ while(my $conn = $server->accept()) {
 
             $lmtp->quit;
         } else {
-            print "Relaying message from ".$client->{FROM}." to ".$to."....";
-            my @toArray;
-            $toArray[0] = $to;
-
+            print "Relaying message from $client->{FROM} to $rcptStr\n";
             my $relay = new Net::SMTP::Server::Relay($client->{FROM},
-                                                     \@toArray,
+                                                     $rcptList,
                                                      $client->{MSG});
 
             # if the app hangs before getting here it is likely trying to connect to
             # itself...this machine's default SMTP server must be a different box (e.g. Exch1)
             print "Message sent!\n";
         }
+        print "Exiting child process $$\n";
+        exit(0);  # child process exit
     }
 }

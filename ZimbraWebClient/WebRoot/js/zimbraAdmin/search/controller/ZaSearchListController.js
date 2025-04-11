@@ -54,7 +54,7 @@ ZaSearchListController = function(appCtxt, container, app) {
 
 ZaSearchListController.prototype = new ZaListViewController();
 ZaSearchListController.prototype.constructor = ZaSearchListController;
-ZaSearchListController.helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/managing_accounts/provisioning_accounts.htm";
+ZaSearchListController.helpURL = location.pathname + "adminhelp/html/WebHelp/managing_accounts/provisioning_accounts.htm";
 ZaController.initToolbarMethods["ZaSearchListController"] = new Array();
 ZaController.initPopupMenuMethods["ZaSearchListController"] = new Array();
 ZaListViewController.changeActionsStateMethods["ZaSearchListController"] = new Array();
@@ -73,7 +73,8 @@ ZaSearchListController.prototype.show = function (doPush) {
 			sortAscending:this._currentSortOrder,
 			limit:this.RESULTSPERPAGE,
 			attrs:this.fetchAttrs,
-			callback:callback
+			callback:callback,
+			controller: this
 	}
 	ZaSearch.searchDirectory(searchParams);
 }
@@ -232,7 +233,8 @@ function(params) {
 			sortAscending:this._currentSortOrder,
 			limit:this.RESULTSPERPAGE,
 			attrs:ZaSearch.standardAttributes,
-			callback:callback
+			callback:callback,
+			controller: controller
 	}
 	ZaSearch.searchDirectory(searchParams);
 }

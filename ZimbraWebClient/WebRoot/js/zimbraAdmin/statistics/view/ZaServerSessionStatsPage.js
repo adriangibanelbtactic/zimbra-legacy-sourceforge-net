@@ -189,12 +189,12 @@ function (tabId, hide ){
 					} 
 					
 					//TODO update the help link for the Session Stats
-					controller._helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/managing_servers/viewing_mailbox_quotas.htm";
+					controller._helpURL = location.pathname + "adminhelp/html/WebHelp/managing_servers/viewing_mailbox_quotas.htm";
 				}else if (hide){
 					toolBar.enable([ZaOperation.PAGE_FORWARD, ZaOperation.PAGE_BACK, ZaOperation.LABEL], false);
 					toolBar.getButton("PageInfo").setText(AjxMessageFormat.format (ZaMsg.MBXStats_PAGEINFO, [1,1]));
 					//change the help link back
-					controller._helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/monitoring/checking_usage_statistics.htm";
+					controller._helpURL = location.pathname + "adminhelp/html/WebHelp/monitoring/checking_usage_statistics.htm";
 				}
 			}
 		}
@@ -217,7 +217,7 @@ function () {
 	params.targetServer = this._server.id ;
 	params.asyncMode = true ;
 	params.callback = new AjxCallback (this, this.dumpSessionCallback) ;
-	if (AjxEnv.hasFirebug) console.debug("Send DumpSessionsRequest") ;
+	//if (AjxEnv.hasFirebug) console.debug("Send DumpSessionsRequest") ;
 	dumpSessCmd.invoke(params) ;
 }
 
@@ -253,7 +253,7 @@ function (params) {
 	params.targetServer = this._server.id ;
 	params.asyncMode = true ;
 	params.callback = new AjxCallback (this, this.getSessionsCallback, [params]) ;
-	if (AjxEnv.hasFirebug) console.debug("Send GetSessionsRequest") ;
+	//if (AjxEnv.hasFirebug) console.debug("Send GetSessionsRequest") ;
 	getSessCmd.invoke(params) ;
 }
 
@@ -561,9 +561,10 @@ function (sess) {
 	div[DwtListView._SELECTED_STYLE_CLASS] = div[DwtListView._STYLE_CLASS] + "-" + DwtCssStyle.SELECTED;
 	div.className = div[DwtListView._STYLE_CLASS];
 	this.associateItemWithElement(sess, div, DwtListView.TYPE_LIST_ITEM);
+	div.style.height = "20";
 	
 	var idx = 0;
-	html[idx++] = "<table width='100%' cellspacing='2' cellpadding='0'>";
+	html[idx++] = "<table width='100%' height='20' cellspacing='2' cellpadding='0'>";
 
 	html[idx++] = "<tr>";
 	if(this._headerList) {

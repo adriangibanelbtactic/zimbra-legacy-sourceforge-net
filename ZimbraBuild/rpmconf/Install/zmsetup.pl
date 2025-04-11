@@ -234,8 +234,11 @@ sub checkPortConflicts {
   my $any = 0;
   foreach (@ports) {
     if (defined ($needed{$_}) && isEnabled($needed{$_})) {
-      $any = 1;
-      progress ( "Port conflict detected: $_ ($needed{$_})\n" );
+      # don't report ldap conflicts on upgrade # 14438
+      unless ($needed{$_} eq "zimbra-ldap" && $newinstall == 0) {
+        $any = 1;
+        progress ( "Port conflict detected: $_ ($needed{$_})\n" );
+      }
     }
   }
 
@@ -266,6 +269,10 @@ sub isEnabled {
       detail("$package is not enabled");
       return undef;
     }
+  } else {
+    detail("$package not in enabled cache");
+    my $packages = join(" ", keys %enabledPackages);
+    detail("enabled packages $packages");
   }
   
 
@@ -313,11 +320,17 @@ sub isEnabled {
     detail("Newinstall enabling all installed packages");
     foreach my $p (@packageList) {
       if (isInstalled($p)) {
-        detail("Enabling $p");
-        $enabledPackages{$p} = "Enabled";
+        unless ($enabledPackages{$p} eq "Disabled") {
+          detail("Enabling $p");
+          $enabledPackages{$p} = "Enabled" 
+        }
       }
     }
   }
+  
+  $enabledPackages{$package} = "Disabled" 
+    if ($enabledPackages{$package} ne "Enabled");
+
   return ($enabledPackages{$package} eq "Enabled" ? 1 : 0);
 }
 
@@ -672,7 +685,7 @@ sub setDefaults {
   $config{MYSQLMEMORYPERCENT} = mysqlMemoryPercent($config{SYSTEMMEMORY});
   $config{MAILBOXDMEMORYPERCENT} = mailboxdMemoryPercent($config{SYSTEMMEMORY});
 
-  $config{CREATEADMINPASS} = "";
+  $config{CREATEADMINPASS} = "" unless ($config{CREATEADMINPASS});
 
   if (!$options{c} && $newinstall) {
     progress "no config file and newinstall checking dns resolution\n" if $options{d};
@@ -2385,7 +2398,11 @@ sub configLCValues {
     setLocalConfig ("ldap_url", "ldaps://$config{LDAPHOST}:$config{LDAPPORT}");
   } else {
     setLocalConfig ("ldap_master_url", "ldap://$config{LDAPHOST}:$config{LDAPPORT}");
-    setLocalConfig ("ldap_url", "ldap://$config{LDAPHOST}:$config{LDAPPORT}");
+    if ($config{ldap_url} eq "") { 
+      setLocalConfig ("ldap_url", "ldap://$config{LDAPHOST}:$config{LDAPPORT}");
+    } else {
+      setLocalConfig ("ldap_url", "$config{ldap_url}");
+    }
   }
 
   setLocalConfig ("ldap_port", "$config{LDAPPORT}");
@@ -2508,7 +2525,7 @@ sub configSetupLdap {
     if ($ldapPassChanged) {
       progress ( "Setting ldap password..." );
       runAsZimbra 
-        ("/opt/zimbra/openldap/sbin/slapindex -f /opt/zimbra/conf/slapd.conf");
+        ("/opt/zimbra/openldap/sbin/slapindex -q -f /opt/zimbra/conf/slapd.conf");
       runAsZimbra ("/opt/zimbra/bin/zmldappasswd --root $config{LDAPPASS}");
       runAsZimbra ("/opt/zimbra/bin/zmldappasswd $config{LDAPPASS}");
       progress ( "Done\n" );
@@ -3043,7 +3060,10 @@ sub configSetEnabledServices {
   }
 
   foreach my $p (keys %installedPackages) {
-    if ($p eq "zimbra-core") {next;}
+    if ($p eq "zimbra-core") {
+      $installedServiceStr .= "zimbraServiceInstalled stats ";
+      next;
+    }
     if ($p eq "zimbra-apache") {next;}
     $p =~ s/zimbra-//;
     if ($p eq "store") {$p = "mailbox"; $installedServiceStr .= "zimbraServiceInstalled imapproxy ";}
@@ -3051,7 +3071,10 @@ sub configSetEnabledServices {
   }
 
   foreach my $p (keys %enabledPackages) {
-    if ($p eq "zimbra-core") {next;}
+    if ($p eq "zimbra-core") {
+      $enabledServiceStr .= "zimbraServiceEnabled stats ";
+      next;
+    }
     if ($p eq "zimbra-apache") {next;}
     if ($enabledPackages{$p} eq "Enabled") {
       $p =~ s/zimbra-//;
@@ -3248,8 +3271,14 @@ sub setupCrontab {
   my $backupSchedule;
   progress ("Setting up zimbra crontab...");
   if ( -f "/opt/zimbra/bin/zmschedulebackup") {
+    detail("Getting current backup schedule in restorable format");
     $backupSchedule = `su - zimbra -c "zmschedulebackup -s"`;
     chomp $backupSchedule;
+    if ($backupSchedule eq "") {
+      detail("Backup schedule was not previously defined");
+    } else {
+      detail("Retrieved backup schedule: $backupSchedule");
+    }
   }
   if ($platform =~ /SUSE/i) {
     `cp -f /var/spool/cron/tabs/zimbra /tmp/crontab.zimbra.orig`;
@@ -3268,28 +3297,35 @@ sub setupCrontab {
   `cp -f /opt/zimbra/zimbramon/crontabs/crontab /tmp/crontab.zimbra`;
 
   if (isEnabled("zimbra-ldap")) {
+    detail("Crontab: Adding zimbra-ldap specific crontab entries");
     `cat /opt/zimbra/zimbramon/crontabs/crontab.ldap >> /tmp/crontab.zimbra`;
   }
 
   if (isEnabled("zimbra-store")) {
+    detail("Crontab: Adding zimbra-store specific crontab entries");
     `cat /opt/zimbra/zimbramon/crontabs/crontab.store >> /tmp/crontab.zimbra`;
   }
 
   if (isEnabled("zimbra-logger")) {
+    detail("Crontab: Adding zimbra-logger specific crontab entries");
     `cat /opt/zimbra/zimbramon/crontabs/crontab.logger >> /tmp/crontab.zimbra`;
   }
 
   if (isEnabled("zimbra-mta")) {
+    detail("Crontab: Adding zimbra-mta specific crontab entries");
     `cat /opt/zimbra/zimbramon/crontabs/crontab.mta >> /tmp/crontab.zimbra`;
   }
 
   `echo "# ZIMBRAEND -- DO NOT EDIT ANYTHING BETWEEN THIS LINE AND ZIMBRASTART" >> /tmp/crontab.zimbra`;
   `cat /tmp/crontab.zimbra.proc >> /tmp/crontab.zimbra`;
-
+  detail("crontab: installing new crontab");
   `crontab -u zimbra /tmp/crontab.zimbra`;
   if ( -f "/opt/zimbra/bin/zmschedulebackup" && $backupSchedule ne "") {
     $backupSchedule =~ s/"/\\"/g;
     `su - zimbra -c "/opt/zimbra/bin/zmschedulebackup -R $backupSchedule" > /dev/null 2>&1`;
+  } elsif ( -f "/opt/zimbra/bin/zmschedulebackup" && $backupSchedule eq "" && !$newinstall) {
+    detail("crontab: no backup schedule found: installing default");
+    `su - zimbra -c "/opt/zimbra/bin/zmschedulebackup -D" > /dev/null 2>&1`;
   }
   progress ("Done\n");
   configLog("setupCrontab");
@@ -3365,7 +3401,7 @@ sub startLdap {
   my $rc = runAsZimbra("/opt/zimbra/bin/ldap status");
   if ($rc) { 
     main::progress("Starting ldap\n");
-    $rc = runAsZimbra ("/opt/zimbra/openldap/sbin/slapindex -f /opt/zimbra/conf/slapd.conf");
+    $rc = runAsZimbra ("/opt/zimbra/openldap/sbin/slapindex -q -f /opt/zimbra/conf/slapd.conf");
     $rc = runAsZimbra ("/opt/zimbra/libexec/zmldapapplyldif");
     $rc = runAsZimbra ("/opt/zimbra/bin/ldap status");
     if ($rc) {

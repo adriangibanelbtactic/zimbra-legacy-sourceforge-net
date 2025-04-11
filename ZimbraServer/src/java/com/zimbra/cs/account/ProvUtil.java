@@ -27,19 +27,26 @@ package com.zimbra.cs.account;
 
 import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.util.AccountLogger;
 import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.CliUtil;
 import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.account.Provisioning.CalendarResourceBy;
 import com.zimbra.cs.account.Provisioning.CosBy;
+import com.zimbra.cs.account.Provisioning.DataSourceBy;
 import com.zimbra.cs.account.Provisioning.DistributionListBy;
 import com.zimbra.cs.account.Provisioning.DomainBy;
 import com.zimbra.cs.account.Provisioning.SearchGalResult;
 import com.zimbra.cs.account.Provisioning.ServerBy;
+import com.zimbra.cs.account.Provisioning.SignatureBy;
 import com.zimbra.cs.account.soap.SoapProvisioning;
 import com.zimbra.cs.account.soap.SoapProvisioning.MailboxInfo;
+import com.zimbra.cs.account.soap.SoapProvisioning.ReIndexBy;
+import com.zimbra.cs.account.soap.SoapProvisioning.ReIndexInfo;
 import com.zimbra.cs.account.soap.SoapProvisioning.QuotaUsage;
+import com.zimbra.cs.extension.ExtensionDispatcherServlet;
+import com.zimbra.cs.httpclient.URLUtil;
 import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.cs.wiki.WikiUtil;
 import com.zimbra.cs.zclient.ZClientException;
@@ -139,7 +146,8 @@ public class ProvUtil implements DebugListener {
         COS("help on COS-related commands"), 
         DOMAIN("help on domain-related commands"), 
         LIST("help on distribution list-related commands"), 
-        MISC("help on misc commands"), 
+        MISC("help on misc commands"),
+        MAILBOX("help on mailbox-related commands"),
         NOTEBOOK("help on notebook-related commands"), 
         SEARCH("help on search-related commands"), 
         SERVER("help on server-related commands");
@@ -156,6 +164,7 @@ public class ProvUtil implements DebugListener {
     public enum Command {
         
         ADD_ACCOUNT_ALIAS("addAccountAlias", "aaa", "{name@domain|id} {alias@domain}", Category.ACCOUNT, 2, 2),
+        ADD_ACCOUNT_LOGGER("addAccountLogger", "aal", "{name@domain|id} {logging-category} {debug|info|warn|error}", Category.MISC, 3, 3),
         ADD_DISTRIBUTION_LIST_ALIAS("addDistributionListAlias", "adla", "{list@domain|id} {alias@domain}", Category.LIST, 2, 2),
         ADD_DISTRIBUTION_LIST_MEMBER("addDistributionListMember", "adlm", "{list@domain|id} {member@domain}+", Category.LIST, 2, Integer.MAX_VALUE),
         AUTO_COMPLETE_GAL("autoCompleteGal", "acg", "{domain} {name}", Category.SEARCH, 2, 2),
@@ -170,22 +179,27 @@ public class ProvUtil implements DebugListener {
         CREATE_DOMAIN("createDomain", "cd", "{domain} [attr1 value1 [attr2 value2...]]", Category.DOMAIN, 1, Integer.MAX_VALUE),
         CREATE_SERVER("createServer", "cs", "{name} [attr1 value1 [attr2 value2...]]", Category.SERVER, 1, Integer.MAX_VALUE),
         CREATE_IDENTITY("createIdentity", "cid", "{name@domain} {identity-name} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 2, Integer.MAX_VALUE),        
+        CREATE_SIGNATURE("createSignature", "csig", "{name@domain} {signature-name} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 2, Integer.MAX_VALUE),        
         DELETE_ACCOUNT("deleteAccount", "da", "{name@domain|id}", Category.ACCOUNT, 1, 1),
         DELETE_CALENDAR_RESOURCE("deleteCalendarResource",  "dcr", "{name@domain|id}", Category.CALENDAR, 1, 1),
         DELETE_COS("deleteCos", "dc", "{name|id}", Category.COS, 1, 1),
-        DELETE_DATA_SOURCE("deleteDataSource", "dds", "{name@domain|id} {ds-id}", Category.ACCOUNT, 2, 2),                        
+        DELETE_DATA_SOURCE("deleteDataSource", "dds", "{name@domain|id} {ds-name|ds-id}", Category.ACCOUNT, 2, 2),                        
         DELETE_DISTRIBUTION_LIST("deleteDistributionList", "ddl", "{list@domain|id}", Category.LIST, 1, 1),
         DELETE_DOMAIN("deleteDomain", "dd", "{domain|id}", Category.DOMAIN, 1, 1),
-        DELETE_IDENTITY("deleteIdentity", "did", "{name@domain|id} {identity-name}", Category.ACCOUNT, 2, 2),                
+        DELETE_IDENTITY("deleteIdentity", "did", "{name@domain|id} {identity-name}", Category.ACCOUNT, 2, 2),
+        DELETE_SIGNATURE("deleteSignature", "dsig", "{name@domain|id} {signature-name}", Category.ACCOUNT, 2, 2),
         DELETE_SERVER("deleteServer", "ds", "{name|id}", Category.SERVER, 1, 1),
         EXIT("exit", "quit", "", Category.MISC, 0, 0),
         GENERATE_DOMAIN_PRE_AUTH("generateDomainPreAuth", "gdpa", "{domain|id} {name} {name|id|foreignPrincipal} {timestamp|0} {expires|0}", Category.MISC, 5, 5),
         GENERATE_DOMAIN_PRE_AUTH_KEY("generateDomainPreAuthKey", "gdpak", "{domain|id}", Category.MISC, 1, 1),
         GET_ACCOUNT("getAccount", "ga", "{name@domain|id} [attr1 [attr2...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
         GET_DATA_SOURCES("getDataSources", "gds", "{name@domain|id} [arg1 [arg2...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),                
-        GET_IDENTITIES("getIdentities", "gid", "{name@domain|id} [arg1 [arg...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),        
+        GET_IDENTITIES("getIdentities", "gid", "{name@domain|id} [arg1 [arg...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
+        GET_SIGNATURES("getSingatures", "gsig", "{name@domain|id} [arg1 [arg...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
         GET_ACCOUNT_MEMBERSHIP("getAccountMembership", "gam", "{name@domain|id}", Category.ACCOUNT, 1, 2),
         GET_ALL_ACCOUNTS("getAllAccounts","gaa", "[-v] [{domain}]", Category.ACCOUNT, 0, 2),
+        GET_ACCOUNT_LOGGERS("getAccountLoggers", "gal", "{name@domain|id}", Category.MISC, 1, 1),
+        GET_ALL_ACCOUNT_LOGGERS("getAllAccountLoggers", "gaal", "{server}", Category.MISC, 1, 1),
         GET_ALL_ADMIN_ACCOUNTS("getAllAdminAccounts", "gaaa", "[-v]", Category.ACCOUNT, 0, 1),
         GET_ALL_CALENDAR_RESOURCES("getAllCalendarResources", "gacr", "[-v] [{domain}]", Category.CALENDAR, 0, 2),
         GET_ALL_CONFIG("getAllConfig", "gacf", "[attr1 [attr2...]]", Category.CONFIG, 0, Integer.MAX_VALUE),
@@ -198,9 +212,10 @@ public class ProvUtil implements DebugListener {
         GET_COS("getCos", "gc", "{name|id} [attr1 [attr2...]]", Category.COS, 1, Integer.MAX_VALUE),
         GET_DISTRIBUTION_LIST("getDistributionList", "gdl", "{list@domain|id} [attr1 [attr2...]]", Category.LIST, 1, Integer.MAX_VALUE),
         GET_DISTRIBUTION_LIST_MEMBERSHIP("getDistributionListMembership", "gdlm", "{name@domain|id}", Category.LIST, 1, 1),
-        GET_DOMAIN("getDomain", "gd", "{domain|id} [attr1 [attr2...]]", Category.DOMAIN, 1, Integer.MAX_VALUE), 
-        GET_MAILBOX_INFO("getMailboxInfo", "gmi", "{account}", Category.MISC, 1, 1),
-        GET_QUOTA_USAGE("getQuotaUsage", "gqu", "{server}", Category.MISC, 1, 1),        
+        GET_DOMAIN("getDomain", "gd", "{domain|id} [attr1 [attr2...]]", Category.DOMAIN, 1, Integer.MAX_VALUE),
+        GET_DOMAIN_INFO("getDomainInfo", "gdi", "name|id|virtualHostname {value} [attr1 [attr2...]]", Category.DOMAIN, 2, Integer.MAX_VALUE), 
+        GET_MAILBOX_INFO("getMailboxInfo", "gmi", "{account}", Category.MAILBOX, 1, 1),
+        GET_QUOTA_USAGE("getQuotaUsage", "gqu", "{server}", Category.MAILBOX, 1, 1),        
         GET_SERVER("getServer", "gs", "{name|id} [attr1 [attr2...]]", Category.SERVER, 1, Integer.MAX_VALUE), 
         HELP("help", "?", "commands", Category.MISC, 0, 1),
         IMPORT_NOTEBOOK("importNotebook", "impn", "{name@domain} {directory} {folder}", Category.NOTEBOOK),
@@ -211,24 +226,29 @@ public class ProvUtil implements DebugListener {
         MODIFY_CALENDAR_RESOURCE("modifyCalendarResource",  "mcr", "{name@domain|id} [attr1 value1 [attr2 value2...]]", Category.CALENDAR, 3, Integer.MAX_VALUE),
         MODIFY_CONFIG("modifyConfig", "mcf", "attr1 value1 [attr2 value2...]", Category.CONFIG, 2, Integer.MAX_VALUE),
         MODIFY_COS("modifyCos", "mc", "{name|id} [attr1 value1 [attr2 value2...]]", Category.COS, 3, Integer.MAX_VALUE),
-        MODIFY_DATA_SOURCE("modifyDataSource", "mds", "{name@domain|id} {ds-id} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 4, Integer.MAX_VALUE),                
+        MODIFY_DATA_SOURCE("modifyDataSource", "mds", "{name@domain|id} {ds-name|ds-id} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 4, Integer.MAX_VALUE),                
         MODIFY_DISTRIBUTION_LIST("modifyDistributionList", "mdl", "{list@domain|id} attr1 value1 [attr2 value2...]", Category.LIST, 3, Integer.MAX_VALUE),
         MODIFY_DOMAIN("modifyDomain", "md", "{domain|id} [attr1 value1 [attr2 value2...]]", Category.DOMAIN, 3, Integer.MAX_VALUE),
-        MODIFY_IDENTITY("modifyIdentity", "mid", "{name@domain|id} {identity-name} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 4, Integer.MAX_VALUE),        
+        MODIFY_IDENTITY("modifyIdentity", "mid", "{name@domain|id} {identity-name} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 4, Integer.MAX_VALUE),
+        MODIFY_SIGNATURE("modifySignature", "msig", "{name@domain|id} {signature-name|signature-id} [attr1 value1 [attr2 value2...]]", Category.ACCOUNT, 4, Integer.MAX_VALUE),
         MODIFY_SERVER("modifyServer", "ms", "{name|id} [attr1 value1 [attr2 value2...]]", Category.SERVER, 3, Integer.MAX_VALUE),
         REMOVE_ACCOUNT_ALIAS("removeAccountAlias", "raa", "{name@domain|id} {alias@domain}", Category.ACCOUNT, 2, 2),
+        REMOVE_ACCOUNT_LOGGER("removeAccountLogger", "ral", "{name@domain|id} {logging-category}", Category.MISC, 2, 2),
         REMOVE_DISTRIBUTION_LIST_ALIAS("removeDistributionListAlias", "rdla", "{list@domain|id} {alias@domain}", Category.LIST, 2, 2),
         REMOVE_DISTRIBUTION_LIST_MEMBER("removeDistributionListMember", "rdlm", "{list@domain|id} {member@domain}", Category.LIST, 2, Integer.MAX_VALUE),
         RENAME_ACCOUNT("renameAccount", "ra", "{name@domain|id} {newName@domain}", Category.ACCOUNT, 2, 2),
         RENAME_CALENDAR_RESOURCE("renameCalendarResource",  "rcr", "{name@domain|id} {newName@domain}", Category.CALENDAR, 2, 2),
         RENAME_COS("renameCos", "rc", "{name|id} {newName}", Category.COS, 2, 2),
         RENAME_DISTRIBUTION_LIST("renameDistributionList", "rdl", "{list@domain|id} {newName@domain}", Category.LIST, 2, 2),
+        REINDEX_MAILBOX("reIndexMailbox", "rim", "{name@domain|id} {action} [{reindex-by} {value1} [value2...]]", Category.MAILBOX, 2, Integer.MAX_VALUE),
         SEARCH_ACCOUNTS("searchAccounts", "sa", "[-v] {ldap-query} [limit {limit}] [offset {offset}] [sortBy {attr}] [attrs {a1,a2...}] [sortAscending 0|1*] [domain {domain}]", Category.SEARCH, 1, Integer.MAX_VALUE),
         SEARCH_CALENDAR_RESOURCES("searchCalendarResources", "scr", "[-v] domain attr op value [attr op value...]", Category.SEARCH),
         SEARCH_GAL("searchGal", "sg", "{domain} {name}", Category.SEARCH, 2, 2),
-        SELECT_MAILBOX("selectMailbox", "sm", "{account-name} [{zmmailbox commands}]", Category.MISC, 1, Integer.MAX_VALUE),        
+        SELECT_MAILBOX("selectMailbox", "sm", "{account-name} [{zmmailbox commands}]", Category.MAILBOX, 1, Integer.MAX_VALUE),        
         SET_ACCOUNT_COS("setAccountCos", "sac", "{name@domain|id} {cos-name|cos-id}", Category.ACCOUNT, 2, 2),
         SET_PASSWORD("setPassword", "sp", "{name@domain|id} {password}", Category.ACCOUNT, 2, 2),
+        GET_ALL_REVERSE_PROXY_URLS("getAllReverseProxyURLs", "garpu", "", Category.SERVER, 0, 0),
+        GET_ALL_MTA_AUTH_URLS("getAllMtaAuthURLs", "gamau", "", Category.SERVER, 0, 0),
         SOAP(".soap", ".s"),
         SYNC_GAL("syncGal", "syg");
 
@@ -317,6 +337,7 @@ public class ProvUtil implements DebugListener {
     
     private boolean execute(String args[]) throws ServiceException, ArgException, IOException {
         String [] members;
+        Account account;
         
         mCommand = lookupCommand(args[0]);
         
@@ -332,6 +353,9 @@ public class ProvUtil implements DebugListener {
         case ADD_ACCOUNT_ALIAS:
             mProv.addAlias(lookupAccount(args[1]), args[2]);
             break;
+        case ADD_ACCOUNT_LOGGER:
+            doAddAccountLogger(args);
+            break;
         case AUTO_COMPLETE_GAL:
             doAutoCompleteGal(args); 
             break;            
@@ -346,7 +370,10 @@ public class ProvUtil implements DebugListener {
             break;
         case CREATE_IDENTITY:
             mProv.createIdentity(lookupAccount(args[1]), args[2], getMap(args, 3));
-            break;                                    
+            break;
+        case CREATE_SIGNATURE:
+            System.out.println(mProv.createSignature(lookupAccount(args[1]), args[2], getMap(args, 3)).getId());
+            break;      
         case CREATE_DATA_SOURCE:
             System.out.println(mProv.createDataSource(lookupAccount(args[1]), DataSource.Type.fromString(args[2]), args[3], getMap(args, 4)).getId());
             break;                                                
@@ -370,10 +397,19 @@ public class ProvUtil implements DebugListener {
             break;
         case GET_IDENTITIES:
             doGetAccountIdentities(args);
-            break;            
+            break;
+        case GET_SIGNATURES:
+            doGetAccountSignatures(args);
+            break;      
         case GET_DATA_SOURCES:
             doGetAccountDataSources(args);
-            break;                        
+            break;
+        case GET_ACCOUNT_LOGGERS:
+            doGetAccountLoggers(args);
+            break;
+        case GET_ALL_ACCOUNT_LOGGERS:
+            doGetAllAccountLoggers(args);
+            break;
         case GET_ALL_ACCOUNTS:
             doGetAllAccounts(args); 
             break;            
@@ -403,7 +439,10 @@ public class ProvUtil implements DebugListener {
             break;            
         case GET_DOMAIN:
             dumpDomain(lookupDomain(args[1]), getArgNameSet(args, 2));
-            break;                        
+            break;
+        case GET_DOMAIN_INFO:
+            doGetDomainInfo(args);
+            break;
         case GET_SERVER:
             dumpServer(lookupServer(args[1]), getArgNameSet(args, 2));
             break;
@@ -414,11 +453,16 @@ public class ProvUtil implements DebugListener {
             mProv.modifyAttrs(lookupAccount(args[1]), getMap(args,2), true);
             break;            
         case MODIFY_DATA_SOURCE:
-            mProv.modifyDataSource(lookupAccount(args[1]), args[2], getMap(args,3));
+            account = lookupAccount(args[1]);
+            mProv.modifyDataSource(account, lookupDataSourceId(account, args[2]), getMap(args,3));
             break;
         case MODIFY_IDENTITY:
             mProv.modifyIdentity(lookupAccount(args[1]), args[2], getMap(args,3));
-            break;                        
+            break; 
+        case MODIFY_SIGNATURE:
+            account = lookupAccount(args[1]);
+            mProv.modifySignature(account, lookupSignatureId(account, args[2]), getMap(args,3));
+            break;    
         case MODIFY_COS:
             mProv.modifyAttrs(lookupCos(args[1]), getMap(args, 2), true);            
             break;            
@@ -442,15 +486,23 @@ public class ProvUtil implements DebugListener {
             break;
         case DELETE_IDENTITY:
             mProv.deleteIdentity(lookupAccount(args[1]), args[2]);
-            break;                        
+            break;
+        case DELETE_SIGNATURE:
+            account = lookupAccount(args[1]);
+            mProv.deleteSignature(account, lookupSignatureId(account, args[2]));
+            break;     
         case DELETE_DATA_SOURCE:
-            mProv.deleteDataSource(lookupAccount(args[1]), args[2]);
+            account = lookupAccount(args[1]);
+            mProv.deleteDataSource(account, lookupDataSourceId(account, args[2]));
             break;                        
         case DELETE_SERVER:
             mProv.deleteServer(lookupServer(args[1]).getId());
             break;
         case REMOVE_ACCOUNT_ALIAS:
             mProv.removeAlias(lookupAccount(args[1], false), args[2]);
+            break;
+        case REMOVE_ACCOUNT_LOGGER:
+            doRemoveAccountLogger(args);
             break;
         case RENAME_ACCOUNT:
             mProv.renameAccount(lookupAccount(args[1]).getId(), args[2]);            
@@ -552,6 +604,9 @@ public class ProvUtil implements DebugListener {
         case GET_MAILBOX_INFO:
             doGetMailboxInfo(args);
             break;
+        case REINDEX_MAILBOX:
+            doReIndexMailbox(args);
+            break;
         case SELECT_MAILBOX:
             if (!(mProv instanceof SoapProvisioning))
                 throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
@@ -571,6 +626,12 @@ public class ProvUtil implements DebugListener {
                  throw ZClientException.CLIENT_ERROR("command only valid in interactive mode or with arguments", null);
              }
             break;
+        case GET_ALL_REVERSE_PROXY_URLS:
+            doGetAllReverseProxyURLs(args);
+            break;
+        case GET_ALL_MTA_AUTH_URLS:
+            doGetAllMtaAuthURLs(args);
+            break;
         case SOAP:
             // HACK FOR NOW
             SoapProvisioning sp = new SoapProvisioning();
@@ -586,6 +647,14 @@ public class ProvUtil implements DebugListener {
             return false;
         }
         return true;
+    }
+
+    private void doGetDomainInfo(String[] args) throws ServiceException {
+        if (!(mProv instanceof SoapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
+        SoapProvisioning sp = (SoapProvisioning) mProv;
+        DomainBy by = DomainBy.fromString(args[1]);
+        dumpDomain(sp.getDomainInfo(by, args[2]), getArgNameSet(args, 3));
     }
 
     private void doGetQuotaUsage(String[] args) throws ServiceException {
@@ -605,6 +674,74 @@ public class ProvUtil implements DebugListener {
         Account acct = lookupAccount(args[1]);
         MailboxInfo info = sp.getMailbox(acct);
         System.out.printf("mailboxId: %s\nquotaUsed: %d\n", info.getMailboxId(), info.getUsed());
+    }
+    
+    private void doReIndexMailbox(String[] args) throws ServiceException {
+        if (!(mProv instanceof SoapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
+        SoapProvisioning sp = (SoapProvisioning) mProv;
+        Account acct = lookupAccount(args[1]);
+        ReIndexBy by = null;
+        String[] values = null;
+        if (args.length > 3) {
+            try {
+                by = ReIndexBy.valueOf(args[3]);
+            } catch (IllegalArgumentException e) {
+                throw ServiceException.INVALID_REQUEST("invalid reindex-by", null);
+            }
+            if (args.length > 4) {
+                values = new String[args.length - 4];
+                System.arraycopy(args, 4, values, 0, args.length - 4);
+            } else
+                throw ServiceException.INVALID_REQUEST("missing reindex-by values", null);
+        }
+        ReIndexInfo info = sp.reIndex(acct, args[2], by, values);
+        ReIndexInfo.Progress progress = info.getProgress();
+        System.out.printf("status: %s\n", info.getStatus());
+        if (progress != null)
+            System.out.printf("progress: numSucceeded=%d, numFailed=%d, numRemaining=%d\n",
+                              progress.getNumSucceeded(), progress.getNumFailed(), progress.getNumRemaining());
+    }
+    
+    
+    private void doAddAccountLogger(String[] args) throws ServiceException {
+        if (!(mProv instanceof SoapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
+        SoapProvisioning sp = (SoapProvisioning) mProv;
+        Account acct = lookupAccount(args[1]);
+        sp.addAccountLogger(acct, args[2], args[3]);
+    }
+    
+    private void doGetAccountLoggers(String[] args) throws ServiceException {
+        if (!(mProv instanceof SoapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
+        SoapProvisioning sp = (SoapProvisioning) mProv;
+        Account acct = lookupAccount(args[1]);
+        for (AccountLogger accountLogger : sp.getAccountLoggers(acct)) {
+            System.out.printf("%s=%s\n", accountLogger.getCategory(), accountLogger.getLevel());
+        }
+    }
+    
+    private void doGetAllAccountLoggers(String[] args) throws ServiceException {
+        if (!(mProv instanceof SoapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
+        SoapProvisioning sp = (SoapProvisioning) mProv;
+        
+        Map<String, List<AccountLogger>> allLoggers = sp.getAllAccountLoggers(args[1]);
+        for (String accountName : allLoggers.keySet()) {
+            System.out.printf("# name %s\n", accountName);
+            for (AccountLogger logger : allLoggers.get(accountName)) {
+                System.out.printf("%s=%s\n", logger.getCategory(), logger.getLevel());
+            }
+        }
+    }
+    
+    private void doRemoveAccountLogger(String[] args) throws ServiceException {
+        if (!(mProv instanceof SoapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via SOAP", null);
+        SoapProvisioning sp = (SoapProvisioning) mProv;
+        Account acct = lookupAccount(args[1]);
+        sp.removeAccountLogger(acct, args[2]);
     }
     
     private void doCreateAccountsBulk(String[] args) throws ServiceException {
@@ -664,11 +801,20 @@ public class ProvUtil implements DebugListener {
         }
 
     }
+    
     private void doGetAccountIdentities(String[] args) throws ServiceException {
         Account account = lookupAccount(args[1]);
         Set<String> argNameSet = getArgNameSet(args, 2);
         for (Identity identity : mProv.getAllIdentities(account)) {
             dumpIdentity(identity, argNameSet);
+        }    
+    }
+    
+    private void doGetAccountSignatures(String[] args) throws ServiceException {
+        Account account = lookupAccount(args[1]);
+        Set<String> argNameSet = getArgNameSet(args, 2);
+        for (Signature signature : mProv.getAllSignatures(account)) {
+            dumpSignature(signature, argNameSet);
         }    
     }
     
@@ -1046,6 +1192,13 @@ public class ProvUtil implements DebugListener {
         dumpAttrs(attrs, attrNameSet);
         System.out.println();
     }
+    
+    private void dumpSignature(Signature signature, Set<String> attrNameSet) throws ServiceException {
+        System.out.println("# name "+signature.getName());
+        Map<String, Object> attrs = signature.getAttrs();
+        dumpAttrs(attrs, attrNameSet);
+        System.out.println();
+    }
 
     private void dumpAttrs(Map<String, Object> attrsIn, Set<String> specificAttrs) {
         TreeMap<String, Object> attrs = new TreeMap<String, Object>(attrsIn);
@@ -1234,10 +1387,8 @@ public class ProvUtil implements DebugListener {
     private void doImport(String username, String fromDir, String toFolder, WikiUtil wu) throws ServiceException {
     	try {
     		wu.startImport(username, toFolder, new java.io.File(fromDir));
-    	} catch (Exception e) {
-    		System.err.println("Cannot import Wiki documents from " + fromDir);
-    		e.printStackTrace();
-    		return;
+    	} catch (IOException e) {
+    		throw ServiceException.FAILURE("Cannot import Wiki documents from "+fromDir, e);
     	}
     }
     
@@ -1288,6 +1439,25 @@ public class ProvUtil implements DebugListener {
         else
             return s;
     }
+    
+    private String lookupDataSourceId(Account account, String key) throws ServiceException {
+        if (isUUID(key)) {
+            return key;
+        }
+        DataSource ds = mProv.get(account, DataSourceBy.name, key);
+        if (ds == null)
+            throw AccountServiceException.NO_SUCH_DATA_SOURCE(key);
+        else
+            return ds.getId();
+    }
+    
+    private String lookupSignatureId(Account account, String key) throws ServiceException {
+        Signature sig = mProv.get(account, guessSignatureBy(key), key);
+        if (sig == null)
+            throw AccountServiceException.NO_SUCH_SIGNATURE(key);
+        else
+            return sig.getId();
+    }
 
     private DistributionList lookupDistributionList(String key, boolean mustFind) throws ServiceException {
         DistributionList dl = mProv.get(guessDistributionListBy(key), key);
@@ -1322,7 +1492,7 @@ public class ProvUtil implements DebugListener {
             return CosBy.id;
         return CosBy.name;
     }
-
+    
     public static DomainBy guessDomainBy(String value) {
         if (isUUID(value))
             return DomainBy.id;
@@ -1345,6 +1515,12 @@ public class ProvUtil implements DebugListener {
         if (isUUID(value))
             return DistributionListBy.id;
         return DistributionListBy.name;
+    }
+    
+    public static SignatureBy guessSignatureBy(String value) {
+        if (isUUID(value))
+            return SignatureBy.id;
+        return SignatureBy.name;
     }
     
     
@@ -1499,6 +1675,32 @@ public class ProvUtil implements DebugListener {
         params.put("timestamp", timestamp+"");
         params.put("expires", expires+"");
         System.out.printf("account: %s\nby: %s\ntimestamp: %s\nexpires: %s\npreAuth: %s\n", name, by, timestamp, expires,PreAuthKey.computePreAuth(params, preAuthKey));
+    }
+    
+    private void doGetAllReverseProxyURLs(String[] args) throws ServiceException {
+        String REVERSE_PROXY_PROTO = "http://";
+        int REVERSE_PROXY_PORT = 7072;
+        // String REVERSE_PROXY_PATH = "/service/extension/nginx-lookup";
+        String REVERSE_PROXY_PATH = ExtensionDispatcherServlet.EXTENSION_PATH + "/nginx-lookup";
+        
+        List<Server> servers = mProv.getAllServers();
+        for (Server server : servers ) {
+            boolean isTarget = server.getBooleanAttr(Provisioning.A_zimbraReverseProxyLookupTarget, true);
+            if (isTarget) {
+                String serviceName = server.getAttr(Provisioning.A_zimbraServiceHostname, null);
+                System.out.println(REVERSE_PROXY_PROTO + serviceName + ":" + REVERSE_PROXY_PORT + REVERSE_PROXY_PATH);
+            }
+        }
+    }
+    
+    private void doGetAllMtaAuthURLs(String[] args) throws ServiceException {
+        List<Server> servers = mProv.getAllServers();
+        for (Server server : servers ) {
+            boolean isTarget = server.getBooleanAttr(Provisioning.A_zimbraMtaAuthTarget, true);
+            if (isTarget) {
+                System.out.println(URLUtil.getAdminURL(server));
+            }
+        }
     }
 
     private void doHelp(String[] args) {

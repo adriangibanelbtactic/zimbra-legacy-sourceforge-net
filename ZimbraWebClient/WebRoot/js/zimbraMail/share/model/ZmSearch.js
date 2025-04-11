@@ -74,8 +74,9 @@ ZmSearch = function(appCtxt, params) {
 		this.field						= params.field;
 		this.soapInfo					= params.soapInfo;
 		
-		if (this.query)
+		if (this.query) {
 			this._parseQuery();
+		}
 	}
 	this.isGalSearch = false;
 	this.isCalResSearch = false;
@@ -83,8 +84,7 @@ ZmSearch = function(appCtxt, params) {
 
 // Search types
 ZmSearch.TYPE = {};
-ZmSearch.TYPE[ZmItem.NOTE]		= "note";
-ZmSearch.TYPE_ANY				= "any";
+ZmSearch.TYPE_ANY = "any";
 
 ZmSearch.GAL_ACCOUNT	= "account";
 ZmSearch.GAL_RESOURCE	= "resource";
@@ -95,32 +95,49 @@ ZmSearch.JOIN_OR	= 2;
 
 ZmSearch.TYPE_MAP = {};
 
+ZmSearch.DEFAULT_LIMIT = 25;
+
 // Sort By
 var i = 1;
-ZmSearch.DATE_DESC 	= i++;
-ZmSearch.DATE_ASC 	= i++;
-ZmSearch.SUBJ_DESC 	= i++;
-ZmSearch.SUBJ_ASC 	= i++;
-ZmSearch.NAME_DESC 	= i++;
-ZmSearch.NAME_ASC 	= i++;
-ZmSearch.SCORE_DESC = i++;
+ZmSearch.DATE_DESC 		= i++;
+ZmSearch.DATE_ASC 		= i++;
+ZmSearch.SUBJ_DESC 		= i++;
+ZmSearch.SUBJ_ASC 		= i++;
+ZmSearch.NAME_DESC 		= i++;
+ZmSearch.NAME_ASC 		= i++;
+ZmSearch.SCORE_DESC 	= i++;
 ZmSearch.DURATION_DESC	= i++; 
 ZmSearch.DURATION_ASC	= i++;
+ZmSearch.STATUS_DESC	= i++;
+ZmSearch.STATUS_ASC		= i++;
+ZmSearch.PCOMPLETE_DESC	= i++;
+ZmSearch.PCOMPLETE_ASC	= i++;
+ZmSearch.DUE_DATE_DESC	= i++;
+ZmSearch.DUE_DATE_ASC	= i++;
 
 ZmSearch.SORT_BY = {};
-ZmSearch.SORT_BY[ZmSearch.DATE_DESC] 	= "dateDesc";
-ZmSearch.SORT_BY[ZmSearch.DATE_ASC] 	= "dateAsc";
-ZmSearch.SORT_BY[ZmSearch.SUBJ_DESC] 	= "subjDesc";
-ZmSearch.SORT_BY[ZmSearch.SUBJ_ASC] 	= "subjAsc";
-ZmSearch.SORT_BY[ZmSearch.NAME_DESC] 	= "nameDesc";
-ZmSearch.SORT_BY[ZmSearch.NAME_ASC] 	= "nameAsc";
-ZmSearch.SORT_BY[ZmSearch.SCORE_DESC]	= "scoreDesc";
-ZmSearch.SORT_BY[ZmSearch.DURATION_DESC]= "durDesc";
-ZmSearch.SORT_BY[ZmSearch.DURATION_ASC]	= "durAsc";
+ZmSearch.SORT_BY[ZmSearch.DATE_DESC] 		= "dateDesc";
+ZmSearch.SORT_BY[ZmSearch.DATE_ASC] 		= "dateAsc";
+ZmSearch.SORT_BY[ZmSearch.SUBJ_DESC] 		= "subjDesc";
+ZmSearch.SORT_BY[ZmSearch.SUBJ_ASC] 		= "subjAsc";
+ZmSearch.SORT_BY[ZmSearch.NAME_DESC] 		= "nameDesc";
+ZmSearch.SORT_BY[ZmSearch.NAME_ASC] 		= "nameAsc";
+ZmSearch.SORT_BY[ZmSearch.SCORE_DESC]		= "scoreDesc";
+ZmSearch.SORT_BY[ZmSearch.DURATION_DESC]	= "durDesc";
+ZmSearch.SORT_BY[ZmSearch.DURATION_ASC]		= "durAsc";
+ZmSearch.SORT_BY[ZmSearch.STATUS_DESC]		= "taskStatusDesc";
+ZmSearch.SORT_BY[ZmSearch.STATUS_ASC]		= "taskStatusAsc";
+ZmSearch.SORT_BY[ZmSearch.PCOMPLETE_DESC]	= "taskPercCompletedDesc";
+ZmSearch.SORT_BY[ZmSearch.PCOMPLETE_ASC]	= "taskPercCompletedAsc";
+ZmSearch.SORT_BY[ZmSearch.DUE_DATE_DESC]	= "taskDueDesc";
+ZmSearch.SORT_BY[ZmSearch.DUE_DATE_ASC]		= "taskDueAsc";
 
 ZmSearch.SORT_BY_MAP = {};
-for (var i in ZmSearch.SORT_BY)
-	ZmSearch.SORT_BY_MAP[ZmSearch.SORT_BY[i]] = i;
+(function() {
+	for (var i in ZmSearch.SORT_BY) {
+		ZmSearch.SORT_BY_MAP[ZmSearch.SORT_BY[i]] = i;
+	}
+})();
 
 ZmSearch.FOLDER_QUERY_RE = new RegExp('^in:\\s*"?(' + ZmOrganizer.VALID_PATH_CHARS + '+)"?\\s*$', "i");
 ZmSearch.TAG_QUERY_RE = new RegExp('^tag:\\s*"?(' + ZmOrganizer.VALID_NAME_CHARS + '+)"?\\s*$', "i");
@@ -319,17 +336,26 @@ function(soapDoc) {
 	method.setAttribute("offset", this.offset);
 
 	// always set limit (init to user pref for page size if not provided)
-	this.limit = this.limit || ((this.contactSource && this.types.size() == 1)
-			? this._appCtxt.get(ZmSetting.CONTACTS_PER_PAGE)
-			: this._appCtxt.get(ZmSetting.PAGE_SIZE));
+	if (!this.limit) {
+		if (this.contactSource && this.types.size() == 1) {
+			this.limit = this._appCtxt.get(ZmSetting.CONTACTS_PER_PAGE);
+		} else if (this._appCtxt.get(ZmSetting.MAIL_ENABLED)) {
+			this.limit = this._appCtxt.get(ZmSetting.PAGE_SIZE);
+		} else if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED)) {
+			this.limit = this._appCtxt.get(ZmSetting.CONTACTS_PER_PAGE);
+		} else {
+			this.limit = ZmSearch.DEFAULT_LIMIT;
+		}
+	}
 	method.setAttribute("limit", this.limit);
 
 	// and of course, always set the query
 	soapDoc.set("query", this.query);
 
 	// set search field if provided
-	if (this.field)
+	if (this.field) {
 		method.setAttribute("field", this.field);
+	}
 
 	return method;
 };
@@ -366,9 +392,12 @@ function() {
 	results = this.query.match(ZmSearch.TAG_QUERY_RE);
 	if (results) {
 		var name = results[1].toLowerCase();
-		var tag = this._appCtxt.getTagTree().getByName(name);
-		if (tag) {
-			this.tagId = tag.id;
+		var tagTree = this._appCtxt.getTagTree();
+		if (tagTree) {
+			var tag = tagTree.getByName(name);
+			if (tag) {
+				this.tagId = tag.id;
+			}
 		}
 	}
 	this.hasUnreadTerm = ZmSearch.UNREAD_QUERY_RE.test(this.query);

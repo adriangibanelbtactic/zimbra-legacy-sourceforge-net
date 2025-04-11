@@ -97,10 +97,8 @@ ZmConvListView.prototype.constructor = ZmConvListView;
 
 // Constants
 
-ZmConvListView.CONVLIST_REPLENISH_THRESHOLD = 0;
-ZmConvListView.COL_WIDTH_FROM 				= 145;
-
-ZmConvListView.INDENT = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
+ZmConvListView.COL_WIDTH_FROM	= 145;
+ZmConvListView.INDENT			= "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
 
 ZmListView.FIELD_CLASS[ZmItem.F_EXPAND] = "Icon";
 
@@ -111,15 +109,11 @@ ZmConvListView.prototype._changeTrashStatus = ZmMailMsgListView.prototype._chang
 ZmConvListView.prototype.toString = 
 function() {
 	return "ZmConvListView";
-}
-
-ZmConvListView.prototype.getReplenishThreshold =
-function() {
-	return ZmConvListView.CONVLIST_REPLENISH_THRESHOLD;
 };
 
-// Enter is normally a list view widget shortcut for DBLCLICK; we need to no-op it here so
-// that it gets handled as an app shortcut (app shortcuts happen after widget shortcuts).
+// Enter is normally a list view widget shortcut for DBLCLICK; we need to no-op
+// it here so that it gets handled as an app shortcut (app shortcuts happen
+// after widget shortcuts).
 ZmConvListView.prototype.handleKeyAction =
 function(actionCode, ev) {
 	switch (actionCode) {
@@ -127,9 +121,8 @@ function(actionCode, ev) {
 			return false;
 
 		default:
-			return DwtListView.prototype.handleKeyAction.call(this, actionCode, ev);
+			return ZmMailListView.prototype.handleKeyAction.call(this, actionCode, ev);
 	}
-	return true;
 };
 
 ZmConvListView.prototype.markUIAsRead = 
@@ -147,8 +140,13 @@ function(parent) {
 
 	var hList = [];
 
+	if (appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_SELECTION, null, "TaskCheckbox", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.selection));
+	}
 	hList.push(new DwtListHeaderItem(ZmItem.F_EXPAND, null, "NodeCollapsed", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.expand));
-	hList.push(new DwtListHeaderItem(ZmItem.F_FLAG, null, "FlagRed", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.flag));
+	if (appCtxt.get(ZmSetting.FLAGGING_ENABLED)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_FLAG, null, "FlagRed", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.flag));
+	}
 	if (appCtxt.get(ZmSetting.TAGGING_ENABLED)) {
 		hList.push(new DwtListHeaderItem(ZmItem.F_TAG, null, "MiniTag", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.tag));
 	}
@@ -182,17 +180,16 @@ function(item, params) {
 
 ZmConvListView.prototype._getCellId =
 function(item, field) {
-	return (field == ZmItem.F_FROM) ? this._getFieldId(item, field) :
-									  ZmMailListView.prototype._getCellId.apply(this, arguments);
+	return (field == ZmItem.F_FROM)
+		? this._getFieldId(item, field)
+		: ZmMailListView.prototype._getCellId.apply(this, arguments);
 };
 
 ZmConvListView.prototype._getCellClass =
 function(item, field, params) {
-	if (item.type == ZmItem.CONV && field == ZmItem.F_SIZE) {
-		return "Count";
-	} else {
-		return ZmMailListView.prototype._getCellClass.apply(this, arguments);
-	}
+	return (item.type == ZmItem.CONV && field == ZmItem.F_SIZE)
+		? "Count"
+		: (ZmMailListView.prototype._getCellClass.apply(this, arguments));
 };
 
 ZmConvListView.prototype._getCellContents =
@@ -275,8 +272,9 @@ function(conv, fieldId) {
 
 ZmConvListView.prototype._getHeaderToolTip =
 function(field, itemIdx) {
-	return (field == ZmItem.F_EXPAND) ? ZmMsg.expandCollapse :
-										ZmMailListView.prototype._getHeaderToolTip.apply(this, arguments);
+	return (field == ZmItem.F_EXPAND)
+		? ZmMsg.expandCollapse
+		: ZmMailListView.prototype._getHeaderToolTip.apply(this, arguments);
 };
 
 ZmConvListView.prototype._getToolTip =
@@ -363,6 +361,7 @@ function(item) {
 ZmConvListView.prototype._showMsgs =
 function(ids, show) {
 	if (!(ids && ids.length)) { return; }
+
 	for (var i = 0; i < ids.length; i++) {
 		var row = document.getElementById(ids[i]);
 		if (row) {

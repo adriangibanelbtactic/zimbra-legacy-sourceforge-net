@@ -38,78 +38,26 @@
 */
 ZmPrefView = function(parent, appCtxt, posStyle, controller) {
 
-    DwtTabView.call(this, parent, "ZmPrefView", posStyle);
+	DwtTabView.call(this, parent, "ZmPrefView", posStyle);
 
-	ZmPrefView._setViewPrefs();
-	
 	this._parent = parent;
-    this._appCtxt = appCtxt;
+	this._appCtxt = appCtxt;
 	this._controller = controller;
 
-    this.setScrollStyle(DwtControl.SCROLL);
+	this.setScrollStyle(DwtControl.SCROLL);
 	this.prefView = {};
-	this._hasRendered = false;
+    this._tabId = {};
+    this._hasRendered = false;
+
+	this.setVisible(false);
 };
 
 ZmPrefView.prototype = new DwtTabView;
 ZmPrefView.prototype.constructor = ZmPrefView;
 
-// preference pages
-var i = 1;
-ZmPrefView.ADDR_BOOK		 = i++;
-ZmPrefView.CALENDAR		 = i++;
-ZmPrefView.FILTER_RULES		 = i++;
-ZmPrefView.GENERAL		 = i++;
-ZmPrefView.IDENTITY		 = i++;
-ZmPrefView.MAIL			 = i++;
-ZmPrefView.IM			 = i++;
-ZmPrefView.POP_ACCOUNTS		 = i++;
-ZmPrefView.SHORTCUTS		 = i++;
-ZmPrefView.VOICE		 = i++;
-delete i;
-
-ZmPrefView.VIEWS = [
-	ZmPrefView.GENERAL,
-	ZmPrefView.MAIL,
-	ZmPrefView.IDENTITY,
-	ZmPrefView.POP_ACCOUNTS,
-	ZmPrefView.FILTER_RULES,
-	ZmPrefView.VOICE,
-	ZmPrefView.ADDR_BOOK,
-	ZmPrefView.CALENDAR,
-	ZmPrefView.IM,
-	ZmPrefView.SHORTCUTS
-];
-
-// list of prefs for each page
-ZmPrefView.PREFS = {};
-ZmPrefView._setViewPrefs =
-function() {
-        ZmPrefView.PREFS[ZmPrefView.ADDR_BOOK]     = ZmPref.ADDR_BOOK_PREFS;
-        ZmPrefView.PREFS[ZmPrefView.CALENDAR]      = ZmPref.CALENDAR_PREFS;
-        ZmPrefView.PREFS[ZmPrefView.GENERAL]       = ZmPref.GENERAL_PREFS;
-        ZmPrefView.PREFS[ZmPrefView.MAIL]          = ZmPref.MAIL_PREFS;
-        ZmPrefView.PREFS[ZmPrefView.IM]            = ZmPref.IM_PREFS;
-        ZmPrefView.PREFS[ZmPrefView.POP_ACCOUNTS]  = ZmPref.POP_ACCOUNTS_PREFS;
-        ZmPrefView.PREFS[ZmPrefView.SHORTCUTS]     = ZmPref.SHORTCUT_PREFS;
-};
-
-// title for the page's tab
-ZmPrefView.TAB_NAME = {};
-ZmPrefView.TAB_NAME[ZmPrefView.ADDR_BOOK]          = ZmMsg.addressBook;
-ZmPrefView.TAB_NAME[ZmPrefView.CALENDAR]           = ZmMsg.calendar;
-ZmPrefView.TAB_NAME[ZmPrefView.FILTER_RULES]       = ZmMsg.filterRules;
-ZmPrefView.TAB_NAME[ZmPrefView.GENERAL]            = ZmMsg.general;
-ZmPrefView.TAB_NAME[ZmPrefView.IDENTITY]           = ZmMsg.identitiesTab;
-ZmPrefView.TAB_NAME[ZmPrefView.MAIL]               = ZmMsg.mail;
-ZmPrefView.TAB_NAME[ZmPrefView.IM]                 = ZmMsg.im;
-ZmPrefView.TAB_NAME[ZmPrefView.POP_ACCOUNTS]       = ZmMsg.popAccounts;
-ZmPrefView.TAB_NAME[ZmPrefView.SHORTCUTS]          = ZmMsg.shortcuts;
-ZmPrefView.TAB_NAME[ZmPrefView.VOICE]              = ZmMsg.voice;
-
 ZmPrefView.prototype.toString =
 function () {
-    return "ZmPrefView";
+	return "ZmPrefView";
 };
 
 /**
@@ -128,44 +76,36 @@ ZmPrefView.prototype.show =
 function() {
 	if (this._hasRendered) return;
 
-	for (var i = 0; i < ZmPrefView.VIEWS.length; i++) {
-		var view = ZmPrefView.VIEWS[i];
-
-		if ((view == ZmPrefView.FILTER_RULES) && (!this._appCtxt.get(ZmSetting.FILTERS_ENABLED))) continue;
-		if (view == ZmPrefView.ADDR_BOOK && (!this._appCtxt.get(ZmSetting.CONTACTS_ENABLED))) continue;
-		if (view == ZmPrefView.CALENDAR && (!this._appCtxt.get(ZmSetting.CALENDAR_ENABLED))) continue;
-		if (view == ZmPrefView.POP_ACCOUNTS && !this._appCtxt.get(ZmSetting.POP_ACCOUNTS_ENABLED)) continue;
-		if (view == ZmPrefView.SHORTCUTS && !this._appCtxt.get(ZmSetting.USE_KEYBOARD_SHORTCUTS)) continue;
-		if (view == ZmPrefView.VOICE && !this._appCtxt.get(ZmSetting.VOICE_ENABLED)) continue;
-		if (view == ZmPrefView.IM && !this._appCtxt.get(ZmSetting.IM_ENABLED)) continue;
-
-		var viewObj = null;
-		if (view == ZmPrefView.FILTER_RULES) {
-			viewObj = this._controller.getFilterRulesController().getFilterRulesView();
-		} else if (view == ZmPrefView.SHORTCUTS) {
-			viewObj = new ZmShortcutsPage(this._parent, this._appCtxt, view, this._controller);
-		} else if (view == ZmPrefView.IDENTITY) {
-			viewObj = this._controller.getIdentityController().getListView();
-		} else if (view == ZmPrefView.POP_ACCOUNTS) {
-			viewObj = AjxDispatcher.run("GetPopAccountsController").getListView();
-		} else if (view == ZmPrefView.VOICE) {
-			viewObj = AjxDispatcher.run("GetVoicePrefsController").getListView();
-		} else {
-			viewObj = new ZmPreferencesPage(this._parent, this._appCtxt, view, this._controller);
+	var sections = ZmPref.getPrefSectionArray();
+	for (var i = 0; i < sections.length; i++) {
+		// does the section meet the precondition?
+		var section = sections[i];
+		if (!this._checkPreCondition(section)) {
+			continue;
 		}
 
-		this.prefView[view] = viewObj;
+		// add section as a tab
+		var view;
+		if (section.createView) {
+			view = section.createView(this._parent, this._appCtxt, section, this._controller);
+		}
+		else {
+			view = new ZmPreferencesPage(this, this._appCtxt, section, this._controller);
+		}
+		this.prefView[section.id] = view;
+		var tabId = this.addTab(section.title, view);
+        this._tabId[section.id] = tabId;
+    }
 
-		this.addTab(ZmPrefView.TAB_NAME[view], this.prefView[view]);
-	}
 	this.resetKeyBindings();
 	this._hasRendered = true;
+	this.setVisible(true);
 };
 
 ZmPrefView.prototype.reset =
 function() {
-	for (var i = 0; i < ZmPrefView.VIEWS.length; i++) {
-		var viewPage = this.prefView[ZmPrefView.VIEWS[i]];
+	for (var id in this.prefView) {
+		var viewPage = this.prefView[id];
 		if (!viewPage) continue; // if feature is disabled, may not have a view page
 		if (!viewPage.hasRendered()) continue; // if page hasn't rendered, nothing has changed
 		viewPage.reset();
@@ -215,18 +155,17 @@ function(view) {
  * </pre>
  */
 ZmPrefView.prototype.getPreSaveCallbacks = function() {
-    var callbacks = [];
-    for (var i = 0; i < ZmPrefView.VIEWS.length; i++) {
-        var view = ZmPrefView.VIEWS[i];
-        var viewPage = this.prefView[view];
-        if (viewPage && viewPage.getPreSaveCallback && viewPage.hasRendered()) {
-            var callback = viewPage.getPreSaveCallback();
-            if (callback) {
-                callbacks.push(callback);
-            }
-        }
-    }
-    return callbacks;
+	var callbacks = [];
+	for (var id in this.prefView) {
+		var viewPage = this.prefView[id];
+		if (viewPage && viewPage.getPreSaveCallback && viewPage.hasRendered()) {
+			var callback = viewPage.getPreSaveCallback();
+			if (callback) {
+				callbacks.push(callback);
+			}
+		}
+	}
+	return callbacks;
 };
 
 /**
@@ -244,15 +183,16 @@ function(dirtyCheck, noValidation, batchCommand) {
 	var settings = this._appCtxt.getSettings();
 	var list = [];
 	var errorStr = "";
-	for (var i = 0; i < ZmPrefView.VIEWS.length; i++) {
-		var view = ZmPrefView.VIEWS[i];
-		if (view == ZmPrefView.FILTER_RULES) continue;
-
+	var sections = ZmPref.getPrefSectionMap();
+	for (var view in this.prefView) {
+		var section = sections[view];
+		if (section.manageChanges) continue;
+        
 		var viewPage = this.prefView[view];
 		if (!viewPage) continue; // if feature is disabled, may not have a view page
 		if (!viewPage.hasRendered()) continue; // if page hasn't rendered, nothing has changed
 
-		if (view == ZmPrefView.IDENTITY || view == ZmPrefView.POP_ACCOUNTS || view == ZmPrefView.VOICE) {
+		if (section.manageDirty) {
 			var isDirty = viewPage.isDirty();
 			if (isDirty) {
 				if (dirtyCheck) {
@@ -266,18 +206,19 @@ function(dirtyCheck, noValidation, batchCommand) {
 					throw new AjxException(viewPage.getErrorMessage(true));
 				}
 			}
-            if (!dirtyCheck && batchCommand) {
+			if (!dirtyCheck && batchCommand) {
 				this.prefView[view].addCommand(batchCommand);
 			}
 		}
 
-		var prefs = ZmPrefView.PREFS[view];
+		var prefs = sections[view] && sections[view].prefs;
 		for (var j = 0, count = prefs ? prefs.length : 0; j < count; j++) {
 			var id = prefs[j];
-			if (!viewPage._prefPresent[id]) continue;
+			if (!viewPage._prefPresent || !viewPage._prefPresent[id]) { continue; }
 			var setup = ZmPref.SETUP[id];
-			var pre = setup.precondition;
-			if (pre && !(this._appCtxt.get(pre))) continue;
+			if (!this._checkPreCondition(setup)) {
+				continue;
+			}
 
 			var type = setup ? setup.displayContainer : null;
 			if (type == ZmPref.TYPE_PASSWORD) continue; // ignore non-form elements
@@ -340,4 +281,61 @@ function(dirtyCheck, noValidation, batchCommand) {
 ZmPrefView.prototype.isDirty =
 function() {
 	return this.getChangedPrefs(true, true);
+};
+
+/**
+* Selects the section (tab) with the given id.
+*/
+ZmPrefView.prototype.selectSection =
+function(sectionId) {
+	this.switchToTab(this._tabId[sectionId]);
+};
+
+//
+// Protected methods
+//
+
+/**
+ * Checks for a precondition on the given object. If one is found, it is
+ * evaluated based on its type. Note that the precondition must be contained
+ * within the object in a property named "precondition".
+ * 
+ * @param obj			[object]	an object, possibly with a "precondition" property.
+ * @param precondition	[object]*	explicit precondition to check
+ */
+ZmPrefView.prototype._checkPreCondition =
+function(obj, precondition) {
+	// No object, nothing to check
+	if (!obj) {
+		return true;
+	}
+	// Object lacks "precondition" property, nothing to check
+	if (!("precondition" in obj)) {
+		return true;
+	}
+	var p = precondition || obj.precondition;
+	// Object has a precondition that didn't get defined, probably because its
+	// app is not enabled. That equates to failure for the precondition.
+	if (p == null) {
+		return false;
+	}
+	// Precondition is set to true or false
+	if (AjxUtil.isBoolean(p)) {
+		return p;
+	}
+	// Precondition is a function, look at its result
+	if (AjxUtil.isFunction(p)) {
+		return p(this._appCtxt);
+	}
+	// A list of preconditions is ORed together via a recursive call
+	if (AjxUtil.isArray(p)) {
+		for (var i = 0, count = p.length; i < count; i++) {
+			if (this._checkPreCondition(obj, p[i])) {
+				return true;
+			}
+		}
+		return false;
+	}
+	// Assume that the precondition is a setting, and return its value
+	return Boolean(this._appCtxt.get(p));
 };

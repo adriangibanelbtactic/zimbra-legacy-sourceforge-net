@@ -55,26 +55,22 @@ ZmItem = function(appCtxt, type, id, list) {
 	this.tagHash = {};
 	this.folderId = 0;
 	
-	if (id && appCtxt)
+	if (id && appCtxt) {
 		appCtxt.cacheSet(id, this);
+	}
 };
 
 ZmItem.prototype = new ZmModel;
 ZmItem.prototype.constructor = ZmItem;
-
-// Item types
-ZmItem.NOTE = ZmEvent.S_NOTE;
 
 // App responsible for item
 ZmItem.APP = {};
 
 // Type names
 ZmItem.MSG_KEY = {};
-ZmItem.MSG_KEY[ZmItem.NOTE]	= "note";
 
 // Representative icons
 ZmItem.ICON = {};
-ZmItem.ICON[ZmItem.NOTE] = "Note";
 
 // Function for creating search results list
 ZmItem.RESULTS_LIST = {};
@@ -82,37 +78,35 @@ ZmItem.RESULTS_LIST = {};
 // fields that can be part of a displayed item (need to be short because
 // they are used in many DOM IDs)
 // XXX: define these in appropriate apps
-ZmItem.F_ID				= "id";
-ZmItem.F_ITEM_ROW		= "rw";
-ZmItem.F_FLAG			= "fg";
 ZmItem.F_ATTACHMENT		= "at";
-ZmItem.F_TAG			= "tg";
-ZmItem.F_PARTICIPANT	= "pa";
-ZmItem.F_NAME			= "na";
-ZmItem.F_FROM			= "fr";
-ZmItem.F_FRAGMENT		= "fm";
-ZmItem.F_SUBJECT		= "su";
-ZmItem.F_DATE			= "dt";
-ZmItem.F_STATUS			= "st";
-ZmItem.F_FOLDER			= "fo";
-ZmItem.F_COMPANY		= "co";
-ZmItem.F_EMAIL			= "em";
-ZmItem.F_TYPE			= "ty";
-ZmItem.F_TAG_CELL		= "tc";
-ZmItem.F_SIZE			= "sz";
-ZmItem.F_INDEX			= "ix";
-ZmItem.F_EXPAND			= "ex";	// conv list view
-ZmItem.F_FILE_TYPE		= "ft";	// notebook
-// task specific
-ZmItem.F_PRIORITY		= "pr";
-ZmItem.F_PCOMPLETE		= "pc";
-ZmItem.F_COMPLETED		= "cp";
-
-ZmItem.F_WORK_PHONE		= "wp";
-ZmItem.F_HOME_PHONE		= "hp";
-ZmItem.F_LOCATION		= "lo";
 ZmItem.F_CAPACITY		= "cp";
+ZmItem.F_COMPANY		= "co";
+ZmItem.F_DATE			= "dt";
+ZmItem.F_EMAIL			= "em";
+ZmItem.F_EXPAND			= "ex";	// CLV
+ZmItem.F_FILE_TYPE		= "ft";	// Notebook
+ZmItem.F_FLAG			= "fg";
+ZmItem.F_FOLDER			= "fo";
+ZmItem.F_FRAGMENT		= "fm";
+ZmItem.F_FROM			= "fr";
+ZmItem.F_HOME_PHONE		= "hp"; // Contacts
+ZmItem.F_ID				= "id";
+ZmItem.F_INDEX			= "ix";
+ZmItem.F_ITEM_ROW		= "rw";
+ZmItem.F_LOCATION		= "lo";
+ZmItem.F_NAME			= "na";
 ZmItem.F_NOTES			= "no";
+ZmItem.F_PARTICIPANT	= "pa";
+ZmItem.F_PCOMPLETE		= "pc"; // Tasks
+ZmItem.F_PRIORITY		= "pr"; // Tasks
+ZmItem.F_SELECTION		= "se";
+ZmItem.F_SIZE			= "sz";
+ZmItem.F_STATUS			= "st";
+ZmItem.F_SUBJECT		= "su";
+ZmItem.F_TAG			= "tg";
+ZmItem.F_TAG_CELL		= "tc";
+ZmItem.F_TYPE			= "ty";
+ZmItem.F_WORK_PHONE		= "wp"; // Contacts
 
 // Action requests for different items
 ZmItem.SOAP_CMD = {};
@@ -122,25 +116,25 @@ ZmItem.SOAP_CMD[ZmItem.TASK]	= "ItemAction";
 ZmItem.TAGS_FIELD = 1;
 
 // Item flags
-ZmItem.FLAG_FLAGGED		= "f";
 ZmItem.FLAG_ATTACH		= "a";
-ZmItem.FLAG_UNREAD		= "u";
-ZmItem.FLAG_REPLIED		= "r";
+ZmItem.FLAG_FLAGGED		= "f";
 ZmItem.FLAG_FORWARDED	= "w";
-ZmItem.FLAG_ISSENT		= "s";
 ZmItem.FLAG_ISDRAFT 	= "d";
+ZmItem.FLAG_ISSENT		= "s";
+ZmItem.FLAG_REPLIED		= "r";
+ZmItem.FLAG_UNREAD		= "u";
 ZmItem.ALL_FLAGS = [ZmItem.FLAG_FLAGGED, ZmItem.FLAG_ATTACH, ZmItem.FLAG_UNREAD,
 					ZmItem.FLAG_REPLIED, ZmItem.FLAG_FORWARDED, ZmItem.FLAG_ISSENT, ZmItem.FLAG_ISDRAFT];
 
 // Map flag to item property
 ZmItem.FLAG_PROP = {};
-ZmItem.FLAG_PROP[ZmItem.FLAG_FLAGGED]	= "isFlagged";
 ZmItem.FLAG_PROP[ZmItem.FLAG_ATTACH]	= "hasAttach";
-ZmItem.FLAG_PROP[ZmItem.FLAG_UNREAD]	= "isUnread";
-ZmItem.FLAG_PROP[ZmItem.FLAG_REPLIED]	= "isReplied";
+ZmItem.FLAG_PROP[ZmItem.FLAG_FLAGGED]	= "isFlagged";
 ZmItem.FLAG_PROP[ZmItem.FLAG_FORWARDED]	= "isForwarded";
-ZmItem.FLAG_PROP[ZmItem.FLAG_ISSENT]	= "isSent";
 ZmItem.FLAG_PROP[ZmItem.FLAG_ISDRAFT] 	= "isDraft";
+ZmItem.FLAG_PROP[ZmItem.FLAG_ISSENT]	= "isSent";
+ZmItem.FLAG_PROP[ZmItem.FLAG_REPLIED]	= "isReplied";
+ZmItem.FLAG_PROP[ZmItem.FLAG_UNREAD]	= "isUnread";
 
 // DnD actions this item is allowed
 ZmItem.DND_ACTION_MOVE = 1 << 0;
@@ -250,11 +244,13 @@ function(sortBy) {
 };
 
 /** @deprecated Use getRestUrl. */
-ZmItem.prototype.getUrl = function() {
+ZmItem.prototype.getUrl =
+function() {
 	return this.getRestUrl();
 };
 
-ZmItem.prototype.getRestUrl = function() {
+ZmItem.prototype.getRestUrl =
+function() {
 	// return REST URL as seen by server
 	if (this.restUrl) {
 		return this.restUrl;
@@ -267,7 +263,7 @@ ZmItem.prototype.getRestUrl = function() {
 		organizer.getRestUrl(), "/", AjxStringUtil.urlComponentEncode(this.name)
 	].join("");
 
-	DBG.println("NO REST URL FROM SERVER. GENERATED URL: "+url);
+	DBG.println("NO REST URL FROM SERVER. GENERATED URL: " + url);
 
 	return url;
 };
@@ -311,12 +307,19 @@ function() {
 };
 
 /**
-* This method should be overloaded by the derived object to determine whether it
-* is a share or not.
-*/
+ * Returns true if this item is shared (remote).
+ */
 ZmItem.prototype.isShared =
 function() {
-	return false;
+	if (this._isShared == null) {
+		if (this.id == -1) {
+			this._isShared = false;
+		} else {
+			var acct = this._appCtxt.getActiveAccount();
+			this._isShared = ((this.id.indexOf(":") != -1) && (this.id.indexOf(acct.id) != 0));
+		}
+	}
+	return this._isShared;
 };
 
 // Notification handling

@@ -26,8 +26,11 @@ IMSubscribe -- subscribe to someone's presence / modify subscription
 -----------
 <IMSubscribeRequest addr="foo@bar.com" [name="friendly name"] [groups="group,group..."] [op="add|remove"]/>
 
-<IMSubscribeResponse/>
-
+// If the user specified an alias, the server will resolve the alias
+// to a canonical address -- and add the canonical address to the
+// Buddy List.  The addr returned might be different than the
+// requested addr
+<IMSubscribeResponse addr="might-be-different@domain.com"/>
 
 
 IMAuthorizeSubscribe -- used to OK another user adding you to their buddy list
@@ -53,6 +56,10 @@ IMGetChat -- return the chat history (param = num messages)
 ---------
 <IMGetChatRequest thread="threadID" [seq="1st-sequence-to-retrieve"]/>
 
+// chat unknown (server restart?  server flushed it due to idleness?)
+<IMGetChatResponse thread="threadID" error="not_found"/>
+
+// chat known:
 <IMGetChatResponse>
    <chat thread="threadID">
       <pcps> // like email-element-cache -- only valid for this single message!
@@ -75,6 +82,7 @@ To an existing chat:
    <message thread="threadID">
       [<subject [lang="LANGUAGE"]>SUBJECT</subject>]*   // HTML
       [<body [lang="LANGUAGE">BODY</body>]              // HTML
+      [<typing/>]
    </message>
 </IMSendMessageRequest>
    
@@ -83,10 +91,14 @@ To an existing chat:
    <message addr="foo@bar.com">
       [<subject [lang="LANGUAGE"]>SUBJECT</subject>]*   // HTML
       [<body [lang="LANGUAGE">BODY</body>]              // HTML
+      [<typing/>]
    </message>
 </IMSendMessageRequest>
 
 <IMSendMessageResponse thread="thread id"/>
+
+**Send a blank message to indicate/stop typing indicator by itself**
+
 
 
    
@@ -94,6 +106,13 @@ IMModifyChat -- add/remove users from multi-user chat, adjust save preferences, 
 ------------
 <IMModifyChatRequest thread="threadId" op="close"/>
 <IMModifyChatRequest thread="threadId" op="adduser" addr="address>INVITATION_MESSAGE</IMModifyChatRequest>
+
+// chat unknown (server restart?  server flushed it due to idleness?)
+<IMModifyChatResponse thread="threadID" error="not_found"/>
+
+// successful
+<IMModifyChatResponse thread="threadId"/>
+
 
 
 IMJoinChat -- join a multi-user chat you have been invited to
@@ -123,6 +142,9 @@ IMGatewayList - gateways to external IM services
 connectedState is one of:
    bad_auth               -- auth is bad, will not try to reconnect
    intentionally_offline  -- user's local im presence is "offline" so not connected
+   disabled               -- the user's account has been disabled, we will not try to reconnect
+                               (this is probably b/c we detected the user logged into the service
+                                directly from another location)
    online
    shutdown               -- shutting down
    start                  -- just created, will attempt first connect soon
@@ -133,7 +155,7 @@ IMGatewayRegister
 -----------------
 <IMGatewayRegister op="reg" service="SERVICE_NAME" name="remoteName" password="remotePassword"/>
 <IMGatewayRegister op="unreg" service="SERVICE_NAME"/>
-<IMGatewayRegister op="reconnect" service="SERVICE_NAME"/> // tell the service to try a reconnect right now
+<IMGatewayRegister op="reconnect" service="SERVICE_NAME"/> // tell the service to try a reconnect right now, also re-enable if the service was in the disabled state
 
 <IMGatewayRegisterResponse result="0|1"/>
 
@@ -173,12 +195,12 @@ IM NOTIFICATIONS
                 [
                    <n type="unsubscribed" to="TOADDR" groups="GROUPS" [ask="subscribe|unsubscribe"]/> // you removed them from your buddy list
                 ]*
-             
                 [
                 // NEW MESSAGE RECEIVED:
-                   <n type="message" from="address" thread="chat-id" ts="TIMESTAMP>
+                   <n type="message" from="address" thread="chat-id" ts="TIMESTAMP">
                       [<subject [lang="LANG"]>SUBJECT</subject>]
                       [<body [lang="LANG"]>BODY</body>]
+                      [<typing/>]
                    </n>
                 ]*
                 [
@@ -203,8 +225,10 @@ IM NOTIFICATIONS
                 // interop gateway has succeeded/failed to connect us, see <IMGatewayListResponse> above for more info
                   <n type="gwStatus" service="GATEWAY_SERVICE_NAME" state="connectedState SEE ABOVE" [timeUntilNextConnect="msec_until_next_connect_attempt"/> ] />
                 ]*
-                
-                
+                [
+                // your account has connected to the interop service from another location
+                  <n type="otherLocation" service="GATEWAY_SERVICE_NAME" username="REMOTE_SERVICE_USERNAME"/>
+                ]
              </im>]
           ]?     
         </notify>]

@@ -112,15 +112,6 @@
             [completed="yyyyMMddThhmmssZ"]  // VTODO COMPLETED DATE-TIME
         >
 
-           [<replies>
-              [<reply d="TIMESTAMP_OF_REPLY"
-                      at="foo@bar.com"
-                      ptst="AC|DE|TE|NE"
-                      rangeType="1"
-                      recurId="YYMMDD[THHMMSS[Z]]"
-                      tz="timezonename"/>]*
-           </replies>] // one or more replies which we have sent out
-           
            <s DATETIME> // Start date-time (required)
 
            (
@@ -470,6 +461,7 @@ OR
         <inv>
 		  [<tz>...</tz>]*
           <comp
+                d="{date}"
                 uid="{UID}"
                 seq="{sequence}"  // must be incremented from original sequence
                 [name="{name}]
@@ -485,6 +477,22 @@ OR
         All others are ignored.
      </m>
   </cancel>]*
+
+  // List of replies received from attendees.  If SetAppointmenRequest doesn't contain <replies>
+  // block, existing replies will be kept.  If <replies/> element is provided with no <reply>
+  // elements inside, existing replies will be removed, replaced with an empty set.  If <replies>
+  // contains one or more <reply> elements, existing replies are replaced with the ones provided.
+  [<replies>
+     [<reply d="TIMESTAMP_OF_REPLY"
+             at="foo@bar.com"        // address of attendee who replied
+             ptst="AC|DE|TE|NE"      // accepted, declined, etc.
+             [  // present if reply is to an instance in a recurrence
+              recurId="YYMMDD[THHMMSS[Z]]"
+              [tz="timezonename"]
+             ]
+     />]*
+  </replies>] // one or more replies which we have sent out
+           
 </SetAppointmentRequest>
 
 <SetAppointmentResponse calItemId="appointment_id">
@@ -627,9 +635,10 @@ OR
      <su>{subject}</su>
      <f>{fragment}</f>
 
-     <inv type="appt|task">
+     <inv type="appt|task" id="{invId}">
        [
        <comp status="TENT|CONF|CANC"
+            d="{date}"
        		fb="F|B|T|U"
        		fba="F|B|T|U" // Your current status -- what is returned in FreeBusy for you TODO
        		transp="O|T"
@@ -846,23 +855,35 @@ OR
 // sometimes, however the invite is a standard mail-message it can be deleted by the user at
 // any time!
 //
-<GetAppointmentRequest id="appointment_id" [sync="1"]/>
+<GetAppointmentRequest
+    id="appointment_id"
+    [sync="1"]
+    [includeContent="0|1"]   // if 1, MIME parts for body content are returned; default 0
+/>
 
 <GetAppointmentResponse>
   <appt uid="UID" id="appointment_id" [f="{flags}"] [t="{tags}"] s="{size}" d="{date}" l="{folder}">
     [<inv id="invite-original-mail-item-id" compNum="component-number" seq="num">
-      [<replies>
-        [<reply d="TIMESTAMP_OF_REPLY"
-                at="foo@bar.com"
-                ptst="AC|DE|TE|NE"
-                rangeType="1"
-                recurId="YYMMDD[THHMMSS[Z]]"
-                tz="timezonename"/>]*
-      </replies>] // one or more replies which we have sent out
       ...
         ---See <inv> part of GetMsgResponse---
       ...    
+
+      [<mp> ... </mp>]  // body content, if includeContent="1" was specified in the request
     </inv>]+
+
+  // List of replies received from attendees.
+  [<replies>
+     [<reply d="TIMESTAMP_OF_REPLY"
+             at="foo@bar.com"        // address of attendee who replied
+             ptst="AC|DE|TE|NE"      // accepted, declined, etc.
+             [  // present if reply is to an instance in a recurrence
+              recurId="YYMMDD[THHMMSS[Z]]"
+              [tz="timezonename"]
+              rangeType="1"          // always 1
+             ]
+     />]*
+  </replies>] // one or more replies which we have sent out
+
   </appt>
 </GetAppointmentResponse>
 

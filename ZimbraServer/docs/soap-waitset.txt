@@ -13,7 +13,8 @@ WaitSet: scalable mechanism for listening for changes to one or more accounts
 INTEREST_TYPES: comma-separated list.  Currently:
    c: contacts
    m: msgs (and subclasses)
-   a: all
+   a: appointments
+   all: all types (equiv to "c,m,a")
 
 
 *************************************
@@ -68,8 +69,23 @@ last known.
 If the client does not send a last known sync token, then notification
 is based on change since last Wait (or change since <add> if this
 is the first time Wait has been called with the account)
+
+The client may specifiy a custom timeout-length for their request if
+they know something about the particular underlying network.  The
+server may or may not honor this request (depending on server
+configured max/min values).  The server will allow a wider range of
+requested timeouts from admin auth tokens. See LocalConfig values:
+zimbra_waitset_default_request_timeout,
+zimbra_waitset_min_request_timeout, 
+zimbra_waitset_max_request_timeout,
+zimbra_admin_waitset_default_request_timeout,
+zimbra_admin_waitset_min_request_timeout, and
+zimbra_admin_waitset_max_request_timeout
+
+
 ================
-<WaitSetRequest waitSet="setId" defTypes="DEFAULT INTEREST TYPES" seq="highestSeqKnown" [block="1"]>
+<WaitSetRequest waitSet="setId" defTypes="DEFAULT INTEREST TYPES"
+                seq="highestSeqKnown" [block="1"] [timeout="timeout"]>
   [ <add>
       [<a id="ACCTID" [token="lastKnownSyncToken"] [types]/>]+
     </add> ]
@@ -217,18 +233,7 @@ A Detailed Example:
 
 <!-- client syncs to a3 -->
 
-<WaitSetRequest waitSet="foo" seq="2" block="1"/>
-<!-- This is an example of a programming bug, the client has synched
-     to a3, but has not updated the last known token state with the server!
-     Immediately we are re-notified for a3, b/c the server still thinks client is at
-     syncToken 100 -->
-<WaitSetResponse waitSet="foo" seq="3">
-  <n id="a3"/>
-</WaitSetResponse>
-
-<!-- client syncs to a3 -->
-
-<WaitSetRequest waitSet="foo" seq="3" block="1">
+<WaitSetRequest waitSet="foo" seq="2" block="1">
   <update>
     <a id="a3" token="107"/>
   </update>  

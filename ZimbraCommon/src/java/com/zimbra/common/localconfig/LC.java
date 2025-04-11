@@ -99,6 +99,8 @@ public class LC {
     public static final KnownKey zimbra_zmprov_default_to_ldap;
     public static final KnownKey zimbra_zmprov_default_soap_server;
     public static final KnownKey localized_msgs_directory;
+    public static final KnownKey localized_client_msgs_directory;
+    public static final KnownKey skins_directory;
 
     public static final KnownKey zimbra_store_sweeper_max_age;
 
@@ -109,6 +111,7 @@ public class LC {
     public static final KnownKey zimbra_index_max_uncommitted_operations;
     public static final KnownKey zimbra_index_lru_size;
     public static final KnownKey zimbra_index_idle_flush_time;
+    public static final KnownKey zimbra_index_sweep_frequency;
     
     public static final KnownKey zimbra_index_reader_lru_size;
     public static final KnownKey zimbra_index_reader_idle_flush_time;
@@ -117,6 +120,9 @@ public class LC {
     public static final KnownKey zimbra_spam_report_queue_size;
 
     public static final KnownKey zimbra_throttle_op_concurrency;
+    
+    public static final KnownKey zimbra_im_chat_flush_time;
+    public static final KnownKey zimbra_im_chat_close_time;
 
     public static final KnownKey stats_img_folder;
 
@@ -145,7 +151,7 @@ public class LC {
     public static final KnownKey ldap_cache_timezone_maxsize;
     public static final KnownKey ldap_cache_zimlet_maxsize;
     public static final KnownKey ldap_cache_zimlet_maxage;
-
+    
     public static final KnownKey mysql_directory;
     public static final KnownKey mysql_data_directory;
     public static final KnownKey mysql_socket;
@@ -201,7 +207,11 @@ public class LC {
     public static final KnownKey mailboxd_java_home;
     public static final KnownKey mailboxd_pidfile;
     public static final KnownKey mailboxd_keystore;
-
+    public static final KnownKey mailboxd_keystore_password;
+    public static final KnownKey mailboxd_truststore_password;
+    public static final KnownKey mailboxd_output_file;
+    public static final KnownKey mailboxd_output_rotate_interval;
+    
     public static final KnownKey ssl_allow_untrusted_certs;
 
     public static final KnownKey zimlet_directory;
@@ -235,6 +245,22 @@ public class LC {
     public static final KnownKey search_dbfirst_term_percentage_cutoff;
 
     public static final KnownKey zmstat_log_directory;
+    public static final KnownKey zmstat_interval;
+    
+    public static final KnownKey zimbra_noop_default_timeout;
+    public static final KnownKey zimbra_noop_min_timeout;
+    public static final KnownKey zimbra_noop_max_timeout;
+    
+    public static final KnownKey zimbra_waitset_default_request_timeout;
+    public static final KnownKey zimbra_waitset_min_request_timeout;
+    public static final KnownKey zimbra_waitset_max_request_timeout;
+
+    public static final KnownKey zimbra_admin_waitset_default_request_timeout;
+    public static final KnownKey zimbra_admin_waitset_min_request_timeout;
+    public static final KnownKey zimbra_admin_waitset_max_request_timeout;
+    
+    public static final KnownKey zimbra_waitset_initial_sleep_time;
+    public static final KnownKey zimbra_waitset_nodata_sleep_time;
     
     static {
         final String ZM_MYCNF_CAVEAT = "This value is stored here for use by zmmycnf program.  " +
@@ -361,6 +387,14 @@ public class LC {
         localized_msgs_directory.setDefault("${zimbra_home}" + FS + "conf" + FS + "msgs");
         localized_msgs_directory.setDoc("Directory for localized message files.");
 
+        localized_client_msgs_directory = new KnownKey("localized_client_msgs_directory");
+        localized_client_msgs_directory.setDefault("${mailboxd_directory}" + FS + "webapps" + FS + "zimbra" + FS + "WEB-INF" + FS + "classes" + FS + "msgs");
+        localized_client_msgs_directory.setDoc("Directory for localized client message files.");
+
+        skins_directory = new KnownKey("skins_directory");
+        skins_directory.setDefault("${mailboxd_directory}" + FS + "webapps" + FS + "zimbra" + FS + "skins");
+        skins_directory.setDoc("Directory for skins.");
+        
         zimbra_store_sweeper_max_age = new KnownKey("zimbra_store_sweeper_max_age");
         zimbra_store_sweeper_max_age.setDefault("480");  // 480 mins = 8 hours
         zimbra_store_sweeper_max_age.setDoc("Files older than this many minutes are auto-deleted from store incoming directory.");
@@ -391,6 +425,9 @@ public class LC {
         zimbra_index_idle_flush_time.setDoc("If idle for longer than this value (in seconds), flush" +
                     " uncommitted indexing ops in mailbox.");
         
+        zimbra_index_sweep_frequency = new KnownKey("zimbra_index_sweep_frequency", "30", 
+              "How often (seconds) do we sweep the Index Writer Cache looking for idle IndexWriters to close");
+        
         zimbra_index_reader_lru_size  = new KnownKey("zimbra_index_reader_lru_size");
         zimbra_index_reader_lru_size.setDefault("20");
         zimbra_index_reader_lru_size.setDoc("Maximum number of IndexReaders cached open by the search subsystem");
@@ -402,7 +439,6 @@ public class LC {
         zimbra_index_reader_idle_sweep_frequency = new KnownKey("zimbra_index_reader_idle_sweep_frequency");
         zimbra_index_reader_idle_sweep_frequency.setDefault("30");
         zimbra_index_reader_idle_sweep_frequency.setDoc("Frequency (seconds) the index reader LRU is swept for idle readers");
-        
 
         zimbra_spam_report_queue_size = new KnownKey("zimbra_spam_report_queue_size");
         zimbra_spam_report_queue_size.setDefault("100");
@@ -413,6 +449,11 @@ public class LC {
         zimbra_throttle_op_concurrency.setDefault("1000,1000,1000,1000,1000");
         zimbra_throttle_op_concurrency.setDoc("Comma-Separated list of concurrency values for each of the 5 priority levels " +
                     "in order from highest priority to lowest priority");
+        
+        zimbra_im_chat_flush_time = new KnownKey("zimbra_im_chat_flush_time", "300",
+             "How frequently (seconds) are open IM chats written to the store");
+        zimbra_im_chat_close_time = new KnownKey("zimbra_im_chat_close_time", "3600", 
+             "How long (seconds) will the server wait to close idle IM chat sessions");
 
         stats_img_folder = new KnownKey("stats_img_folder");
         stats_img_folder.setDefault("${zimbra_home}" + FS + "logger" + FS + "db" + FS + "work");
@@ -737,7 +778,23 @@ public class LC {
         mailboxd_keystore = new KnownKey("mailboxd_keystore");
         mailboxd_keystore.setDefault("${mailboxd_directory}" + FS + "etc" + FS + "keystore");
         mailboxd_keystore.setDoc("Location of keystore data file.");
+        
+        mailboxd_keystore_password = new KnownKey("mailboxd_keystore_password");
+        mailboxd_keystore_password.setDefault("zimbra");
+        mailboxd_keystore_password.setDoc("Password to be used with the KeyManager keystore.");
+        
+        mailboxd_truststore_password = new KnownKey("mailboxd_truststore_password");
+        mailboxd_truststore_password.setDefault("changeit");
+        mailboxd_truststore_password.setDoc("Password to be used with the TrustManager keystore.");
 
+        mailboxd_output_file = new KnownKey("mailboxd_output_file");
+        mailboxd_output_file.setDefault("${zimbra_log_directory}" + FS + "zmmailboxd.out");
+        mailboxd_output_file.setDoc("File to redirect stdout and stderr of server to.");
+        
+        mailboxd_output_rotate_interval = new KnownKey("mailboxd_output_rotate_interval");
+        mailboxd_output_rotate_interval.setDefault("86400");
+        mailboxd_output_rotate_interval.setDoc("Period, in seconds, at which mailboxd output file is rotated.  If <= 0, no rotation is performed.");
+        
         ssl_allow_untrusted_certs = new KnownKey("ssl_allow_untrusted_certs");
         ssl_allow_untrusted_certs.setDefault("false");
         ssl_allow_untrusted_certs.setDoc("If true, allow self-signed SSL certificates.");
@@ -851,5 +908,34 @@ public class LC {
         zmstat_log_directory = new KnownKey("zmstat_log_directory");
         zmstat_log_directory.setDefault("${zimbra_home}" + FS + "zmstat");
         zmstat_log_directory.setDoc("where zmstat csv files are saved");
+
+        zmstat_interval = new KnownKey("zmstat_interval");
+        zmstat_interval.setDefault("30");
+        zmstat_interval.setDoc("how often samples are taken by zmstat (seconds)");
+        
+        zimbra_noop_default_timeout = new KnownKey("zimbra_noop_default_timeout", "300", 
+        "Time (seconds) the server will allow a NoOpRequest to block if wait=1 is specified by the client");  
+        zimbra_noop_min_timeout = new KnownKey("zimbra_noop_min_timeout", "30", 
+        "Minimum allowable timeout (seconds) specified to NoOpRequest");  
+        zimbra_noop_max_timeout = new KnownKey("zimbra_noop_max_timeout", "1200", 
+        "Maximum allowable timeout (seconds) specified to NoOpRequest");
+        
+        zimbra_waitset_default_request_timeout = new KnownKey("zimbra_waitset_default_request_timeout", "300",
+        "Default Timeout (seconds) a non-admin WaitSetRequest will block");
+        zimbra_waitset_min_request_timeout = new KnownKey("zimbra_waitset_min_request_timeout", "30",
+        "Minimum Timeout (seconds) a non-admin WaitSetRequest will block");
+        zimbra_waitset_max_request_timeout = new KnownKey("zimbra_waitset_max_request_timeout", "1200",
+        "Maximum Timeout (seconds) a non-admin WaitSetRequest will block");
+        zimbra_admin_waitset_default_request_timeout = new KnownKey("zimbra_admin_waitset_default_request_timeout", "300",
+        "Default Timeout (seconds) an admin WaitSetRequest will block");
+        zimbra_admin_waitset_min_request_timeout = new KnownKey("zimbra_admin_waitset_min_request_timeout", "0", 
+        "Minimum Timeout (seconds) an admin WaitSetRequest will block");
+        zimbra_admin_waitset_max_request_timeout = new KnownKey("zimbra_admin_waitset_max_request_timeout", "3600",
+        "Maximum Timeout (seconds) an admin WaitSetRequest will block");
+        
+        zimbra_waitset_initial_sleep_time  = new KnownKey("zimbra_waitset_initial_sleep_time", "1", 
+            "Initial timeout (seconds) to wait before processing any WaitSetRequest");
+        zimbra_waitset_nodata_sleep_time = new KnownKey("zimbra_waitset_nodata_sleep_time", "3",
+        "Time (seconds) to sleep handling a WaitSetRequest if there is no data after initial check");
     }
 }

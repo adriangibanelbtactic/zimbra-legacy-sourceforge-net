@@ -42,6 +42,7 @@ ZaGlobalConfig.MTA_RESTRICTIONS = [
 //general
 ZaGlobalConfig.A_zimbraLastLogonTimestampFrequency = "zimbraLastLogonTimestampFrequency";
 ZaGlobalConfig.A_zimbraDefaultDomainName = "zimbraDefaultDomainName";
+ZaGlobalConfig.A_zimbraDataSourceNumThreads = "zimbraDataSourceNumThreads" ;
 // attachements
 ZaGlobalConfig.A_zimbraAttachmentsBlocked = "zimbraAttachmentsBlocked";
 
@@ -84,7 +85,7 @@ ZaGlobalConfig.A_zimbraRedologArchiveDir = "zimbraRedologArchiveDir";
 ZaGlobalConfig.A_zimbraRedologBacklogDir = "zimbraRedologBacklogDir";
 ZaGlobalConfig.A_zimbraRedologRolloverFileSizeKB = "zimbraRedologRolloverFileSizeKB";
 ZaGlobalConfig.A_zimbraRedologFsyncIntervalMS = "zimbraRedologFsyncIntervalMS";
-ZaGlobalConfig.A_zimbraFileUploadMaxSize = "zimbraFileUploadMaxSize"
+//ZaGlobalConfig.A_zimbraFileUploadMaxSize = "zimbraFileUploadMaxSize"
 
 // smtp
 ZaGlobalConfig.A_zimbraSmtpHostname = "zimbraSmtpHostname";
@@ -137,11 +138,17 @@ ZaGlobalConfig.A_currentMonitorHost = "_currentMonitorHost";
 
 ZaGlobalConfig.loadMethod = 
 function(by, val, withConfig) {
+	if(!ZaSettings.GLOBAL_CONFIG_ENABLED)
+		return;
 	var soapDoc = AjxSoapDoc.create("GetAllConfigRequest", "urn:zimbraAdmin", null);
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	var resp = command.invoke(params).Body.GetAllConfigResponse;
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_GET_ALL_CONFIG
+	}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.GetAllConfigResponse;
 	this.initFromJS(resp);	
 }
 ZaItem.loadMethods["ZaGlobalConfig"].push(ZaGlobalConfig.loadMethod);
@@ -308,6 +315,7 @@ ZaGlobalConfig.myXModel = {
 	  	// ...other...
 		{ id:ZaGlobalConfig.A_zimbraGalMaxResults, ref:"attrs/" + ZaGlobalConfig.A_zimbraGalMaxResults , type:_NUMBER_, minInclusive: 0 },
 		{ id:ZaGlobalConfig.A_zimbraDefaultDomainName, ref:"attrs/" + ZaGlobalConfig.A_zimbraDefaultDomainName, type:_STRING_, maxLength: 256},
+		{ id:ZaGlobalConfig.A_zimbraDataSourceNumThreads, ref:"attrs/" + ZaGlobalConfig.A_zimbraDataSourceNumThreads , type:_NUMBER_, minInclusive: 1 },
 		{ id:ZaGlobalConfig.A_currentMonitorHost, ref: "attrs/"+ZaGlobalConfig.A_currentMonitorHost, type: _STRING_ },
 		// attachments
 		{ id:ZaGlobalConfig.A_zimbraAttachmentsBlocked, ref:"attrs/" + ZaGlobalConfig.A_zimbraAttachmentsBlocked, type:_ENUM_, choices:ZaModel.BOOLEAN_CHOICES},
@@ -320,7 +328,7 @@ ZaGlobalConfig.myXModel = {
 		{ id:ZaGlobalConfig.A_zimbraSmtpHostname, ref:"attrs/" + ZaGlobalConfig.A_zimbraSmtpHostname, type:_HOSTNAME_OR_IP_, maxLength: 256 },
 		{ id:ZaGlobalConfig.A_zimbraSmtpPort, ref:"attrs/" + ZaGlobalConfig.A_zimbraSmtpPort, type:_PORT_ },
 		{ id:ZaGlobalConfig.A_zimbraMtaMaxMessageSize, ref:"attrs/" + ZaGlobalConfig.A_zimbraMtaMaxMessageSize, type: _FILE_SIZE_, units: AjxUtil.SIZE_KILOBYTES, required: true },
-		{ id:ZaGlobalConfig.A_zimbraFileUploadMaxSize, ref:"attrs/" + ZaGlobalConfig.A_zimbraFileUploadMaxSize, type: _FILE_SIZE_, units: AjxUtil.SIZE_KILOBYTES, required: true },		
+		//{ id:ZaGlobalConfig.A_zimbraFileUploadMaxSize, ref:"attrs/" + ZaGlobalConfig.A_zimbraFileUploadMaxSize, type: _FILE_SIZE_, units: AjxUtil.SIZE_KILOBYTES, required: true },		
 		{ id:ZaGlobalConfig.A_zimbraMtaRelayHost, ref:"attrs/" + ZaGlobalConfig.A_zimbraMtaRelayHost, type: _HOSTNAME_OR_IP_, maxLength: 256 },
 		{ id:ZaGlobalConfig.A_zimbraMtaMyNetworks, ref:"attrs/" + ZaGlobalConfig.A_zimbraMtaMyNetworks, type: _STRING_, maxLength: 256 },
 		{ id:ZaGlobalConfig.A_zimbraSmtpSendAddOriginatingIP, ref: "attrs/" + ZaGlobalConfig.A_zimbraSmtpSendAddOriginatingIP, type:_ENUM_, choices:ZaModel.BOOLEAN_CHOICES},

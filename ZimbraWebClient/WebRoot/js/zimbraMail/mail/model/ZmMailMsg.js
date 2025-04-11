@@ -56,6 +56,8 @@ ZmMailMsg.prototype.constructor = ZmMailMsg;
 ZmMailMsg.ADDRS = [AjxEmailAddress.FROM, AjxEmailAddress.TO, AjxEmailAddress.CC,
 				   AjxEmailAddress.BCC, AjxEmailAddress.REPLY_TO, AjxEmailAddress.SENDER];
 
+ZmMailMsg.COMPOSE_ADDRS = [AjxEmailAddress.TO, AjxEmailAddress.CC, AjxEmailAddress.BCC];
+
 ZmMailMsg.HDR_FROM		= AjxEmailAddress.FROM;
 ZmMailMsg.HDR_TO		= AjxEmailAddress.TO;
 ZmMailMsg.HDR_CC		= AjxEmailAddress.CC;
@@ -200,11 +202,18 @@ function(type) {
 };
 
 /**
-* Returns the subject
+* Returns the fragment. If maxLen is given, will truncate fragment to maxLen and add ellipsis
 */
-ZmMailMsg.prototype.getSubject =
-function() {
-	return this.subject;
+ZmMailMsg.prototype.getFragment =
+function(maxLen) {
+	var frag = this.fragment;
+
+	if (maxLen && frag && frag.length) {
+		frag = frag.substring(0, maxLen);
+		if (this.fragment.length > maxLen)
+			frag += "...";
+	}
+	return frag;
 };
 
 /**
@@ -215,38 +224,13 @@ function() {
 	return this.date;
 };
 
-/**
-* Returns the size of the message content
-*/
-ZmMailMsg.prototype.getSize =
-function() {
-	return this.size;
-};
-
-/**
-* Returns the message ID
-*/
-ZmMailMsg.prototype.getId =
-function() {
-	return this.id;
-};
-
-/**
-* Returns the message's conversation ID, if any
-*/
-ZmMailMsg.prototype.getConvId =
-function() {
-	return this.cid;
-};
-
 ZmMailMsg.prototype.getHeaderStr =
 function(hdr) {
 	if (hdr == ZmMailMsg.HDR_DATE) {
 		var formatter = AjxDateFormat.getDateTimeInstance(AjxDateFormat.FULL, AjxDateFormat.FULL);
 		return this.sentDate ? ZmMailMsg.HDR_KEY[hdr] + ": " + formatter.format(new Date(this.sentDate)) : "";
 	} else if (hdr == ZmMailMsg.HDR_SUBJECT) {
-		var subj = this.getSubject();
-		return subj ? ZmMailMsg.HDR_KEY[hdr] + ": " + subj : "";
+		return this.subject ? ZmMailMsg.HDR_KEY[hdr] + ": " + this.subject : "";
 	} else {
 		var addrs = this.getAddresses(hdr);
 		var addrStr = addrs.toString(", ", true);
@@ -382,26 +366,25 @@ function() {
 };
 
 /**
-* Sets the ID of a message to attach (as a forward)
+* Sets the IDs of messages to attach (as a forward)
 *
-* @param id		an message ID
+* @param ids	[Array]		list of mail message IDs
 */
 ZmMailMsg.prototype.setMessageAttachmentId =
-function(id) {
-	this._onChange("messageAttachmentId", id);
-	this._msgAttId = id;
+function(ids) {
+	this._onChange("messageAttachmentId", ids);
+	this._msgAttIds = ids;
 };
 
 /**
 * Sets the list of attachment (message part) IDs to be forwarded
-* - This list will only be set for any msgs containing attachments that need to be forwarded
 *
-* @param id		list of attachment IDs
+* @param ids	[Array]		list of attachment IDs
 */
 ZmMailMsg.prototype.setForwardAttIds =
-function(forAttIds) {
-	this._onChange("forwardAttIds", forAttIds);
-	this._forAttIds = forAttIds;
+function(ids) {
+	this._onChange("forwardAttIds", ids);
+	this._forAttIds = ids;
 };
 
 // Actions
@@ -513,7 +496,7 @@ function(callback) {
 		return "";
 	} else {
 		var respCallback = new AjxCallback(this, this._handleResponseGetTextPart, [callback]);
-		ZmMailMsg.fetchMsg({sender: this._appCtxt.getAppController(), msgId: this.getId(), getHtml: false, callback: respCallback});
+		ZmMailMsg.fetchMsg({sender:this._appCtxt.getAppController(), msgId:this.id, getHtml:false, callback:respCallback});
 	}
 };
 
@@ -632,16 +615,24 @@ function(callback, result) {
 */
 ZmMailMsg.prototype.send =
 function(contactList, isDraft, callback, errorCallback, accountName) {
+	var aName = accountName;
+	if (!aName) {
+		// only set the account name if this *isnt* the main/parent account
+		var acct = this._appCtxt.getActiveAccount();
+		if (acct && !acct.isMain)
+			aName = acct.name;
+	}
+
 	// if we have an invite reply, we have to send a different soap message
 	// TODO: disable Save Draft for invite replies!
 	if (this.isInviteReply && !isDraft) {
-		return this.sendInviteReply(contactList, true, 0, callback, errorCallback, this._instanceDate, accountName);
+		return this.sendInviteReply(contactList, true, 0, callback, errorCallback, this._instanceDate, aName);
 	} else {
 		var request = isDraft ? "SaveDraftRequest" : "SendMsgRequest";
 		var soapDoc = AjxSoapDoc.create(request, "urn:zimbraMail");
 		if (!isDraft && this.sendUID)
 			soapDoc.setMethodAttribute("suid", this.sendUID);
-		this._createMessageNode(soapDoc, contactList, isDraft, accountName);
+		this._createMessageNode(soapDoc, contactList, isDraft, aName);
 
 		var respCallback = new AjxCallback(this, this._handleResponseSend, [isDraft, callback]);
 		var execFrame = new AjxCallback(this, this.send, [contactList, isDraft, callback, errorCallback]);
@@ -673,8 +664,9 @@ function(soapDoc, contactList, isDraft, accountName) {
 
 	// if origId is given, means we're saving a draft or sending a msg that was
 	// originally a reply/forward
-	if (this.origId)
+	if (this.origId) {
 		msgNode.setAttribute("origid", this.origId);
+	}
 
 	// if id is given, means we are re-saving a draft
 	if ((isDraft || this.isDraft) && this.id)
@@ -689,8 +681,8 @@ function(soapDoc, contactList, isDraft, accountName) {
 		msgNode.setAttribute("idnt", this.identity.id);
 	}
 
-	for (var i = 0; i < ZmComposeView.ADDRS.length; i++) {
-		var type = ZmComposeView.ADDRS[i];
+	for (var i = 0; i < ZmMailMsg.COMPOSE_ADDRS.length; i++) {
+		var type = ZmMailMsg.COMPOSE_ADDRS[i];
 		this._addAddressNodes(soapDoc, msgNode, type, contactList, isDraft);
 	}
 	this._addFrom(soapDoc, msgNode, accountName);
@@ -717,27 +709,34 @@ function(soapDoc, contactList, isDraft, accountName) {
 	if (this.irtMessageId)
 		soapDoc.set("irt", this.irtMessageId, msgNode);
 
-	if (this._attId || this._msgAttId ||
+	if (this._attId ||
+		(this._msgAttIds && this._msgAttIds.length) ||
 		(this._forAttIds && this._forAttIds.length))
 	{
 		var attachNode = soapDoc.set("attach", null, msgNode);
-		if (this._attId)
+		if (this._attId) {
 			attachNode.setAttribute("aid", this._attId);
-
-		if (this._msgAttId) {
-			var msgNode = soapDoc.set("m", null, attachNode);
-			msgNode.setAttribute("id", this._msgAttId);
 		}
-		if (this._forAttIds) {
-			for (var i = 0; i < this._forAttIds.length; i++) {
-				var msgPartNode = soapDoc.set("mp", null, attachNode);
-				// XXX: this looks hacky but we cant send a null ID to the server!
-				var id = (isDraft || this.isDraft) ? (this.id || this.origId) : (this.origId || this.id);
-				msgPartNode.setAttribute("mid", id);
-				msgPartNode.setAttribute("part", this._forAttIds[i]);
+
+		// attach mail msgs
+		if (this._msgAttIds) {
+			for (var i = 0; i < this._msgAttIds.length; i++) {
+				var node = soapDoc.set("m", null, attachNode);
+				node.setAttribute("id", this._msgAttIds[i]);
 			}
 		}
-	}
+
+		// attach msg attachments
+		if (this._forAttIds) {
+            for (var i = 0; i < this._forAttIds.length; i++) {
+				var node = soapDoc.set("mp", null, attachNode);
+				// XXX: this looks hacky but we cant send a null ID to the server!
+				var id = (isDraft || this.isDraft) ? (this.id || this.origId) : (this.origId || this.id);
+				node.setAttribute("mid", id);
+				node.setAttribute("part", this._forAttIds[i]);
+			}
+		}
+    }
 };
 
 /*
@@ -836,7 +835,7 @@ function(contentPartType, contentPart) {
     	for (var i = 0; i < this._attachments.length; i++) {
     		var attach = this._attachments[i];
 			if (attach[contentPartType] == contentPart) {
-    			return this._appCtxt.getCsfeMsgFetcher() + "id=" + this.getId() + "&part=" + attach.part;
+    			return this._appCtxt.getCsfeMsgFetcher() + "id=" + this.id + "&part=" + attach.part;
     		}
 		}
 	}
@@ -857,7 +856,7 @@ function(findHits) {
 
 	if (this._attachments && this._attachments.length > 0) {
 		var csfeMsgFetchSvc = this._appCtxt.getCsfeMsgFetcher();
-		var hrefRoot = csfeMsgFetchSvc + "id=" + this.getId() + "&amp;part=";
+		var hrefRoot = csfeMsgFetchSvc + "id=" + this.id + "&amp;part=";
 
 		for (var i = 0; i < this._attachments.length; i++) {
     		var attach = this._attachments[i];
@@ -886,7 +885,7 @@ function(findHits) {
 				var html = new Array(5);
 				var j = 0;
 				html[j++] = "<a href='javascript:;' onclick='ZmMailMsgView.rfc822Callback(";
-				html[j++] = this.getId();
+				html[j++] = this.id;
 				html[j++] = ",\"";
 				html[j++] = attach.part;
 				html[j++] = "\"); return false;' class='AttLink'>";
@@ -911,7 +910,7 @@ function(findHits) {
 					// check for vcard *first* since we dont care to view it in HTML
 					if (attach.ct == ZmMimeTable.TEXT_VCARD)
 					{
-						var onclickStr = "ZmMailMsgView.vcardCallback(" + this.getId() + ",\"" + attach.part + "\");";
+						var onclickStr = "ZmMailMsgView.vcardCallback(" + this.id + ",\"" + attach.part + "\");";
 						props.vcardLink = "<a style='text-decoration:underline' class='AttLink' href='javascript:;' onclick='" + onclickStr + "'>";
 					}
 					else if (attach.body == null && ZmMimeTable.hasHtmlVersion(attach.ct) &&
@@ -939,7 +938,7 @@ function(findHits) {
 			props.isHit = findHits && this._isAttInHitList(attach);
 			props.part = attach.part;
 			if (!useCL)
-				props.url = csfeMsgFetchSvc + "id=" + this.getId() + "&part=" + attach.part;
+				props.url = csfeMsgFetchSvc + "id=" + this.id + "&part=" + attach.part;
 
 			// and finally, add to attLink array
 			this._attLinks.push(props);
@@ -972,6 +971,10 @@ function(msgNode) {
 	if (msgNode.origid) { this.origId = msgNode.origid; }
 	if (msgNode.hp) 	{ this._attHitList = msgNode.hp; }
 	if (msgNode.mid)	{ this.messageId = msgNode.mid; }
+
+	// set the "normalized" Id if this message belongs to a shared folder
+	var idx = this.id.indexOf(":");
+	this.nId = (idx != -1) ? (this.id.substr(idx + 1)) : this.id;
 
 	if (msgNode._convCreateNode) {
 		this._convCreateNode = msgNode._convCreateNode;

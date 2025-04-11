@@ -5,7 +5,7 @@
     <!--
 	
 		Use the target reload-zimlets-extra to build all the zimlets, both core and extra,
-		install all the zimlets, then restart the tomcat.
+		install all the zimlets, then restart the webserver.
 		
 	-->
 	<property environment="env"/>
@@ -48,7 +48,7 @@
 	<property name="generated.dir" location="${build.dir}/generated" />
 	<property name="generated.java.dir" location="${generated.dir}/src/java" />
 
-	<property name="zimlets" value="com_zimbra_phone,com_zimbra_url,com_zimbra_email,com_zimbra_date,com_zimbra_html"/>
+	<property name="zimlets" value="com_zimbra_phone,com_zimbra_url,com_zimbra_email,com_zimbra_date,com_zimbra_html,com_zimbra_search"/>
     <property name="zimlets-extra" value="com_zimbra_webex,com_zimbra_tracking,com_zimbra_xslt,com_zimbra_ymaps,com_zimbra_rss,com_zimbra_evite,com_zimbra_po,com_zimbra_bugz,com_flightexplorer_fasttrack,com_zimbra_travelagent,com_zimbra_arcade,com_zimbra_collector,com_zimbra_jspsample,com_zimbra_photo,com_zimbra_ytraffic,com_zimbra_gtranslator,com_zimbra_sforce,com_zimbra_sms,com_zimbra_amzn,com_zimbra_wikipedia,com_zimbra_asterisk,com_zimbra_asteriskmwi,com_zimbra_edu,com_zimbra_videos,com_zimbra_blog,com_zimbra_snapfish"/>
 
 	<condition property="is-windows">
@@ -122,8 +122,8 @@
 		<jar destfile="${dist.lib.dir}/zimbrataglib.jar" basedir="${build.classes.dir}" excludes="**/zimlet/**" />
 	</target>
 
-	<target name="reload-zimlets" depends="deploy-zimlets,restart-tomcat" description="Reload Zimlets"/>
-	<target name="reload-zimlets-extra" depends="deploy-zimlets-extra,restart-tomcat" description="Reload Zimlets Extra"/>
+	<target name="reload-zimlets" depends="deploy-zimlets,restart-webserver" description="Reload Zimlets"/>
+	<target name="reload-zimlets-extra" depends="deploy-zimlets-extra,restart-webserver" description="Reload Zimlets Extra"/>
 
 	<target name="package-zimlets" depends="build-init,compile">
 		<foreach list="${zimlets}" target="package-zimlet" param="zimlet"/>
@@ -188,7 +188,7 @@
 		</java>
 	</target>
 
-	<target name="restart-tomcat">
-		<ant dir="${server.dir}" target="restart-tomcat"/>
+	<target name="restart-webserver">
+		<ant dir="${server.dir}" target="restart-webserver"/>
 	</target>
 </project>

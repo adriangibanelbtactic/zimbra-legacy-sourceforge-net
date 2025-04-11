@@ -32,7 +32,8 @@ ifndef $(ZIMBRA_USE_TOMCAT)
 	MAILBOXD_COMPONENTS := \
 		$(STORE_DEST_DIR)/$(MAILBOXD_DIR)/common/lib/jcl104-over-slf4j-$(SLF4J_VERSION).jar \
 		$(STORE_DEST_DIR)/$(MAILBOXD_DIR)/common/lib/slf4j-simple-$(SLF4J_VERSION).jar \
-		$(STORE_DEST_DIR)/$(MAILBOXD_DIR)/common/lib/slf4j-api-$(SLF4J_VERSION).jar 
+		$(STORE_DEST_DIR)/$(MAILBOXD_DIR)/common/lib/slf4j-api-$(SLF4J_VERSION).jar \
+		$(STORE_DEST_DIR)/$(MAILBOXD_DIR)/lib/log4j-1.2.8.jar
 endif
 
 STORE_COMPONENTS := \
@@ -48,6 +49,7 @@ STORE_COMPONENTS := \
 	$(STORE_DEST_DIR)/$(MAILBOXD_DIR)/common/lib/activation.jar \
 	$(MAILBOXD_COMPONENTS) \
 	$(STORE_DEST_DIR)/lib/ext/clamscanner/clamscanner.jar \
+	$(STORE_DEST_DIR)/lib/ext/nginx-lookup/nginx-lookup.jar \
 	$(STORE_DEST_DIR)/wiki \
 	$(STORE_DEST_DIR)/$(MYSQL_DIR) 
 
@@ -72,6 +74,10 @@ SPELL_COMPONENTS := \
 
 SNMP_COMPONENTS := \
 	$(SNMP_DEST_DIR)/$(SNMP_DIR) 
+
+PROXY_COMPONENTS := \
+	$(PROXY_DEST_DIR)/$(NGINX_DIR) \
+	$(PROXY_DEST_DIR)/$(MEMCACHED_DIR)
 
 EVO_COMPONENTS := \
 	$(EVO_DEST_DIR)

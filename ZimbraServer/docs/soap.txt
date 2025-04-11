@@ -25,10 +25,9 @@ urn:zimbra  -- top-level namespace for global attributes/elements
     <context xmlns="urn:zimbra">
        <authToken>...</authToken>
        [<nosession/>]
-       [<sessionId id="{returned-from-server-in-last-response}"/>]
+       [<sessionId id="{returned-from-server-in-last-response}" seq="{highest_notification_received}"/>]
        [<account by="name|id">{account-name-or-id}</account>]
        [<change token="{change-id}" [type="mod|new"]/>]
-       [<notify seq="{highest_notification_received}">]
        [<nonotify/>]
        [<targetServer>{proxy-target-server-id}</targetServer>]
        [<userAgent name="{client-name}" [version="{client-version}"]/>]
@@ -264,6 +263,16 @@ global soap/system errors used with zimbra:Error/Code:
  service.PERM_DENIED      - permission denied
  service.AUTH_REQUIRED    - an authtoken is required
  service.AUTH_EXPIRED     - authentication creds have expired
+ service.WRONG_HOST       - operation is sent to a wrong host
+ service.PROXY_ERROR      - unable to proxy operation 
+ service.TOO_MANY_HOPS    - operation was proxied too many times
+ service.INTERRUPTED      - index operation was interrupted
+ service.NOT_IN_PROGRESS  - attempt to stop index operation when it was not in progress
+ service.ALREADY_IN_PROGRESS     - attempt to start index operation when it was already in progress
+ service.NO_SPELL_CHECK_URL      - spellcheck is not available
+ service.RESOURCE_UNREACHABLE    - unable to reach the remote resource
+ service.TEMPORARILY_UNAVAILABLE - resource is temporarily unavailable
+ service.NON_READONLY_OPERATION_DENIED - 
 
 -----------------------------
  urn:zimbraAccount
@@ -275,11 +284,39 @@ global soap/system errors used with zimbra:Error/Code:
    account.PASSWORD_LOCKED      - password can't be changed
    account.PASSWORD_CHANGE_TOO_SOON = password can't be changed yet
    account.PASSWORD_RECENTLY_USED = can't use the same password again
-   account.NO_SUCH_ACCOUNT      - no such account
    account.INVALID_PASSWORD     - new password does not meet the system's rules (length, content, etc.)
-   account.INVALID_PREF_NAME    - the specified preference name is invalid
-   account.INVALID_PREF_VALUE   - the specified preference value is invalid
+   account.INVALID_ATTR_NAME    - the specified attribute name is invalid
+   account.INVALID_ATTR_VALUE   - the specified attribute value is invalid
    account.MULTIPLE_ACCOUNTS_MATCHED - when auth by foreignPrincipal matches multiple accounts with the same foreignPrincipal
+   account.NO_SUCH_ACCOUNT
+   account.NO_SUCH_ALIAS
+   account.NO_SUCH_DOMAIN
+   account.NO_SUCH_COS
+   account.NO_SUCH_IDENTITY
+   account.NO_SUCH_SIGNATURE
+   account.NO_SUCH_DATA_SOURCE
+   account.NO_SUCH_SERVER
+   account.NO_SUCH_ZIMLET
+   account.NO_SUCH_DISTRIBUTION_LIST
+   account.NO_SUCH_CALENDAR_RESOURCE
+   account.NO_SUCH_MEMBER
+   account.MEMBER_EXISTS
+   account.ACCOUNT_EXISTS
+   account.DOMAIN_EXISTS
+   account.COS_EXISTS
+   account.SERVER_EXISTS
+   account.DISTRIBUTION_LIST_EXISTS
+   account.IDENTITY_EXISTS
+   account.SIGNATURE_EXISTS
+   account.DATA_SOURCE_EXISTS
+   account.DOMAIN_NOT_EMPTY
+   account.MAINTENANCE_MODE
+   account.ACCOUNT_INACTIVE
+   account.TOO_MANY_ACCOUNTS
+   account.TOO_MANY_IDENTITIES
+   account.TOO_MANY_SIGNATURES
+   account.TOO_MANY_DATA_SOURCES
+   account.TOO_MANY_SEARCH_RESULTS
    
  <AuthRequest xmlns="urn:zimbraAccount">
    [<account by="name|id|foreignPrincipal">...</account>]
@@ -357,7 +394,11 @@ an authToken can be passed instead of account/password/preauth to validate an ex
    <id>{account-id}</id>
    <name>{account-name}</name>
    <lifetime>...</lifetime>   
-   <used>{used}</used>*
+   [<used>{used}</used>
+    <prevSession>{previous-SOAP-session}</prevSession>
+    <accessed>{last-SOAP-access}</accessed>
+    <recent>{recent-messages}</recent>
+   ]
    <attrs>
     <attr name="{name}">{value}</a>
      ...
@@ -389,21 +430,35 @@ an authToken can be passed instead of account/password/preauth to validate an ex
        <a name="{name}">{value}</a>
      </identity>*
    </identities>
+   <signatures>
+     <signature name={signature-name} id="...">
+       <a name="{name}">{value}</a>
+       ...
+       <a name="{name}">{value}</a>
+     </signature>*
+   </signatures>
    <dataSources>
      <pop3 id="{id}" name="My POP3 Account" isEnabled="0|1" host="pop3.myisp.com" port="110"
         username="mylogin" l="{folder-id}" [pollingInterval="10m"]/>
      ...
    </dataSources>*
    <childAccounts>
-        <childAccount name="{child-account-name}" visible="0|1" id="{child-account-id}"></childAccount>*
+     <childAccount name="{child-account-name}" visible="0|1" id="{child-account-id}"></childAccount>*
    </childAccounts>
    [<license status="inGracePeriod|bad"/>]
 </GetInfoResponse>
  
-  {version} = server version (4.5.5)
+  {version} = server version: <major>[.<minor>[.<maintenance>]][build] <release> <date>[ <type>]
   {account-name} = email address (user@domain)
   {life-time} = number of milliseconds until auth token expires
-  {used} = mailbox quota used in bytes
+
+  returned only if the command successfully executes on the target user's home mail server:
+    {used} = mailbox quota used in bytes
+    {last-SOAP-access} = time (in millis) of last write op from this session, or from *any* SOAP session if we don't have one
+    {previous-SOAP-session} = time (in millis) of last write op from any SOAP session before this session was initiated,
+                              or same as {last-SOAP-access} if we don't have one
+    {recent-messages} = number of messages received since the previous soap session, or since the last SOAP write op if we don't have a session
+
   prefs = user-settable preferences
   attrs = account attrs that aren't user-settable, but the front-end needs. 
           Only attributes listed in zimbraAccountClientAttrs will be returned.
@@ -452,9 +507,11 @@ an authToken can be passed instead of account/password/preauth to validate an ex
   <skin name="{skin-name}"/>+
 </GetAvailableSkinsResponse>
 
-Returns zimbraAvailableSkin skin values set on an account (or its
-CoS).  If none is set, it returns zimbraInstalledSkin values from
-global config.
+Returns intersection of installed skins on the server and the list 
+specified in the zimbraAvailableSkin on an account (or its
+CoS).  If none is set in zimbraAvailableSkin, it returns the 
+entire list of installed skins.  The installed skin list is obtained 
+by a directory scan of the designated location of skins on a server.   
 
 ----------------------------
 
@@ -586,7 +643,7 @@ Allowed attributes (see objectclass zimbraIdentity in zimbra.schema)
     zimbraPrefForwardReplyPrefixChar
     zimbraPrefFromAddress
     zimbraPrefFromDisplay
-    zimbraPrefMailSignature
+	zimbraPrefMailSignature
     zimbraPrefMailSignatureEnabled
     zimbraPrefMailSignatureStyle
     zimbraPrefReplyIncludeOriginalText
@@ -601,7 +658,7 @@ Allowed attributes (see objectclass zimbraIdentity in zimbra.schema)
     zimbraPrefWhenSentToAddresses
     zimbraPrefWhenSentToEnabled
 
-
+    
 ---------
 
 <GetIdentitiesRequest/>
@@ -640,18 +697,134 @@ Allowed attributes (see objectclass zimbraIdentity in zimbra.schema)
 
 ---------
 
+<CreateSignatureRequest>
+  <signature name="{signature-name}" [id="{id}"]/>
+    <content type="{text/plain | text/html}">{signature-value}</content>+
+  </signature>
+</CreateSignatureRequest> 
+
+<CreateSignatureResponse>
+  <signature id="{id}" name="{signature-name}"/>
+</CreateSignatureResponse>
+
+- If an id is provided it will be honored as the id for the signature.
+
+- CreateSignature will set account default signature to the signature being created 
+  if there is currently no default signature for the account.
+  
+- There can be at most one text/plain signatue and one text/html signature.  
+        
+        
+---------
+
+<GetSignaturesRequest/>
+
+<GetSignaturesResponse>
+  <signature name="{signature-name}" id="{identity-id}"
+    <content type="{text/plain | text/html}">{signature-value}</content>+
+  </signature>+
+</GetSignaturesResponse>
+
+---------
+
+<ModifySignatureRequest>
+  <signature id="{signature-id}" [name="{signature-name}"]>
+    <content type="{text/plain | text/html}">{signature-value}</content>+
+  </signature>
+</ModifySignatureRequest>
+
+<ModifySignatureResponse/>
+
+- Changes attributes of the given signature.  Only the attributes specified in the request
+  are modified.  
+
+- Server identify the signature by id, if the name attribute is present and is different 
+  from the current name of the signature, the signature will be renamed.
+  
+---------
+
+<DeleteSignatureRequest>
+  <signature [name="{signature-name}" | id="{signature-id}"]/>
+</DeleteSignatureRequest>
+
+<DeleteSignatureResponse/>
+
+<-- must specify either 'name' or 'id' -->
+
+---------
+
 urn:zimbraMail
 
- mail error/codes: (includes service.*):
- 
+ mail error/codes: (includes service.*)
+
+ Error code parameters:
+       -  Error results have data parameters encoded in the
+          soap:detail for the  error, in <a> elements:
+          
+          [<a n="name">VALUE</a>]* // error information (arguments,
+               e.g. ID that was bad, or whatever)
+
+       - See SOAP 1.1 or SOAP 1.2 section above.         
+
+ List of error codes:
+   mail.MAINTENANCE        - in maintenance
+   mail.NO_SUCH_MBOX       - no such mailbox
+   mail.NO_SUCH_ITEM       - no such item
    mail.NO_SUCH_CONV       - no such converstation
    mail.NO_SUCH_MSG        - no such message
    mail.NO_SUCH_PART       - no such message part
    mail.NO_SUCH_FOLDER     - no such folder
    mail.NO_SUCH_TAG        - no such tag
+   mail.NO_SUCH_CONTACT    - no such contact
+   mail.NO_SUCH_NOTE       - no such note
+   mail.NO_SUCH_CALITEM    - no such calendar item
+   mail.NO_SUCH_APPT       - no such appointment
+   mail.NO_SUCH_TASK       - no such task
+   mail.NO_SUCH_DOC        - no such doc
+   mail.NO_SUCH_UPLOAD     - no such upload
+   mail.NO_SUCH_WAITSET    - no such waitset
    mail.QUERY_PARSE_ERROR  - couldn't parse search query
    mail.NO_SUCH_CONTACT      - the specified contact id did not exist
    mail.MODIFY_CONFLICT      - if the modified date on a contact is different then one in the request
+   mail.ALREADY_EXISTS
+   mail.INVALID_ID
+   mail.INVALID_SYNC_TOKEN
+   mail.INVALID_NAME
+   mail.INVALID_TYPE
+   mail.INVALID_CONTENT_TYPE
+   mail.IS_NOT_CHILD
+   mail.CANNOT_CONTAIN
+   mail.CANNOT_COPY
+   mail.CANNT_TAG
+   mail.CANNOT_PARENT
+   mail.CANNOT_RENAME
+   mail.CANNOT_SUBSCRIBE
+   mail.IMMUTABLE_OBJECT
+   mail.WRONG_MAILBOX
+   mail.MODIFY_CONFLICT
+   mail.TRY_AGAIN
+   mail.SCAN_ERROR
+   mail.UPLOAD_REJECTED
+   mail.TOO_MANY_TAGS
+   mail.TOO_MANY_UPLOADS
+   mail.TOO_MANY_CONTACTS
+   mail.UNABLE_TO_IMPORT_CONTACTS
+   mail.UNABLE_TO_IMPORT_APPOINTMENTS
+   mail.QUOTA_EXCEEDED
+   mail.QUERY_PARSE_ERROR
+   mail.MESSAGE_PARSE_ERROR
+   mail.ADDRESS_PARSE_ERROR
+   mail.ICALENDAR_PARSE_ERROR
+   mail.MUST_BE_ORGANIZER
+   mail.CANNOT_CANCEL_INSTANCE_OF_EXCEPTION
+   mail.INVITE_OUT_OF_DATE
+   mail.SEND_ABORTED_ADDRESS_FAILURE
+   mail.SEND_PARTIAL_ADDRESS_FAILURE
+   mail.SEND_FAILURE
+   mail.TOO_MANY_QUERY_TERMS_EXPANDED
+   mail.INVALID_COMMIT_ID
+   mail.TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT(ACCOUNT(STR)="accountId", [EXISTING_WAITSET(STR)=WaitSetId]+)
+
 <!-- 
 
 defaults aren't normally included in the response, they may
@@ -721,7 +894,7 @@ Messages:
   {conv-id}  = converstation id. only present if <m> is not enclosed within a <c> element
   {size}     = size in bytes
   {flags}    = (u)nread, (f)lagged, has (a)ttachment, (r)eplied, (s)ent by me, for(w)arded,
-               (d)raft, deleted (x), (n)otification sent
+               (d)raft, IMAP-\Deleted (x), (n)otification sent, urgent (!), low-priority (?)
   {date}     = secs since epoch, from date header in message
   {original-id} = message id of message being replied to/forwarded (outbound messages only)
   {url}      = content servlet relative url for retrieving message content
@@ -746,7 +919,7 @@ Conversations:
 
   {date}      = date (secs since epoch) of most recent message in converstation
   {tags}      = list of tag-ids on conv
-  {flags}     = (u)nread, (f)lagged, has (a)ttachment (set if any msg in conv has that flag set), (s)ent by me (if any msg has that flag set)
+  {flags}     = same flags as on <m> ("sarwfdxnu!?"), aggregated from all the conversation's messages
   {subject}   = subject of conversation
   {fragment}  = fragment of most recent msg in converstation
   {num-msgs}  = number of messages in conversation without IMAP \Deleted flag set
@@ -915,7 +1088,12 @@ if recip="1" is specified
         **NOTE: only ONE of message, conversation may be set. If
                 both are set, the first is used.
 
-  {sort-by}  = dateDesc|dateAsc|subjDesc|subjAsc|nameDesc|nameAsc(default is "dateDesc")
+  {sort-by}  = default is "dateDesc"
+               Valid choices:
+                    dateDesc|dateAsc|subjDesc|subjAsc|nameDesc|nameAsc
+               SPECIAL SORTING FOR TASKS, valid only if types="task" (and task alone):
+                    taskDueAsc|taskDueDesc|taskStatusAsc|taskStatusDesc|taskPercCompletedAsc|taskPercCompletedDesc
+                    
   {more-flag} = 1 if there are more search results remaining. 
   {content-matched} = 1 if the content of the message matched
   <mp> elements will be set for the first response if fetch=1
@@ -1576,16 +1754,20 @@ u attribute is present iff count > 0
 +  add="1" on recipient email address means to add to caller's address book (no duplicate checking!)
 +  supports (f)rom, (t)o, (b)cc, (c)c, (r)eply-to "type" on <e> elements
 +  only allowed one top-level <mp> but can nest <mp>s within if multipart/*
++    a leaf <mp> can have inlined content (<mp ct="{content-type}"><content>...</content></mp>)
++    a leaf <mp> can have referenced content (<mp><attach ...></mp>)
++    any <mp> can have a Content-ID header attached to it
 +  on reply/forward, set origid on <m> element and set rt to "r" or "w", respectively
 +  can optionally set identity-id to specify the identity being used to compose the message
 +  if noSave="1", a copy will *not* be saved to sent regardless of account/identity settings
++  can set priority high (!) or low (?) on sent message by specifying "f" attr on <m>
 
 <SendMsgRequest [suid="{send-uid}"] [needCalendarSentByFixup="0|1"] [noSave="0|1"]>
-  <m [origid="..." rt="r|w"] [idnt="{identity-id}"]>
+  <m [f="!|?"] [origid="..." rt="r|w"] [idnt="{identity-id}"]>
     <e t="{type}" a="{email-address}" p="{personal-name}" [add="1"]/>+
     <su>{subject}</su>*
     [<irt>{Message-ID header for message being replied to}</irt>]
-    <mp ct="{content-type}">
+    <mp ct="{content-type}" [ci="{content-id}"]>
       <content>...</content>
     </mp>
     <attach [aid="{attach-upload-id}"]>
@@ -1965,7 +2147,7 @@ EXAMPLE:
 
 -----------------------
 
- <NoOpRequest [wait='1']/>
+ <NoOpRequest [wait='1'] [timeout="msecs to wait"/>
 
  <NoOpResponse/>
 
@@ -1974,8 +2156,15 @@ any pending notifications.
 
 If "wait" is set, and if the current session allows them, this request will block until there are
 new notifications for the client.  Note that the soap envelope must reference an existing session
-that has notifications enabled, and the notification sequencing number should be specified.
+that has notifications enabled, and the notification sequencing number
+should be specified.
 
+The client may specifiy a custom timeout-length for their request if
+they know something about the particular underlying network.  The
+server may or may not honor this request (depending on server
+configured max/min values: see LocalConfig variables
+zimbra_noop_default_timeout, zimbra_noop_min_timeout and
+zimbra_noop_max_timeout)
 
 ---------------------------
 
@@ -2020,6 +2209,30 @@ java.util.Locale.getAvailableLocales(), sorted by display name (name attribute).
 
 ---------------------------
 
+<GetAvailableLocalesRequest/>
+
+<GetAvailableLocalesResponse>
+  <locale id="{locale-id}" name="{locale-name-in-preferred-locale}"/>
+  ...
+</GetAvailableLocalesResponse>
+
+Returns intersection of all translated locales installed on the server and the list specified in zimbraAvailableLocale.  
+The locale list in the response is sorted by display name (name attribute).
+
+{locale-id} : lcoale id. e.g. en_US
+{locale-name-in-preferred-locale} : locale name in the preferred locale
+                For example, if the locale is fr_CA and the preferred locale is en_US, name will contain "French (Canada)"; 
+                if the locale is en_US and the preferred locale is fr_CA, name will contain "anglais (Etats-Unis)"
+                
+                The preferred locale is determined with the following precedence:
+                (1) zimbraPrefLocale of the target account if it is present
+                (2) Otherwise the locale specified in the Accept-Language http header if it is present
+                (3) Otherwise the locale returned by Provisioning.getLocale, which uses a predefined fallback 
+                    chain to determine the preferable locale.  
+                   
+
+---------------------------
+
 <TestDataSourceRequest>
   <pop3 host="pop.myisp.com" port="110" connectionType="cleartext|ssl"
     username="mylogin" password="mypassword"/>
@@ -2051,16 +2264,36 @@ instead of the saved values.
 
 ---------------------------
 
+===================
+emailAddress="changed-phoebe@google.com"
+                    useAddressForForwardReply="false"
+                    defaultSignature="95915d7a-1809-4a73-a50f-c465214fae62"
+                    fromDisplay="changed-from-display"
+                    replyToAddress="changed-replay-to-addr@google.com"
+                    replyToDisplay="changed-replyto-display"/>
+==================
 <CreateDataSourceRequest/>
   <pop3 name="My POP3 Account" isEnabled="0|1" host="pop.myisp.com" port="110"
     connectionType="cleartext|ssl" username="mylogin" password="mypassword" l="{folder-id}"
-    leaveOnServer="0|1" [pollingInterval="10m"]/>
+    leaveOnServer="0|1" [pollingInterval="10m"] 
+    [emailAddress="{email-address}"] 
+    [useAddressForForwardReply="0|1"]
+    [defaultSignature="{default-signature-id}"]
+    [fromDisplay="{from-display}"]
+    [replyToAddress="{replyto-address}"]
+    [replyToDisplay="{replyto-display}"]/>
     
   or
   
   <imap name="My IMAP Account" isEnabled="0|1" host="imap.myisp.com" port="143"
     connectionType="cleartext|ssl" username="mylogin" password="mypassword" l="{folder-id}"
-    [pollingInterval="10m"]/>
+    [pollingInterval="10m"] 
+    [emailAddress="{email-address}"] 
+    [useAddressForForwardReply="0|1"]
+    [defaultSignature="{default-signature-id}"]
+    [fromDisplay="{from-display}"]
+    [replyToAddress="{replyto-address}"]
+    [replyToDisplay="{replyto-display}"]/>
 </CreateDataSourceRequest>
 
 <CreateDataSourceResponse>
@@ -2076,9 +2309,21 @@ the POP3 or IMAP protocol.  Only one data source is allowed per request.
 
 <GetDataSourcesResponse>
   *[<pop3 id="{id}" name="My POP3 Account" isEnabled="0|1" host="pop3.myisp.com" port="110"
-    username="mylogin" l="{folder-id}" leaveOnServer="0|1" [pollingInterval="10m"]/>]
+    username="mylogin" l="{folder-id}" leaveOnServer="0|1" [pollingInterval="10m"] 
+    [emailAddress="{email-address}"] 
+    [useAddressForForwardReply="0|1"]
+    [defaultSignature="{default-signature-id}"]
+    [fromDisplay="{from-display}"]
+    [replyToAddress="{replyto-address}"]
+    [replyToDisplay="{replyto-display}"]/>
   *[<imap name="My IMAP Account" isEnabled="0|1" host="imap.myisp.com" port="143"
-    connectionType="cleartext|ssl" username="mylogin" l="{folder-id}" [pollingInterval="10m"]/>]
+    connectionType="cleartext|ssl" username="mylogin" l="{folder-id}" [pollingInterval="10m"]
+    [emailAddress="{email-address}"] 
+    [useAddressForForwardReply="0|1"]
+    [defaultSignature="{default-signature-id}"]
+    [fromDisplay="{from-display}"]
+    [replyToAddress="{replyto-address}"]
+    [replyToDisplay="{replyto-display}"]/>
   ...
 </GetDataSourcesResponse>
 
@@ -2091,10 +2336,22 @@ every attribute value is returned except password.
   *[<pop3 id="{id}" [name="My POP3 Account"] [isEnabled="0|1"] [host="pop3.myisp.com"]
     [port="110"] [connectionType="cleartext|ssl"] [username="mylogin"]
     [password="mypassword"] [l="{folder-id}"] [leaveOnServer="0|1"] 
-    [pollingInterval="10m"]/>]
+    [pollingInterval="10m"]
+    [emailAddress="{email-address}"] 
+    [useAddressForForwardReply="0|1"]
+    [defaultSignature="{default-signature-id}"]
+    [fromDisplay="{from-display}"]
+    [replyToAddress="{replyto-address}"]
+    [replyToDisplay="{replyto-display}"]/>
   *[<imap name="My IMAP Account" isEnabled="0|1" host="imap.myisp.com" port="143"
     connectionType="cleartext|ssl" username="mylogin" password="mypassword" l="{folder-id}"
-    [pollingInterval="10m"]/>]
+    [pollingInterval="10m"]
+    [emailAddress="{email-address}"] 
+    [useAddressForForwardReply="0|1"]
+    [defaultSignature="{default-signature-id}"]
+    [fromDisplay="{from-display}"]
+    [replyToAddress="{replyto-address}"]
+    [replyToDisplay="{replyto-display}"]/>
 </ModifyDataSourceRequest>
 
 <ModifyDataSourceResponse/>

@@ -37,6 +37,7 @@ import com.zimbra.cs.mailbox.Document;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.Tag;
 import com.zimbra.cs.mailbox.WikiItem;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
@@ -201,46 +202,50 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 			Token.parse(str, 0, tokens);
 		}
 		public static void parse(String str, int pos, List<Token> tokens) throws IllegalArgumentException {
+			Token tok = null;
+			int padding = 2;
 			int end = pos;
 			if (str.startsWith("{{", pos)) {
 				end = str.indexOf("}}", pos);
-				if (end == -1)
-					throw new IllegalArgumentException("parse error: unmatched {{");
-				tokens.add(new Token(str.substring(pos+2, end), TokenType.WIKLET));
-				end += 2;
+				if (end > 0)
+					tok = new Token(str.substring(pos+2, end), TokenType.WIKLET);
 			} else if (str.startsWith("[[", pos)) {
 				end = str.indexOf("]]", pos);
-				if (end == -1)
-					throw new IllegalArgumentException("parse error: unmatched [[");
-				tokens.add(new Token(str.substring(pos+2, end), TokenType.WIKILINK));
-				end += 2;
+				if (end > 0)
+					tok = new Token(str.substring(pos+2, end), TokenType.WIKILINK);
 			} else if (str.startsWith("<wiklet", pos)) {
-				int padding = 2;
 				end = str.indexOf(">", pos);
-				if (str.charAt(end-1) == '/') {
-					end = end - 1;
-				} else {
-					int endSection = str.indexOf("</wiklet>", end);
-					padding = endSection - end + 9;
+				if (end > 0) {
+					if (str.charAt(end-1) == '/') {
+						end = end - 1;
+					} else {
+						int endSection = str.indexOf("</wiklet>", end);
+						padding = endSection - end + 9;
+					}
+					tok = new Token(str.substring(pos+1, end), TokenType.WIKLET);
 				}
-				if (end == -1)
-					throw new IllegalArgumentException("parse error: unmatched <wiklet");
-				tokens.add(new Token(str.substring(pos+1, end), TokenType.WIKLET));
-				end += padding;
-			} else {
+			}
+			end += padding;
+			
+			if (tok == null) {
 				int lastPos = str.length() - 1;
+				end = pos+1;
 				while (end < lastPos) {
 					if (str.startsWith("{{", end) ||
-						str.startsWith("[[", end) ||
-						str.startsWith("<wiklet", end)) {
+							str.startsWith("[[", end) ||
+							str.startsWith("<wiklet", end)) {
 						break;
 					}
 					end++;
 				}
 				if (end == lastPos)
 					end = str.length();
-				tokens.add(new Token(str.substring(pos, end), TokenType.TEXT));
+				tok = new Token(str.substring(pos, end), TokenType.TEXT);
 			}
+			
+			if (tok != null)
+				tokens.add(tok);
+
 			if (end == -1 || end == str.length())
 				return;
 			
@@ -378,6 +383,7 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 			addWiklet(new IconWiklet());
 			addWiklet(new NameWiklet());
 			addWiklet(new CreatorWiklet());
+			addWiklet(new TagsWiklet());
 			addWiklet(new ModifierWiklet());
 			addWiklet(new CreateDateWiklet());
 			addWiklet(new ModifyDateWiklet());
@@ -495,7 +501,7 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
         		buf.append(">");
         	}
 	    	Mailbox mbox = ctxt.item.getMailbox();
-            for (Document doc : mbox.getDocumentList(ctxt.wctxt.octxt, folder.getId(), (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING))) {
+            for (Document doc : mbox.getDocumentList(ctxt.wctxt.octxt, folder.getId(), (byte)(DbMailItem.SORT_BY_NAME_NATURAL_ORDER | DbMailItem.SORT_ASCENDING))) {
             	buf.append("<");
         		buf.append(sTAGS[sINNER][style]);
             	buf.append(" class='zmwiki-pageLink'>");
@@ -521,9 +527,9 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 	    	
 	    	Mailbox mbox = ctxt.item.getMailbox();
 	    	if (ctxt.wctxt.view == null)
-	    		list.addAll(mbox.getItemList(ctxt.wctxt.octxt, MailItem.TYPE_WIKI, folder.getId(), (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING)));
+	    		list.addAll(mbox.getItemList(ctxt.wctxt.octxt, MailItem.TYPE_WIKI, folder.getId(), (byte)(DbMailItem.SORT_BY_NAME_NATURAL_ORDER | DbMailItem.SORT_ASCENDING)));
 	    	else
-	    		list.addAll(mbox.getItemList(ctxt.wctxt.octxt, MailItem.getTypeForName(ctxt.wctxt.view), folder.getId(), (byte)(DbMailItem.SORT_BY_SUBJECT | DbMailItem.SORT_ASCENDING)));
+	    		list.addAll(mbox.getItemList(ctxt.wctxt.octxt, MailItem.getTypeForName(ctxt.wctxt.view), folder.getId(), (byte)(DbMailItem.SORT_BY_NAME_NATURAL_ORDER | DbMailItem.SORT_ASCENDING)));
 
 			String bt = params.get(sBODYTEMPLATE);
 			String it = params.get(sITEMTEMPLATE);
@@ -691,6 +697,43 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
            return "";
 		}
 	}
+
+	public static class TagsWiklet extends Wiklet {
+		public String getName() {
+			return "Tags";
+		}
+		public String getPattern() {
+			return "TAGS";
+		}
+		public WikiTemplate findInclusion(Context ctxt) {
+			return null;
+		}
+		public String apply(Context ctxt) throws ServiceException {
+			if (ctxt.item instanceof Folder) {
+				return "";        
+			}
+			else if (ctxt.item instanceof Document) {
+				Document doc = (Document) ctxt.item;
+				List<Tag> tags = doc.getTagList();
+				StringBuffer names= new StringBuffer();				
+				int count = 0;
+				int size = tags.size();
+				if(size>0){
+					names.append("<span class='zmwiki-tagsTitle'>Tags: </span>");
+				}
+				for (Tag tag : tags) {
+					count++;
+					names.append("<span class='zmwiki-tags'>");
+					names.append(tag.getName()+((size==count)?" ":", "));
+					names.append(" </span>");
+				}
+				return names.toString();        	   
+			}
+
+			return "";
+		}
+	}
+
 	public static class ModifierWiklet extends Wiklet {
 		public String getName() {
 			return "Modifier";
@@ -879,27 +922,21 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 			String link, title;
 			if (ctxt.token.getType() == Token.TokenType.WIKILINK) {
 				String text = ctxt.token.getValue();
-				if (text.startsWith("http://")) {
-					link = text;
-					title = text;
-				} else if (text.startsWith("<wiklet")) {
-					WikiTemplate template = new WikiTemplate(text);
-					link = template.toString(ctxt);
-					title = link;
+				link = title = text;
+				int pos = text.indexOf('|');
+				if (pos != -1) {
+					link = text.substring(0, pos);
+					title = text.substring(pos+1);
 				} else {
-					link = text;
-					title = text;
-					int pos = text.indexOf('|');
+					pos = text.indexOf("][");
 					if (pos != -1) {
-						link = text.substring(0, pos);
-						title = text.substring(pos+1);
-					} else {
-						pos = text.indexOf("][");
-						if (pos != -1) {
-							title = text.substring(0, pos);
-							link = text.substring(pos+2);
-						}
+						title = text.substring(0, pos);
+						link = text.substring(pos+2);
 					}
+				}
+				if (text.startsWith("<wiklet")) {
+					WikiTemplate template = new WikiTemplate(link);
+					link = template.toString(ctxt);
 				}
 			} else {
 				Map<String,String> params = ctxt.token.parseParam();

@@ -35,9 +35,8 @@ ZmTaskListView.prototype.constructor = ZmTaskListView;
 
 
 // Consts
-ZmTaskListView.COL_WIDTH_STATUS				= 145;
-ZmTaskListView.KEY_ID						= "_keyId";
-ZmTaskListView.TASKLIST_REPLENISH_THRESHOLD = 0;
+ZmTaskListView.COL_WIDTH_STATUS	= 145;
+ZmTaskListView.KEY_ID			= "_keyId";
 
 
 // Public Methods
@@ -56,11 +55,6 @@ ZmTaskListView.prototype.setBounds =
 function(x, y, width, height) {
 	ZmListView.prototype.setBounds.call(this, x, y, width, height);
 	this._resetColWidth();
-};
-
-ZmTaskListView.prototype.getReplenishThreshold =
-function() {
-	return ZmTaskListView.TASKLIST_REPLENISH_THRESHOLD;
 };
 
 ZmTaskListView.prototype.saveNewTask =
@@ -114,7 +108,9 @@ function(list, noResultsOk) {
 		var width = this._headerList[i]._width;
 
 		if (field == ZmItem.F_SUBJECT) {
-			htmlArr[idx++] = "<td><div class='newTaskBanner' onclick='ZmTaskListView._handleOnClick(this)'>";
+			htmlArr[idx++] = "<td><div class='newTaskBanner' onclick='ZmTaskListView._handleOnClick(this)' id='";
+			htmlArr[idx++] = Dwt.getNextId(); 									// bug: 17653 - for QA
+			htmlArr[idx++] = "'>";
 			htmlArr[idx++] = ZmMsg.createNewTaskHint;
 			htmlArr[idx++] = "</div></td>";
 		} else {
@@ -146,22 +142,15 @@ function() {
 
 ZmTaskListView.prototype._getCellId =
 function(item, field) {
-	return (field == ZmItem.F_COMPLETED || field == ZmItem.F_PRIORITY) ? this._getFieldId(item, field) : null;
+	return (field == ZmItem.F_PRIORITY) ? this._getFieldId(item, field) : null;
 };
 
 ZmTaskListView.prototype._getCellContents =
 function(htmlArr, idx, task, field, colIdx, params) {
 
-	if (field == ZmItem.F_COMPLETED) {
-		var cboxIcon = "TaskCheckbox";
-		if (task.isComplete()) {
-			cboxIcon = "TaskCheckboxCompleted";
-		} else if (task.isPastDue()) {
-			cboxIcon = "TaskCheckboxOverdue";
-		}
-
-		// complete checkbox
-		htmlArr[idx++] = AjxImg.getImageHtml(cboxIcon, null, ["id='", params.fieldId, "'"].join(""));
+	if (field == ZmItem.F_SELECTION) {
+		var icon = params.bContained ? "TaskCheckboxCompleted" : "TaskCheckbox";
+		idx = this._getImageHtml(htmlArr, idx, icon, this._getFieldId(task, field));
 
 	} else if (field == ZmItem.F_PRIORITY) {
 		htmlArr[idx++] = "<center>";
@@ -170,7 +159,7 @@ function(htmlArr, idx, task, field, colIdx, params) {
 
 	} else if (params.isMixedView && (field == ZmItem.F_FROM)) {
 		htmlArr[idx++] = task.organizer || "&nbsp";
-		
+
 	} else if (field == ZmItem.F_SUBJECT) {
 		htmlArr[idx++] = AjxEnv.isSafari ? "<div style='overflow:hidden'>" : "";
 		if (params.isMixedView) {
@@ -222,60 +211,37 @@ function() {
 	return this._colHeaderActionMenu;
 };
 
-ZmTaskListView.prototype._mouseOverAction =
-function(ev, div) {
-	var id = ev.target.id || div.id;
-	if (!id) return true;
-
-	// check if we're hovering over a column header
-	var type = Dwt.getAttr(div, "_type");
-	if (type && type == DwtListView.TYPE_HEADER_ITEM) {
-		var itemIdx = Dwt.getAttr(div, "_itemIndex");
-		var field = DwtListHeaderItem.getHeaderField(this._headerList[itemIdx]._id);
-		if (field == ZmItem.F_COMPLETED) {
-			this.setToolTipContent(ZmMsg.status);
-		} else if (field == ZmItem.F_PRIORITY) {
-			this.setToolTipContent(ZmMsg.priority);
-		} else if (field == ZmItem.F_SUBJECT) {
-			this.setToolTipContent(ZmMsg.subject);
-		} else if (field == ZmItem.F_STATUS) {
-			this.setToolTipContent(ZmMsg.status);
-		} else if (field == ZmItem.F_PCOMPLETE) {
-			this.setToolTipContent(ZmMsg.percentComplete);
-		} else if (field == ZmItem.F_DATE) {
-			this.setToolTipContent(ZmMsg.dateDue);
-		} else {
-			return ZmListView.prototype._mouseOverAction.call(this, ev, div);
-		}
-	} else {
-		var m = this._parseId(id);
-		if (m && m.field) {
-			if (m.field == ZmItem.F_PRIORITY) {
-				var item = this.getItemFromElement(div);
-				if (item && item.priority != ZmCalItem.PRIORITY_NORMAL)
-					this.setToolTipContent(ZmCalItem.getLabelForPriority(item.priority));
-				return true;
-			} else if (m.field == ZmItem.F_COMPLETED) {
-				var item = this.getItemFromElement(div);
-				var tt = item && item.isComplete()
-					? ZmMsg.clickToMarkNotStarted
-					: item.isPastDue()
-						? (ZmMsg.taskPastDue + " "  + ZmMsg.clickToMarkCompleted)
-						: ZmMsg.clickToMarkCompleted;
-				this.setToolTipContent(tt);
-				return true;
-			} else if (m.field == ZmItem.F_SUBJECT ||
-					m.field == ZmItem.F_STATUS ||
-					m.field == ZmItem.F_PCOMPLETE)
-			{
-				// do nothing for now
-				// this.setToolTipContent();
-				return true;
-			}
-		}
-		return ZmListView.prototype._mouseOverAction.call(this, ev, div);
+ZmTaskListView.prototype._getHeaderToolTip =
+function(field, itemIdx) {
+	switch (field) {
+		case ZmItem.F_PRIORITY: 	return ZmMsg.priority;
+		case ZmItem.F_STATUS:		return ZmMsg.status;
+		case ZmItem.F_PCOMPLETE:	return ZmMsg.percentComplete;
+		case ZmItem.F_DATE:			return ZmMsg.dateDue;
 	}
-	return true;
+	return ZmListView.prototype._getHeaderToolTip.call(this, field, itemIdx);
+};
+
+ZmTaskListView.prototype._sortColumn =
+function(columnItem, bSortAsc) {
+	// change the sort preference for this view in the settings
+	var sortBy;
+	switch (columnItem._sortable) {
+		case ZmItem.F_STATUS:		sortBy = bSortAsc ? ZmSearch.STATUS_ASC : ZmSearch.STATUS_DESC; break;
+		case ZmItem.F_PCOMPLETE:	sortBy = bSortAsc ? ZmSearch.PCOMPLETE_ASC : ZmSearch.PCOMPLETE_DESC; break;
+		case ZmItem.F_DATE:			sortBy = bSortAsc ? ZmSearch.DUE_DATE_ASC : ZmSearch.DUE_DATE_DESC;	break;
+	}
+
+	if (sortBy) {
+		this._sortByString = sortBy;
+		this._appCtxt.set(ZmSetting.SORTING_PREF, sortBy, this.view);
+	}
+
+	if (this.getList().size() > 1 && this._sortByString) {
+		var searchString = this._controller.getSearchString();
+		var params = {query:searchString, types:[ZmItem.TASK], sortBy:this._sortByString, limit:this.getLimit()};
+		this._appCtxt.getSearchController().search(params);
+	}
 };
 
 ZmTaskListView.prototype._handleNewTaskClick =
@@ -285,6 +251,7 @@ function(el) {
 		this._newTaskInputEl.type = "text";
 		this._newTaskInputEl.className = "InlineWidget";
 		this._newTaskInputEl.style.position = "absolute";
+		this._newTaskInputEl.id = Dwt.getNextId();								// bug: 17653 - for QA
 
 		Dwt.setHandler(this._newTaskInputEl, DwtEvent.ONBLUR, ZmTaskListView._handleOnBlur);
 		Dwt.setHandler(this._newTaskInputEl, DwtEvent.ONKEYPRESS, ZmTaskListView._handleKeyPress);
@@ -313,16 +280,18 @@ function(parent) {
 
 	var hList = [];
 
-	hList.push(new DwtListHeaderItem(ZmItem.F_COMPLETED, null, "TaskCheckbox", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.completed));
+	if (appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_SELECTION, null, "TaskCheckbox", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.selection));
+	}
 	if (appCtxt.get(ZmSetting.TAGGING_ENABLED)) {
 		hList.push(new DwtListHeaderItem(ZmItem.F_TAG, null, "MiniTag", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.tag));
 	}
 	hList.push(new DwtListHeaderItem(ZmItem.F_PRIORITY, null, "TaskHigh", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.priority));
 	hList.push(new DwtListHeaderItem(ZmItem.F_ATTACHMENT, null, "Attachment", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.attachment));
-	hList.push(new DwtListHeaderItem(ZmItem.F_SUBJECT, ZmMsg.subject, null, null/*, ZmItem.F_SUBJECT*/));
-	hList.push(new DwtListHeaderItem(ZmItem.F_STATUS, ZmMsg.status, null, ZmTaskListView.COL_WIDTH_STATUS));
-	hList.push(new DwtListHeaderItem(ZmItem.F_PCOMPLETE, ZmMsg.pComplete, null, ZmListView.COL_WIDTH_DATE));
-	hList.push(new DwtListHeaderItem(ZmItem.F_DATE, ZmMsg.dateDue, null, ZmListView.COL_WIDTH_DATE));
+	hList.push(new DwtListHeaderItem(ZmItem.F_SUBJECT, ZmMsg.subject));
+	hList.push(new DwtListHeaderItem(ZmItem.F_STATUS, ZmMsg.status, null, ZmTaskListView.COL_WIDTH_STATUS, ZmItem.F_STATUS));
+	hList.push(new DwtListHeaderItem(ZmItem.F_PCOMPLETE, ZmMsg.pComplete, null, ZmListView.COL_WIDTH_DATE, ZmItem.F_PCOMPLETE));
+	hList.push(new DwtListHeaderItem(ZmItem.F_DATE, ZmMsg.dateDue, null, ZmListView.COL_WIDTH_DATE, ZmItem.F_DATE));
 
 	return hList;
 };
@@ -335,7 +304,6 @@ function(ev) {
 	if ((ev.type != this.type) && (ZmList.MIXED != this.type))
 		return;
 
-	var fields = ev.getDetail("fields");
 	var items = ev.getDetail("items");
 
 	if (ev.event == ZmEvent.E_CREATE) {
@@ -352,7 +320,8 @@ function(ev) {
 		var task = items[0];
 		var div = this._getElFromItem(task);
 		if (div) {
-			this._createItemHtml(task, {now:this._now, div:div});
+			var bContained = this._selectedItems.contains(div);
+			this._createItemHtml(task, {now:this._now, div:div, bContained:bContained});
 			this.associateItemWithElement(task, div, DwtListView.TYPE_LIST_ITEM);
 		}
 	}

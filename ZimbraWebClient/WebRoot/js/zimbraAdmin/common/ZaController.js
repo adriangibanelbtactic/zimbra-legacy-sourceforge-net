@@ -94,7 +94,7 @@ ZaController.initPopupMenuMethods = new Object();
 **/
 ZaController.setViewMethods = new Object();
 
-ZaController.helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/administration_console_help.htm";
+ZaController.helpURL = location.pathname + "adminhelp/html/WebHelp/administration_console_help.htm";
 // Public methods
 ZaController.prototype.toString = 
 function() {
@@ -278,8 +278,14 @@ function () {
 * handles the Close button click. Returns to the previous view.
 **/ 
 ZaController.prototype.closeButtonListener =
-function(ev) {
-	this._app.popView();
+function(ev, noPopView, func, obj, params) {
+	//prompt if the user wants to save the changes
+	if (noPopView){
+		func.call(obj, params) ;
+	}else{
+		this._app.popView();
+		//this._app.getTabGroup().removeCurrentTab(true) ;
+	}
 }
 
 ZaController.prototype._helpButtonListener =
@@ -859,3 +865,12 @@ ZaController.prototype._showAccountsView = function (defaultType, ev) {
 		acctListController.show(true);
 	}
 };
+
+ZaController.prototype.cancelBusyOverlay =
+function () {
+	if (this._currentRequest) {
+		this._currentRequest.cancel() ;
+	}
+	this._shell.setBusy(false) ;
+	//FIXME: need to cancel the request also.	
+}

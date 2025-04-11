@@ -27,6 +27,7 @@ ZmVoiceListController = function(appCtxt, container, app) {
 	if (arguments.length == 0) return;
 	ZmListController.call(this, appCtxt, container, app);
 	this._listeners[ZmOperation.VOICE_CALL] = new AjxListener(this, this._callListener);
+    this._listeners[ZmOperation.CALL_MANAGER] = new AjxListener(this, this._callManagerListener);
 
 	this._folder = null;
 }
@@ -53,10 +54,15 @@ function(searchResult, folder) {
 		this._list.setHasMore(searchResult.getAttribute("more"));	
 	this._setup(this._currentView);
 
-	var elements = new Object();
-	elements[ZmAppViewMgr.C_TOOLBAR_TOP] = this._toolbar[this._currentView];
-	elements[ZmAppViewMgr.C_APP_CONTENT] = this._listView[this._currentView];
-	this._setView(this._currentView, elements, true);
+    var offset = parseInt(this._activeSearch.getAttribute("offset"));
+    if (this._listView[this._currentView]) {
+        this._listView[this._currentView].setOffset(offset);
+    }
+    var elements = new Object();
+    elements[ZmAppViewMgr.C_TOOLBAR_TOP] = this._toolbar[this._currentView];
+    elements[ZmAppViewMgr.C_APP_CONTENT] = this._listView[this._currentView];
+    this._setView(this._currentView, elements, true);
+    this._resetNavToolBarButtons(this._currentView);
 };
 
 ZmVoiceListController.prototype.getFolder =
@@ -121,6 +127,33 @@ function(ev) {
 	}
 	var iframeHtml = ["<iframe src='", phone.getCallUrl(),"'></iframe>"].join("");
 	this._callControl.getHtmlElement().innerHTML = iframeHtml;
+};
+
+ZmVoiceListController.prototype._refreshListener =
+function(ev) {
+	if (this._folder) {
+		var app = this._appCtxt.getApp(ZmApp.VOICE);
+		app.search(this._folder);
+	}
+};
+
+ZmVoiceListController.prototype._printListener =
+function(ev) {
+	var html = this._getView().getPrintHtml();
+	this._appCtxt.getPrintView().renderHtml(html);
+};
+
+ZmVoiceListController.prototype._callManagerListener =
+function() {
+    var app = this._appCtxt.getAppController().getApp(ZmApp.PREFERENCES);
+    app.launch(new AjxListener(this, this._handleResponseLaunchPrefs));
+};
+
+ZmVoiceListController.prototype._handleResponseLaunchPrefs =
+function() {
+    var app = this._appCtxt.getAppController().getApp(ZmApp.PREFERENCES);
+    var view = app.getPrefController().getPrefsView();
+    view.selectSection("VOICE");
 };
 
 ZmVoiceListController.prototype._listActionListener =

@@ -47,45 +47,47 @@ ZmController = function(appCtxt, container, app) {
 };
 
 // view identifiers - need to be all caps
-ZmController.CONVLIST_VIEW 				= "CLV";
-ZmController.CONV_VIEW 					= "CV";
-ZmController.TRAD_VIEW 					= "TV";
-ZmController.MSG_VIEW 					= "MSG";
-ZmController.MSG_NEW_WIN_VIEW			= "MSGNW"; // needed for HACK (see ZmMailMsg)
+ZmController.APPOINTMENT_VIEW 			= "APPT";
+ZmController.APPT_DETAIL_VIEW			= "APPTD";
+ZmController.ATT_ICON_VIEW 				= "ATI";
+ZmController.ATT_LIST_VIEW 				= "ATL";
+ZmController.CAL_APPT_VIEW				= "CLA";
+ZmController.CAL_DAY_VIEW				= "CLD";
+ZmController.CAL_MONTH_VIEW				= "CLM";
+ZmController.CAL_SCHEDULE_VIEW			= "CLS";
+ZmController.CAL_VIEW					= "CAL";
+ZmController.CAL_WEEK_VIEW				= "CLW";
+ZmController.CAL_WORK_WEEK_VIEW			= "CLWW";
+ZmController.CALLLIST_VIEW				= "CLIST";
+ZmController.COMPOSE_VIEW				= "COMPOSE";
 ZmController.CONTACT_CARDS_VIEW			= "CNC";
 ZmController.CONTACT_SIMPLE_VIEW 		= "CNS";
-ZmController.CONTACT_VIEW				= "CN";
-ZmController.GROUP_VIEW					= "GRP";
-ZmController.READING_PANE_VIEW 			= "RP";
-ZmController.ATT_LIST_VIEW 				= "ATL";
-ZmController.ATT_ICON_VIEW 				= "ATI";
-ZmController.CAL_VIEW					= "CAL";
-ZmController.COMPOSE_VIEW				= "COMPOSE";
 ZmController.CONTACT_SRC_VIEW			= "CNSRC"; // contact picker source list
 ZmController.CONTACT_TGT_VIEW			= "CNTGT"; // contact picker target list
-ZmController.PREF_VIEW					= "PREF";
-ZmController.CAL_DAY_VIEW				= "CLD";
-ZmController.CAL_SCHEDULE_VIEW			= "CLS";
-ZmController.CAL_WEEK_VIEW				= "CLW";
-ZmController.CAL_MONTH_VIEW				= "CLM";
-ZmController.CAL_WORK_WEEK_VIEW			= "CLWW";
-ZmController.CAL_APPT_VIEW				= "CLA";
-ZmController.APPT_DETAIL_VIEW			= "APPTD";
-ZmController.APPOINTMENT_VIEW 			= "APPT";
-ZmController.MIXED_VIEW					= "MX";
-ZmController.IM_CHAT_TAB_VIEW			= "IMCT";
+ZmController.CONTACT_VIEW				= "CN";
+ZmController.CONVLIST_VIEW 				= "CLV";
+ZmController.CONV_VIEW 					= "CV";
+ZmController.GROUP_VIEW					= "GRP";
 ZmController.IM_CHAT_MULTI_WINDOW_VIEW	= "IMCMW";
-ZmController.NOTEBOOK_PAGE_VIEW			= "NBP";
-ZmController.NOTEBOOK_PAGE_EDIT_VIEW	= "NBPE";
+ZmController.IM_CHAT_TAB_VIEW			= "IMCT";
+ZmController.LOADING_VIEW				= "LOADING";
+ZmController.MIXED_VIEW					= "MX";
+ZmController.MSG_NEW_WIN_VIEW			= "MSGNW"; // needed for HACK (see ZmMailMsg)
+ZmController.MSG_VIEW 					= "MSG";
 ZmController.NOTEBOOK_FILE_VIEW			= "NBF";
+ZmController.NOTEBOOK_PAGE_EDIT_VIEW	= "NBPE";
+ZmController.NOTEBOOK_PAGE_VIEW			= "NBP";
 ZmController.NOTEBOOK_SITE_VIEW			= "NBS";
 ZmController.PORTAL_VIEW                = "PORTAL";
-ZmController.TASKLIST_VIEW				= "TKL";
-ZmController.TASKEDIT_VIEW				= "TKE";
+ZmController.PREF_VIEW					= "PREF";
+ZmController.READING_PANE_VIEW 			= "RP";
 ZmController.TASK_VIEW					= "TKV";
-ZmController.LOADING_VIEW				= "LOADING";
+ZmController.TASKEDIT_VIEW				= "TKE";
+ZmController.TASKLIST_VIEW				= "TKL";
+ZmController.TRAD_VIEW 					= "TV";
 ZmController.VOICEMAIL_VIEW				= "VM";
-ZmController.CALLLIST_VIEW				= "CLIST";
+ZmController.BRIEFCASE_VIEW			    = "BC";
+ZmController.BRIEFCASE_DETAIL_VIEW		= "BCD";
 
 /* ROSSD - It feels like we may need a ZmAppViewController class to help with
  * the tab group work. Delaying this until I have more experience pushing the 
@@ -95,12 +97,12 @@ ZmController._currAppViewTabGroup = null;
 ZmController._setCurrentAppViewTabGroup =
 function(tabGroup) {
 	ZmController._currAppViewTabGroup = tabGroup;
-}
+};
 
 ZmController._getCurrentAppViewTabGroup =
 function() {
 	return ZmController._currAppViewTabGroup;
-}
+};
 
 // Abstract methods
 
@@ -117,8 +119,9 @@ function() {
 
 ZmController.prototype.popupErrorDialog = 
 function(msg, ex, noExecReset, hideReportButton)  {
-	if (!noExecReset)
+	if (!noExecReset) {
 		this._execFrame = {func: null, args: null, restartOnError: false};
+	}
 	// popup alert
 	var detailStr = "";
 	if (typeof ex == "string") {
@@ -148,12 +151,113 @@ function() {
 ZmController.prototype.handleKeyAction =
 function(actionCode) {
 	DBG.println(AjxDebug.DBG3, "ZmController.handleKeyAction");
+	
+	// tab navigation shortcut
 	var tabView = this.getTabView ? this.getTabView() : null;
 	if (tabView && tabView.handleKeyAction(actionCode)) {
 		return true;
 	}
+	
+	// check for action code with argument, eg MoveToFolder3
+	var shortcut = ZmShortcut.parseAction(this._appCtxt, "Global", actionCode);
+	if (shortcut) {
+		actionCode = shortcut.baseAction;
+	}
 
-	return false;
+	// shortcuts tied directly to operations
+	var app = ZmApp.ACTION_CODES_R[actionCode];
+	if (app) {
+		var op = ZmApp.ACTION_CODES[actionCode];
+		if (op) {
+			this._appCtxt.getApp(app).handleOp(op);
+			return true;
+		}
+	}
+
+	switch (actionCode) {
+
+		case ZmKeyMap.NEW: {
+			// find default "New" action code for current app
+			app = this._appCtxt.getCurrentAppName();
+			var newActionCode = ZmApp.NEW_ACTION_CODE[app];
+			if (newActionCode) {
+				var op = ZmApp.ACTION_CODES[newActionCode];
+				if (op) {
+					this._appCtxt.getApp(app).handleOp(op);
+					return true;
+				}
+			}
+			break;
+		}
+
+		case ZmKeyMap.NEW_FOLDER:
+		case ZmKeyMap.NEW_TAG:
+			var op = ZmApp.ACTION_CODES[actionCode];
+			if (op) {
+				this._newListener(null, op);
+			}
+			break;
+
+		case ZmKeyMap.GOTO_TAG:
+			var tag = this._appCtxt.getById(shortcut.arg);
+			if (tag) {
+				this._appCtxt.getSearchController().search({query: 'tag:"' + tag.name + '"'});
+			}
+			break;
+
+		case ZmKeyMap.SAVED_SEARCH:
+			var searchFolder = this._appCtxt.getById(shortcut.arg);
+			if (searchFolder) {
+				this._appCtxt.getSearchController().redoSearch(searchFolder.search);
+			}
+			break;
+
+		default:
+			return false;
+	}
+	return true;
+};
+
+ZmController.prototype._newListener =
+function(ev, op) {
+	switch (op) {
+		// new organizers
+		case ZmOperation.NEW_FOLDER: {
+			var dialog = this._appCtxt.getNewFolderDialog();
+			if (!this._newFolderCb) {
+				this._newFolderCb = new AjxCallback(this, this._newFolderCallback);
+			}
+			ZmController.showDialog(dialog, this._newFolderCb);
+			break;
+		}
+		case ZmOperation.NEW_TAG: {
+			var dialog = this._appCtxt.getNewTagDialog();
+			if (!this._newTagCb) {
+				this._newTagCb = new AjxCallback(this, this._newTagCallback);
+			}
+			ZmController.showDialog(dialog, this._newTagCb);
+			break;
+		}
+	}
+};
+
+ZmController.prototype._newFolderCallback =
+function(parent, name, color, url) {
+	// REVISIT: Do we really want to close the dialog before we
+	//          know if the create succeeds or fails?
+	var dialog = this._appCtxt.getNewFolderDialog();
+	dialog.popdown();
+
+	var oc = this._appCtxt.getOverviewController();
+	oc.getTreeController(ZmOrganizer.FOLDER)._doCreate(parent, name, color, url);
+};
+
+ZmController.prototype._newTagCallback =
+function(params) {
+	var dialog = this._appCtxt.getNewTagDialog();
+	dialog.popdown();
+	var oc = this._appCtxt.getOverviewController();
+	oc.getTreeController(ZmOrganizer.TAG)._doCreate(params);
 };
 
 ZmController.prototype._createTabGroup =
@@ -173,8 +277,14 @@ function() {
 	return this._tabGroup;
 };
 
-ZmController.prototype._showLoginDialog =
+ZmController.prototype._handleLogin =
 function(bReloginMode) {
+	var url = this._appCtxt.get(ZmSetting.LOGIN_URL);
+	if (url) {
+		ZmZimbraMail.sendRedirect(url);
+		return;
+	}
+	
 	var username = this._appCtxt.getUsername();
 	if (!username) {
 		ZmZimbraMail.logOff();
@@ -258,8 +368,9 @@ function(ex, method, params, restartOnError, obj) {
 		var bReloginMode = true;
 		if (ex.code == ZmCsfeException.SVC_AUTH_EXPIRED) {
 			// remember the last operation attempted ONLY for expired auth token exception
-			if (method)
+			if (method) {
 				this._execFrame = (method instanceof AjxCallback) ? method : {obj: obj, func: method, args: params, restartOnError: restartOnError};
+			}
 			this._loginDialog.registerCallback(this._loginCallback, this);
 			this._loginDialog.setError(ZmMsg.sessionExpired);
 		} else if (ex.code == ZmCsfeException.SVC_AUTH_REQUIRED) {
@@ -271,7 +382,7 @@ function(ex, method, params, restartOnError, obj) {
 			bReloginMode = false;
 		}
 		this._loginDialog.setReloginMode(bReloginMode);
-		this._showLoginDialog(bReloginMode);
+		this._handleLogin(bReloginMode);
 	} else {
 		// remember the last search attempted for all other exceptions
 		this._execFrame = (method instanceof AjxCallback) ? method : {obj: obj, func: method, args: params, restartOnError: restartOnError};

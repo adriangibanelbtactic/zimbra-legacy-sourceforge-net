@@ -43,6 +43,7 @@ import java.util.TreeMap;
 import com.zimbra.cs.imap.ImapCredentials.ActivatedExtension;
 import com.zimbra.cs.imap.ImapFlagCache.ImapFlag;
 import com.zimbra.cs.imap.ImapMessage.ImapMessageSet;
+import com.zimbra.cs.index.SearchParams;
 import com.zimbra.cs.index.ZimbraHit;
 import com.zimbra.cs.index.ZimbraQueryResults;
 import com.zimbra.cs.index.MailboxIndex;
@@ -62,6 +63,7 @@ import com.zimbra.cs.session.PendingModifications.Change;
 import com.zimbra.cs.zclient.ZFolder;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.SoapProtocol;
 import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.ZimbraLog;
 
@@ -92,6 +94,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     private ImapHandler     mHandler;
     private boolean         mNotificationsSuspended;
     private ImapMessageSet  mSavedSearchResults;
+    private boolean         mTagsAreDirty;
     private Map<Integer, DirtyMessage> mDirtyMessages = new TreeMap<Integer, DirtyMessage>();
 
     /** Initializes an ImapFolder from a {@link Folder}, specified by path.
@@ -120,7 +123,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
 
         mMailbox.beginTrackingImap();
 
-        OperationContext octxt = mCredentials.getContext();
+        OperationContext octxt = mCredentials.getContext().setSession(this);
         Folder folder = mMailbox.getFolderByPath(octxt, mPath.asZimbraPath());
         mFolderId = folder.getId();
 
@@ -133,7 +136,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
 
         // initialize the flag and tag caches
         mFlags = ImapFlagCache.getSystemFlags(mMailbox);
-        mTags = new ImapFlagCache(mMailbox, mCredentials.getContext());
+        mTags = new ImapFlagCache(mMailbox, octxt);
         return this;
     }
 
@@ -197,26 +200,20 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
      * @param octxt   Encapsulation of the authenticated user.
      * @param search  The search folder being exposed. */
     private List<ImapMessage> loadVirtualFolder(OperationContext octxt, SearchFolder search) throws ServiceException {
+        SearchParams params = new SearchParams();
+        params.setQueryStr(mQuery);
+        params.setTypes(ImapHandler.ITEM_TYPES);
+        params.setSortBy(MailboxIndex.SortBy.DATE_ASCENDING);
+        params.setChunkSize(1000);
+        params.setMode(Mailbox.SearchResultMode.IMAP);
+
         Mailbox mbox = search.getMailbox();
         List<ImapMessage> i4list = new ArrayList<ImapMessage>();
         try {
-            ZimbraQueryResults zqr = mbox.search(octxt, mQuery, ImapHandler.ITEM_TYPES, MailboxIndex.SortBy.DATE_ASCENDING, 1000);
-            int i = 0, hitIds[] = new int[100];
-            Arrays.fill(hitIds, Mailbox.ID_AUTO_INCREMENT);
+            ZimbraQueryResults zqr = mbox.search(SoapProtocol.Soap12, octxt, params);
             try {
-                for (ZimbraHit hit = zqr.getFirstHit(); hit != null || i > 0; ) {
-                    if (hit == null || i == 100) {
-                        for (MailItem item : mbox.getItemById(octxt, hitIds, MailItem.TYPE_MESSAGE))
-                            if (item != null)
-                                i4list.add(new ImapMessage(item));
-                        Arrays.fill(hitIds, Mailbox.ID_AUTO_INCREMENT);
-                        i = 0;
-                    }
-                    if (hit != null) {
-                        hitIds[i++] = hit.getItemId();
-                        hit = zqr.getNext();
-                    }
-                }
+                for (ZimbraHit hit = zqr.getNext(); hit != null; hit = zqr.getNext())
+                    i4list.add(hit.getImapMessage());
             } finally {
                 zqr.doneWithSearchResults();
             }
@@ -239,7 +236,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         if (isVirtual())
             throw ServiceException.INVALID_REQUEST("cannot reopen virtual folders", null);
 
-        OperationContext octxt = mCredentials.getContext();
+        OperationContext octxt = mCredentials.getContext().setSession(this);
         Folder folder = mMailbox.getFolderByPath(octxt, mPath.asZimbraPath());
         if (!mPath.isSelectable())
             throw ServiceException.PERM_DENIED("cannot select folder: " + mPath);
@@ -504,10 +501,19 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     }
 
 
+    boolean areTagsDirty() {
+        return mTagsAreDirty;
+    }
+
+    void cleanTags() {
+        mTagsAreDirty = false;
+    }
+
     ImapFlag cacheTag(Tag ltag) {
         assert(!(ltag instanceof Flag));
         if (ltag instanceof Flag)
             return null;
+        mTagsAreDirty = true;
         return mTags.cache(new ImapFlag(ltag.getName(), ltag, true));
     }
 
@@ -768,7 +774,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         void sort()  { Collections.sort(numbered);  Collections.sort(unnumbered); }
     }
 
-    public void notifyPendingChanges(int changeId, PendingModifications pns) {
+    public void notifyPendingChanges(PendingModifications pns, int changeId, Session source) {
         if (!pns.hasNotifications())
             return;
 
@@ -812,7 +818,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
                 try {
                     if (debug)  ZimbraLog.imap.debug(chglog);
                     // notification will take care of adding to mailbox
-                    getMailbox().resetImapUid(mCredentials.getContext(), renumber);
+                    getMailbox().resetImapUid(mCredentials.getContext().setSession(this), renumber);
                 } catch (ServiceException e) {
                     if (debug)  ZimbraLog.imap.debug("  ** moved; imap uid change failed; msg hidden (ntfn): " + renumber);
                 }

@@ -12,7 +12,23 @@
 
     <c:choose>
         <c:when test="${zm:actionSet(param, 'actionSave')}">
-            <app:optAction selected="${selected}"/>
+            <c:choose>
+                <c:when test="${selected eq 'voice'}">
+                    <app:optVoiceAction accountindex="0" />
+                </c:when>
+                <c:otherwise>
+                    <app:optAction selected="${selected}"/>
+                </c:otherwise>
+            </c:choose>
+        </c:when>
+        <c:when test="${selected eq 'signatures'}">
+            <c:forEach var="p" items="${paramValues}">
+                <c:if test="${fn:startsWith(p.key,'actionDeleteSig:')}">
+                    <c:set var="sigId" value="${fn:substringAfter(p.key,'actionDeleteSig:')}"/>
+                    <zm:deleteSiganture id="${sigId}"/>
+                    <app:status><fmt:message key="optionsSignatureDeleted"/></app:status>
+                </c:if>
+            </c:forEach>
         </c:when>
         <c:when test="${zm:actionSet(param, 'actionFilterCancel')}">
             <app:status>
@@ -69,13 +85,21 @@
     <c:when test="${selected eq 'mail'}">
         <c:set var="subKey" value="mail"/>
     </c:when>
-    <%------------------- MAIL IDENTITY ------------------%>
-    <c:when test="${selected eq 'identity'}">
-        <c:set var="subKey" value="mailIdentity"/>
+    <%------------------- COMPOSING ------------------%>
+    <c:when test="${selected eq 'composing'}">
+        <c:set var="subKey" value="optionsComposing"/>
+    </c:when>
+    <%------------------- SIGNATURES ------------------%>
+    <c:when test="${selected eq 'signatures'}">
+        <c:set var="subKey" value="optionsSignatures"/>
     </c:when>
     <%------------------- MAIL FILTERS ------------------%>
     <c:when test="${selected eq 'filters' and mailbox.features.filters}">
         <c:set var="subKey" value="mailFilters"/>
+    </c:when>
+    <%------------------- Voice  ------------------%>
+    <c:when test="${selected eq 'voice' and mailbox.features.voice}">
+        <c:set var="subKey" value="voice"/>
     </c:when>
     <%------------------- ADDRESS BOOK ------------------%>
     <c:when test="${selected eq 'addressbook' and mailbox.features.contacts}">
@@ -84,6 +108,10 @@
     <%------------------- ADDRESS BOOK ------------------%>
     <c:when test="${selected eq 'calendar' and mailbox.features.calendar}">
         <c:set var="subKey" value="calendar"/>
+    </c:when>
+    <%------------------- Accounts ------------------%>
+    <c:when test="${selected eq 'accounts'}">
+        <c:set var="subKey" value="optionsAccounts"/>
     </c:when>
     <%------------------- SHORTCUTS ------------------%>
     <c:when test="${selected eq 'shortcuts'}">
@@ -138,13 +166,21 @@
                                     <c:when test="${selected eq 'mail'}">
                                         <app:optMail mailbox="${mailbox}"/>
                                     </c:when>
-                                    <%------------------- MAIL IDENTITY ------------------%>
-                                    <c:when test="${selected eq 'identity'}">
-                                        <app:optMailIdentity mailbox="${mailbox}"/>
+                                    <%------------------- COMPOSING ------------------%>
+                                    <c:when test="${selected eq 'composing'}">
+                                        <app:optComposing mailbox="${mailbox}"/>
+                                    </c:when>
+                                    <%------------------- SIGNATURES ------------------%>
+                                    <c:when test="${selected eq 'signatures'}">
+                                        <app:optSignatures mailbox="${mailbox}"/>
                                     </c:when>
                                     <%------------------- MAIL FILTER ------------------%>
                                     <c:when test="${selected eq 'filter' and mailbox.features.filters}">
                                         <app:optMailFilter mailbox="${mailbox}"/>
+                                    </c:when>
+                                    <%------------------- Voice ------------------%>
+                                    <c:when test="${selected eq 'voice' and mailbox.features.voice}">
+                                        <app:optVoice mailbox="${mailbox}"/>
                                     </c:when>
                                     <%------------------- ADDRESS BOOK ------------------%>
                                     <c:when test="${selected eq 'addressbook'}">
@@ -153,6 +189,10 @@
                                     <%------------------- CALENDARW ------------------%>
                                     <c:when test="${selected eq 'calendar'}">
                                         <app:optCalendar mailbox="${mailbox}"/>
+                                    </c:when>
+                                    <%------------------- ACCOUNTS ------------------%>
+                                    <c:when test="${selected eq 'accounts'}">
+                                        <app:optAccounts mailbox="${mailbox}"/>
                                     </c:when>
                                     <%------------------- SHORTCUTS ------------------%>
                                     <c:when test="${selected eq 'shortcuts'}">
@@ -167,4 +207,6 @@
         </table>
         <input type="hidden" name="doAction" value="1"/>
     </form>
+
+    <app:keyboard cache="options" globals="true" tags="true" folders="true" calendars="true" contacts="true" mailbox="${mailbox}"/>
 </app:view>

@@ -36,39 +36,72 @@ import org.mortbay.util.ajax.Continuation;
 import org.mortbay.util.ajax.ContinuationSupport;
 import org.mortbay.util.ajax.WaitingContinuation;
 
+import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.soap.Element;
+import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.soap.SoapServlet;
 import com.zimbra.soap.ZimbraSoapContext;
 
 /**
- * @author schemers
+ * Do nothing. The main intent of this Soap call is for the client
+ * to fetch new notifications (which are automatically added onto the empty 
+ * response). 
+ * 
+ * The caller may set wait=1 for this request in which case the request will
+ * block until there are new notifications.
  */
 public class NoOp extends MailDocumentHandler  {
     
-    private static final long NOP_TIMEOUT = 5 * 60 * 1000; // 5 minutes per Zimbra Desktop (NAT issues), TODO perhaps allow client to specify a timeout?
-
+    private static final long DEFAULT_TIMEOUT;
+    private static final long MIN_TIMEOUT;
+    private static final long MAX_TIMEOUT;
+    
+    static {
+        DEFAULT_TIMEOUT = LC.zimbra_noop_default_timeout.longValue() * 1000;
+        MIN_TIMEOUT = LC.zimbra_noop_min_timeout.longValue() * 1000;
+        MAX_TIMEOUT = LC.zimbra_noop_max_timeout.longValue() * 1000;
+    }
+    
+    private static long parseTimeout(Element request) throws ServiceException {
+        long timeout = request.getAttributeLong(MailConstants.A_TIMEOUT, DEFAULT_TIMEOUT);
+        if (timeout < MIN_TIMEOUT)
+            timeout = MIN_TIMEOUT;
+        if (timeout > MAX_TIMEOUT)
+            timeout = MAX_TIMEOUT;
+        return timeout;
+    }
+    
 	public Element handle(Element request, Map<String, Object> context) throws ServiceException {
-        ZimbraSoapContext zsc = getZimbraSoapContext(context);
+	    ZimbraSoapContext zsc = getZimbraSoapContext(context);
+        boolean wait = request.getAttributeBool(MailConstants.A_WAIT, false);
+
+        // See bug 16494 - if a session is new, we should return from the NoOp immediately so the client
+        // gets the <refresh> block 
+        if (zsc.hasCreatedSession())
+            wait = false;
         
-        boolean wait = request.getAttributeBool("wait", false);
         if (wait) {
             HttpServletRequest servletRequest = (HttpServletRequest) context.get(SoapServlet.SERVLET_REQUEST);
             Continuation continuation = ContinuationSupport.getContinuation(servletRequest, zsc);
+            ZimbraLog.session.debug("NoOp got continuation: %s resumed=%s", continuation.toString(), continuation.isResumed() ? "RESUMED" : "not_resumed");
+            if (continuation instanceof WaitingContinuation) {
+                // workaround for a Jetty bug: Jetty currently (in bio mode) re-uses the Continuation object, but doesn't
+                // clear it's state correctly...and unfortunately there's no way to re-set the mutex once it is already set.  Fortunately,
+                // in blocking mode it doesn't matter if we create a brand-new Continuation here since the Continuation
+                // object is just a wrapper around normal java wait/notify.
+                continuation = new WaitingContinuation(zsc);
+                ZimbraLog.session.debug("NoOp replacing with our own WaitingContinuation: %s", continuation.toString());
+            }
+            
+            assert(!(continuation instanceof WaitingContinuation) || !continuation.isResumed());
             if (!continuation.isResumed()) {
-                if (continuation instanceof WaitingContinuation && (((WaitingContinuation)continuation).getMutex() != zsc)) {
-                    // workaround for a Jetty bug: Jetty currently (in bio mode) re-uses the Continuation object, but doesn't
-                    // clear the mutex...and unfortunately there's no way to re-set the mutex once it is already set.  Fortunately,
-                    // in blocking mode it doesn't matter if we create a brand-new Continuation here since the Continuation
-                    // object is just a wrapper around normal java wait/notify.
-                    continuation = new WaitingContinuation(zsc);
-                }
                 if (zsc.beginWaitForNotifications(continuation)) {
                     synchronized(zsc) {
                         if (zsc.waitingForNotifications()) {
                             assert (!(continuation instanceof WaitingContinuation) || ((WaitingContinuation)continuation).getMutex()==zsc); 
-                            continuation.suspend(NOP_TIMEOUT);
+                            continuation.suspend(parseTimeout(request));
                         }
                     }
                 }

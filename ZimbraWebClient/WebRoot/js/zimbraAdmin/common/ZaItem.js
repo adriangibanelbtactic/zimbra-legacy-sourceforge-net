@@ -55,6 +55,7 @@ ZaItem.MAILQ_ITEM = "message";
 ZaItem.MAILQ = "mailque";
 ZaItem.A_objectClass = "objectClass";
 ZaItem.A_zimbraId = "zimbraId";
+ZaItem.A_cn = "cn" ;
 
 /* Translation of  the attribute names to the screen names */
 ZaItem._ATTR = new Object();
@@ -357,10 +358,14 @@ function (newAlias) {
 	soapDoc.set("id", this.id);
 	soapDoc.set("alias", newAlias);	
 	
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	command.invoke(params);
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_ADD_ALIAS
+	}
+	ZaRequestMgr.invoke(params, reqMgrParams);
 }
 
 /**
@@ -380,8 +385,12 @@ function (aliasToRemove) {
 	var soapDoc = AjxSoapDoc.create(soapCmd, "urn:zimbraAdmin", null);
 	soapDoc.set("id", this.id);
 	soapDoc.set("alias", aliasToRemove);	
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	command.invoke(params);	
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_REMOVE_ALIAS
+	}
+	ZaRequestMgr.invoke(params, reqMgrParams);	
 }

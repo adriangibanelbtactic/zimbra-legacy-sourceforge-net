@@ -171,6 +171,10 @@ function() {
  */
 ZmZimletContext.prototype._finished_loadIncludes = function() {
 	var CTOR  = this.handlerObject ? window[this.handlerObject] : ZmZimletBase;
+	if (!CTOR) {
+		DBG.println("zimlet handler not defined ("+this.handlerObject+")");
+		return;
+	}
 	this.handlerObject = new CTOR();
 	if(!this.handlerObject._init) {
 		DBG.println(AjxDebug.DBG1, "ERROR - Zimlet handler (" + this.name + ") not defined. " +
@@ -433,14 +437,14 @@ ZmZimletContext._zmObjectTransformers = {
 		for(var i=0; i< o.length; i++) {
 			var ret = { TYPE: "ZmMailMsg" };
 			var oi = o[i];
-			ret.id           = oi.getId();
-			ret.convId       = oi.getConvId();
+			ret.id           = oi.id;
+			ret.convId       = oi.cid;
 			ret.from         = oi.getAddresses(AjxEmailAddress.FROM).getArray();
 			ret.to           = oi.getAddresses(AjxEmailAddress.TO).getArray();
 			ret.cc           = oi.getAddresses(AjxEmailAddress.CC).getArray();
-			ret.subject      = oi.getSubject();
+			ret.subject      = oi.subject;
 			ret.date         = oi.getDate();
-			ret.size         = oi.getSize();
+			ret.size         = oi.size;
 			ret.fragment     = oi.fragment;
 			ret.tags         = oi.tags;
 			// ret.flagged      = oi.getFlagged();
@@ -469,7 +473,7 @@ ZmZimletContext._zmObjectTransformers = {
 			var oi = o[i];
 			var ret = { TYPE: "ZmConv" };
 			ret.id           = oi.id;
-			ret.subject      = oi.getSubject();
+			ret.subject      = oi.subject;
 			ret.date         = oi.date;
 			ret.fragment     = oi.fragment;
 			ret.participants = oi.participants.getArray();
@@ -582,7 +586,7 @@ ZmZimletContext._zmObjectTransformers = {
 		var oi = o[0] ? o[0] : o;
 		oi.getDetails();
 		var ret = { TYPE: "ZmAppt" };
-		ret.id             = oi.getId();
+		ret.id             = oi.id;
 		ret.uid            = oi.uid;
 		ret.subject        = oi.getName();
 		ret.startDate      = oi.startDate;

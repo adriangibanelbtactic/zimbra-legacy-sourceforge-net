@@ -306,8 +306,9 @@ public class LdapUtil {
         byte[] buff = Base64.decodeBase64(encodedBuff);
         if (buff.length <= SALT_LEN)
             return false;
-        byte[] salt = new byte[SALT_LEN];
-        System.arraycopy(buff, buff.length-SALT_LEN, salt, 0, SALT_LEN);
+        int slen = (buff.length == 28) ? 8 : SALT_LEN;
+        byte[] salt = new byte[slen];
+        System.arraycopy(buff, buff.length-slen, salt, 0, slen);
         String generated = generateSSHA(password, salt);
         return generated.equals(encodedPassword);
     }
@@ -319,9 +320,7 @@ public class LdapUtil {
                 salt = new byte[SALT_LEN];
                 SecureRandom sr = new SecureRandom();
                 sr.nextBytes(salt);
-            } else if (salt.length != SALT_LEN) {
-                throw new RuntimeException("invalid salt length, must be 4 bytes: "+salt.length);
-            }
+            } 
             md.update(password.getBytes());
             md.update(salt);
             byte[] digest = md.digest();
@@ -626,7 +625,7 @@ public class LdapUtil {
         }
     }
 
-    private static String domainToDN(String parts[], int offset) {
+    public static String domainToDN(String parts[], int offset) {
         StringBuffer sb = new StringBuffer(128);
         for (int i=offset; i < parts.length; i++) {
             if (i-offset > 0) sb.append(",");
@@ -678,32 +677,7 @@ public class LdapUtil {
         return sb.toString();
     }
 
-    /**
-     * Given a dn like "uid=foo,ou=people,dc=widgets,dc=com", return the string "foo@widgets.com".
-     * 
-     * @param dn
-     * @return
-     */
-    public static String dnToEmail(String dn) {
-        String [] parts = dn.split(",");
-        StringBuffer domain = new StringBuffer(dn.length());
-        String uid = null;
-        for (int i = 0; i < parts.length; i++) {
-            if (parts[i].startsWith("dc=")) {
-                if (domain.length() > 0)
-                    domain.append(".");
-                domain.append(unescapeRDNValue(parts[i].substring(3)));
-            } else if (parts[i].startsWith("uid=")) {
-                uid = unescapeRDNValue(parts[i].substring(4));
-            }
-        }
-        if (uid == null)
-            return null; // TODO should this be an exception
-        if (domain.length() == 0)
-            return uid;
-        return new StringBuffer(uid).append('@').append(domain).toString();
-    }
-    
+        
     /**
      * Given a dn like "uid=zimbra,cn=admins,cn=zimbra", return the string "zimbra".
      * @param dn
@@ -721,21 +695,6 @@ public class LdapUtil {
         return uid;
     }
     
-    /**
-     * Given a domain like foo.com, return an array of dns that work their way up the tree:
-     *    [0] = dc=foo,dc=com
-     *    [1] = dc=com
-     * 
-     * @return the array of DNs
-     */
-    public static String[] domainToDNs(String[] parts) {
-        String dns[] = new String[parts.length];
-        for (int i=parts.length-1; i >= 0; i--) {
-            dns[i] = domainToDN(parts, i);
-        }
-        return dns;
-    }
-    
     
     /**
      * given a dn like "uid=foo,ou=people,dc=widgets,dc=com", return the String[]
@@ -743,7 +702,7 @@ public class LdapUtil {
      * [1] = ou=people,dc=widgets,dc=com
      * 
      * if the dn cannot be split into rdn and dn:
-     * [0] = ""
+     * [0] = the input dn
      * [1] = the input dn
      * 
      * @param dn
@@ -757,12 +716,13 @@ public class LdapUtil {
             values[0] = dn.substring(0, baseDnIdx);
             values[1] = dn.substring(baseDnIdx+1);
         } else {
-            values[0] = "";
+            values[0] = dn;
             values[1] = dn;
         }
         
         return values;
     }
+
 
     static String[] removeMultiValue(String values[], String value) {
         List<String> list = new ArrayList<String>(Arrays.asList(values));
@@ -985,7 +945,11 @@ public class LdapUtil {
     
 
     public static void main(String args[]) throws NamingException, ServiceException {
-        changeActiveDirectoryPassword(new String[] {"ldaps://host/"}, "email", "old", "new");
+//        changeActiveDirectoryPassword(new String[] {"ldaps://host/"}, "email", "old", "new");
+
+        System.out.println(verifySSHA("{SSHA}igJikWhEzFPLvXp4TNY1NADGOQPNjjWJ","test123"));
+        System.out.println(verifySSHA("{SSHA}t14kg+LsEEtb6/3xj+PPYGHv+496XwslfHaxUQ==","welcome123!"));
+        
 /*
         Date now = new Date();
         String gts = generalizedTime(now);

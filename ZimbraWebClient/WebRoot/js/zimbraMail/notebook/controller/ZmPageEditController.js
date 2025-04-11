@@ -173,11 +173,6 @@ function() {
 	return ZmController.NOTEBOOK_PAGE_EDIT_VIEW;
 };
 
-ZmPageEditController.prototype._getViewType =
-function() {
-	return ZmItem.NOTE;
-};
-
 ZmPageEditController.prototype._createNewView =
 function(view) {
 	if (!this._pageEditView) {
@@ -237,9 +232,10 @@ function(popViewWhenSaved) {
 
 	if (message) {
 		var style = DwtMessageDialog.WARNING_STYLE;
-		var dialog = this._appCtxt.getMsgDialog();
+		var dialog = this.warngDlg = this._appCtxt.getMsgDialog();
 		dialog.setMessage(message, style);
 		dialog.popup();
+	    dialog.registerCallback(DwtDialog.OK_BUTTON, this._focusPageInput, this);
 		this._pageEditView.focus();
 		return;
 	}
@@ -254,6 +250,13 @@ function(popViewWhenSaved) {
 	var saveCallback = new AjxCallback(this, this._saveResponseHandler, [content]);
 	var saveErrorCallback = new AjxCallback(this, this._saveErrorResponseHandler, [content]);
 	this._page.save(saveCallback, saveErrorCallback);
+};
+
+ZmPageEditController.prototype._focusPageInput = function() {
+if(this.warngDlg){
+	this.warngDlg.popdown();
+}
+this._pageEditView._pageNameInput.focus();
 };
 
 ZmPageEditController.prototype._showCurrentPage = function() {
@@ -302,8 +305,19 @@ ZmPageEditController.prototype._saveResponseHandler = function(content, response
 		wiki.l = this._page.folderId;
 		wiki.name = this._page.name;
 
-		var page = new ZmPage(this._appCtxt);
-		page.set(wiki);
+		var page = cachedPage;		
+		if(page == null){
+		page = new ZmPage(this._appCtxt);
+		}		
+		//page.set(wiki);
+		page.name = this._page.name;
+		page.version = this._page.version;
+		var restUrl = this._page.restUrl;
+		var parts = restUrl.split("/");
+		if(parts && parts[parts.length-1]!=page.name){
+			parts[parts.length-1] =  page.name;
+			page.restUrl = parts.join("/");
+		}
 		cache.putPage(page);
 	}
 	if (popViewWhenSaved) {

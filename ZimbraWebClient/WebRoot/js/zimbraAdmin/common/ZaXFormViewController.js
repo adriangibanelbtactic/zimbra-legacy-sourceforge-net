@@ -69,6 +69,7 @@ function(details) {
 /**
 * member of ZaXFormViewController
 * @param 	ev event object
+* 			noPopView - It should be set to true when close a hidden tab
 * handles the Close button click. Returns to the list view.
 **/ 
 ZaXFormViewController.prototype.closeButtonListener =
@@ -196,6 +197,10 @@ function (params) {
 **/
 ZaXFormViewController.prototype.switchToNextView = 
 function (nextViewCtrlr, func, params) {
+	//since we use the tabs to hold the invidual views. There is not need to 
+	//test if the current view is dirty or not.
+	//The dirty view will be warned when user try to close the tab(s)
+	/*
 	if(this._view.isDirty()) {
 		//parameters for the confirmation dialog's callback 
 		var args = new Object();		
@@ -210,7 +215,9 @@ function (nextViewCtrlr, func, params) {
 		this._app.dialogs["confirmMessageDialog"].popup();
 	} else {
 		func.call(nextViewCtrlr, params);
-	}
+	}*/
+	
+	func.call(nextViewCtrlr, params);
 }
 
 /**

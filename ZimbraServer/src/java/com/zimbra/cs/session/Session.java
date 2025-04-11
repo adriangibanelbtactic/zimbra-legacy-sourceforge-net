@@ -107,8 +107,11 @@ public abstract class Session {
         mTargetAccountId = targetId == null ? authId : targetId;
         mSessionType = type;
         mCreationTime = System.currentTimeMillis();
-
-        updateAccessTime();
+        mLastAccessed = mCreationTime;
+    }
+    
+    public Type getType() {
+        return mSessionType;
     }
 
     /** Registers the session as a listener on the target mailbox and adds
@@ -251,10 +254,10 @@ public abstract class Session {
      *  on the Mailbox.
      *  <p>
      *  *All* changes are currently cached, regardless of the client's state/views.
-     *
      * @param changeId The sync-token change Id of the change 
+     * @param source TODO
      * @param pms   A set of new change notifications from our Mailbox  */
-    public abstract void notifyPendingChanges(int changeId, PendingModifications pns);
+    public abstract void notifyPendingChanges(PendingModifications pns, int changeId, Session source);
     
     /** Notify this session that an IM event has occured. */
     public void notifyIM(IMNotification imn) {
@@ -292,8 +295,22 @@ public abstract class Session {
         return mCreationTime; 
     }
 
+    /**
+     * Public API for updating the access time of a session
+     */
     public void updateAccessTime() {
-        mLastAccessed = System.currentTimeMillis();
+        // go through the session cache so that the session cache's
+        // time-ordered access list stays correct
+        // see bug 16242
+        SessionCache.lookup(mSessionId, mAuthenticatedAccountId);
+    }
+    
+    /**
+     * This API must only be called by the SessionCache,
+     * all other callers should use updateAccessTime()
+     */
+    void sessionCacheSetLastAccessTime() {
+        mLastAccessed = System.currentTimeMillis();     
     }
 
     public boolean accessedAfter(long otherTime) {

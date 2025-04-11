@@ -24,6 +24,7 @@
  */
 package com.zimbra.cs.session;
 
+import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.service.util.SyncToken;
 
 /**
@@ -35,6 +36,7 @@ import com.zimbra.cs.service.util.SyncToken;
 public class WaitSetSession extends Session {
     SomeAccountsWaitSet mWs = null;
     int mInterestMask;
+    int mHighestChangeId;
     SyncToken mSyncToken;
 
     WaitSetSession(SomeAccountsWaitSet ws, String accountId, int interestMask, SyncToken lastKnownSyncToken) {
@@ -53,10 +55,26 @@ public class WaitSetSession extends Session {
     protected boolean isRegisteredInCache() {
         return false;
     }
-
+    
     void update(int interestMask, SyncToken lastKnownSyncToken) {
         mInterestMask = interestMask;
         mSyncToken = lastKnownSyncToken;
+        if (mSyncToken != null) {
+            // if the sync token is non-null, then we want
+            // to signal IFF the passed-in changeId is after the current
+            // synctoken...and we want to cancel the existing signalling
+            // if the new synctoken is up to date with the mailbox
+            Mailbox mbox = this.getMailbox();
+            synchronized(mbox) {
+                int mboxHighestChange = mbox.getLastChangeID();
+                if (mboxHighestChange > mHighestChangeId)
+                    mHighestChangeId = mboxHighestChange;
+                if (mSyncToken.after(mHighestChangeId))
+                    mWs.unsignalDataReady(this);
+                else 
+                    mWs.signalDataReady(this);
+            }
+        }
     }
 
     @Override
@@ -68,8 +86,11 @@ public class WaitSetSession extends Session {
     protected long getSessionIdleLifetime() { return 0; }
 
     @Override
-    public void notifyPendingChanges(int changeId, PendingModifications pns) {
-        if (mSyncToken != null && mSyncToken.after(changeId))
+    public void notifyPendingChanges(PendingModifications pns, int changeId, Session source) {
+        if (changeId > mHighestChangeId)
+            mHighestChangeId = changeId;
+        
+        if (mSyncToken != null && mSyncToken.after(mHighestChangeId))
             return; // don't signal, sync token stopped us
 
         if ((mInterestMask & pns.changedTypes) != 0)

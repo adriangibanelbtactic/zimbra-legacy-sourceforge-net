@@ -92,7 +92,6 @@ import com.zimbra.cs.mime.ParsedMessage;
 import com.zimbra.cs.service.mail.FolderAction;
 import com.zimbra.cs.service.mail.ItemActionHelper;
 import com.zimbra.cs.service.util.ItemId;
-import com.zimbra.cs.stats.StatsFile;
 import com.zimbra.cs.tcpserver.ProtocolHandler;
 import com.zimbra.cs.util.AccountUtil;
 import com.zimbra.cs.util.BuildInfo;
@@ -181,8 +180,6 @@ public abstract class ImapHandler extends ProtocolHandler {
 
     static final boolean STOP_PROCESSING = false, CONTINUE_PROCESSING = true;
     
-    static StatsFile STATS_FILE = new StatsFile("perf_imap", new String[] { "command" }, true);
-
     void checkEOF(String tag, ImapRequest req) throws ImapParseException {
         if (!req.eof())
             throw new ImapParseException(tag, "excess characters at end of command");
@@ -673,7 +670,7 @@ public abstract class ImapHandler extends ProtocolHandler {
     private OperationContext getContext() throws ServiceException {
         if (mCredentials == null)
             throw ServiceException.AUTH_REQUIRED();
-        return mCredentials.getContext();
+        return mCredentials.getContext().setSession(mSelectedFolder);
     }
 
 
@@ -1033,15 +1030,33 @@ public abstract class ImapHandler extends ProtocolHandler {
             return CONTINUE_PROCESSING;
 
         try {
+            if (!path.isVisible())
+                throw ImapServiceException.FOLDER_NOT_VISIBLE(path.asZimbraPath());
+
             Object mboxobj = path.getOwnerMailbox();
             if (mboxobj instanceof Mailbox) {
-                ImapDeleteOperation op = new ImapDeleteOperation(mSelectedFolder, getContext(), (Mailbox) mboxobj, path);
-                op.schedule();
+                Mailbox mbox = (Mailbox) mboxobj;
+                Folder folder = (Folder) path.getFolder();
+                if (!folder.isDeletable())
+                    throw ImapServiceException.CANNOT_DELETE_SYSTEM_FOLDER(folder.getPath());
+
+                // don't want the DELETE to cause *this* connection to drop if the deleted folder is currently selected
+                if (mSelectedFolder != null && path.isEquivalent(mSelectedFolder.getPath()))
+                    unsetSelectedFolder();
+
+                if (!folder.hasSubfolders()) {
+                    mbox.delete(getContext(), folder.getId(), MailItem.TYPE_FOLDER);
+                } else {
+                    // 6.3.4: "It is permitted to delete a name that has inferior hierarchical
+                    //         names and does not have the \Noselect mailbox name attribute.
+                    //         In this case, all messages in that mailbox are removed, and the
+                    //         name will acquire the \Noselect mailbox name attribute."
+                    mbox.emptyFolder(getContext(), folder.getId(), false);
+                    // FIXME: add \Deleted flag to folder
+                }
             } else if (mboxobj instanceof ZMailbox) {
                 ZMailbox zmbx = (ZMailbox) mboxobj;
-                ZFolder zfolder = zmbx.getFolderByPath(path.asZimbraPath());
-                if (zfolder == null)
-                    throw MailServiceException.NO_SUCH_FOLDER(path.asImapPath());
+                ZFolder zfolder = (ZFolder) path.getFolder();
 
                 if (zfolder.getSubFolders().isEmpty())
                     zmbx.deleteFolder(zfolder.getId());
@@ -1050,9 +1065,6 @@ public abstract class ImapHandler extends ProtocolHandler {
             } else {
                 throw AccountServiceException.NO_SUCH_ACCOUNT(path.getOwner());
             }
-
-            if (mSelectedFolder != null && path.isEquivalent(mSelectedFolder.getPath()))
-                unsetSelectedFolder();
         } catch (ServiceException e) {
             if (e.getCode().equals(MailServiceException.NO_SUCH_FOLDER))
                 ZimbraLog.imap.info("DELETE failed: no such folder: " + path);
@@ -1089,7 +1101,7 @@ public abstract class ImapHandler extends ProtocolHandler {
                 int folderId = mbox.getFolderByPath(getContext(), oldPath.asZimbraPath()).getId();
                 if (folderId == Mailbox.ID_FOLDER_INBOX)
                     throw ImapServiceException.CANT_RENAME_INBOX();
-                mbox.rename(getContext(), folderId, MailItem.TYPE_FOLDER, newPath.asZimbraPath());
+                mbox.rename(getContext(), folderId, MailItem.TYPE_FOLDER, "/" + newPath.asZimbraPath());
             } else if (mboxobj instanceof ZMailbox) {
                 ZMailbox zmbx = (ZMailbox) mboxobj;
                 ZFolder zfolder = zmbx.getFolderByPath(oldPath.asZimbraPath());
@@ -1136,7 +1148,7 @@ public abstract class ImapHandler extends ProtocolHandler {
                 Folder folder = mbox.getFolderByPath(getContext(), path.asZimbraPath());
                 if (!path.isVisible())
                     throw ImapServiceException.FOLDER_NOT_VISIBLE(path.asImapPath());
-                if (!folder.isTagged(mbox.mSubscribeFlag))
+                if (!folder.isTagged(mbox.mSubscribedFlag))
                     mbox.alterTag(getContext(), folder.getId(), MailItem.TYPE_FOLDER, Flag.ID_FLAG_SUBSCRIBED, true);
             } else {
                 mCredentials.subscribe(path);
@@ -1173,7 +1185,7 @@ public abstract class ImapHandler extends ProtocolHandler {
                 try {
                     Mailbox mbox = mCredentials.getMailbox();
                     Folder folder = mbox.getFolderByPath(getContext(), path.asZimbraPath());
-                    if (folder.isTagged(mbox.mSubscribeFlag))
+                    if (folder.isTagged(mbox.mSubscribedFlag))
                         mbox.alterTag(getContext(), folder.getId(), MailItem.TYPE_FOLDER, Flag.ID_FLAG_SUBSCRIBED, false);
                 } catch (NoSuchItemException nsie) { }
             } else {
@@ -1378,7 +1390,7 @@ public abstract class ImapHandler extends ProtocolHandler {
     private boolean isPathSubscribed(ImapPath path, boolean isOwner, Set<String> subscriptions) throws ServiceException {
         if (isOwner) {
             Folder folder = (Folder) path.getFolder();
-            return folder.isTagged(folder.getMailbox().mSubscribeFlag);
+            return folder.isTagged(folder.getMailbox().mSubscribedFlag);
         } else if (subscriptions != null && !subscriptions.isEmpty()) {
             for (String sub : subscriptions) {
                 if (sub.equalsIgnoreCase(path.asImapPath()))
@@ -1536,7 +1548,9 @@ public abstract class ImapHandler extends ProtocolHandler {
                 for (Append append : appends) {
                     if (append.mFlagNames != null && !append.mFlagNames.isEmpty()) {
                         for (String name : append.mFlagNames) {
-                            ImapFlag i4flag = (name.startsWith("\\") ? flagset.getByName(name) : tagset.getByName(name));
+                            ImapFlag i4flag = flagset.getByName(name);
+                            if (i4flag == null && !name.startsWith("\\"))
+                                i4flag = tagset.getByName(name);
                             if (i4flag == null)
                                 i4flag = tagset.createTag(getContext(), name, newTags);
 
@@ -1718,7 +1732,7 @@ public abstract class ImapHandler extends ProtocolHandler {
                 return CONTINUE_PROCESSING;
             }
 
-            long quota = mCredentials.getAccount().getIntAttr(Provisioning.A_zimbraMailQuota, 0);
+            long quota = mCredentials.getAccount().getLongAttr(Provisioning.A_zimbraMailQuota, 0);
             if (qroot == null || !qroot.asImapPath().equals("") || quota <= 0) {
                 ZimbraLog.imap.info("GETQUOTA failed: unknown quota root: '" + qroot + "'");
                 sendNO(tag, "GETQUOTA failed: unknown quota root");
@@ -1756,7 +1770,7 @@ public abstract class ImapHandler extends ProtocolHandler {
             }
 
             // see if there's any quota on the account
-            long quota = mCredentials.getAccount().getIntAttr(Provisioning.A_zimbraMailQuota, 0);
+            long quota = mCredentials.getAccount().getLongAttr(Provisioning.A_zimbraMailQuota, 0);
             sendUntagged("QUOTAROOT " + qroot.asUtf7String() + (quota > 0 ? " \"\"" : ""));
             if (quota > 0)
                 sendUntagged("QUOTA \"\" (STORAGE " + (mCredentials.getMailbox().getSize() / 1024) + ' ' + (quota / 1024) + ')');
@@ -2475,6 +2489,13 @@ public abstract class ImapHandler extends ProtocolHandler {
             }
         }
 
+        synchronized (mbox) {
+            if (mSelectedFolder.areTagsDirty()) {
+                sendUntagged("FLAGS (" + StringUtil.join(" ", mSelectedFolder.getFlagList(false)) + ')');
+                mSelectedFolder.cleanTags();
+            }
+        }
+
         for (ImapMessage i4msg : i4set) {
             OutputStream os = getFetchOutputStream();
             ByteArrayOutputStream baosDebug = ZimbraLog.imap.isDebugEnabled() ? new ByteArrayOutputStream() : null;
@@ -2627,6 +2648,11 @@ public abstract class ImapHandler extends ProtocolHandler {
                         i4flag = mSelectedFolder.getTagset().createTag(getContext(), name, newTags);
                     if (i4flag != null)
                         i4flags.add(i4flag);
+                }
+
+                if (mSelectedFolder.areTagsDirty()) {
+                    sendUntagged("FLAGS (" + StringUtil.join(" ", mSelectedFolder.getFlagList(false)) + ')');
+                    mSelectedFolder.cleanTags();
                 }
             }
 
@@ -2934,6 +2960,11 @@ public abstract class ImapHandler extends ProtocolHandler {
         // is this the right thing to synchronize on?
         synchronized (mSelectedFolder.getMailbox()) {
             // FIXME: notify untagged NO if close to quota limit
+
+            if (mSelectedFolder.areTagsDirty()) {
+                sendUntagged("FLAGS (" + StringUtil.join(" ", mSelectedFolder.getFlagList(false)) + ')');
+                mSelectedFolder.cleanTags();
+            }
 
             boolean removed = false, received = mSelectedFolder.checkpointSize();
             if (notifyExpunges) {

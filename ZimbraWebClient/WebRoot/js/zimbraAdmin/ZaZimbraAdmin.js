@@ -276,7 +276,7 @@ function() {
 	var shell = DwtShell.getShell(window);
 	shell.setBusy(true);
 	
-	var locationStr = location.protocol + "//" + location.hostname + ((location.port == '80')? "" : ":" +location.port) + "/zimbraAdmin";
+	var locationStr = location.protocol + "//" + location.hostname + ((location.port == '80') ? "" : ":" +location.port) + location.pathname;
 	var act = new AjxTimedAction(null, ZaZimbraAdmin.redir, [locationStr]);
 	AjxTimedAction.scheduleAction(act, 100);
 }
@@ -310,6 +310,12 @@ function() {
 			ZaZimbraAdmin._killSplash();
 		
 	} catch (ex) {
+		if(ex && ex.code != ZmCsfeException.NO_AUTH_TOKEN && ex.code != ZmCsfeException.SVC_AUTH_EXPIRED && ex.code != ZmCsfeException.SVC_AUTH_REQUIRED) {
+			if(!ZaSettings.initialized)
+				ZaSettings.init();
+			else
+				ZaZimbraAdmin._killSplash();
+		}					
 		this._handleException(ex, "ZaZimbraAdmin.prototype.startup", null, true);
 	}
 }

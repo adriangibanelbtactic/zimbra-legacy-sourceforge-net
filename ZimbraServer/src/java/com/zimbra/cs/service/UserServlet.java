@@ -115,7 +115,9 @@ public class UserServlet extends ZimbraServlet {
     public static final String SERVLET_PATH = "/home";
 
     public static final String QP_FMT = "fmt"; // format query param
-
+    
+    public static final String QP_ZLV = "zlv"; // zip level query param
+    
     public static final String QP_ID = "id"; // id query param
     
     public static final String QP_LIST = "list"; // list query param
@@ -504,8 +506,7 @@ public class UserServlet extends ZimbraServlet {
 
     /** Determines the <code>format</code> and <code>formatter<code> for the
      *  request, if not already set. */
-    private void resolveFormatter(Context context)
-    		throws UserServletException, ServletException, IOException {
+    private void resolveFormatter(Context context) throws UserServletException {
         if (context.format == null) {
             context.format = defaultFormat(context);
             if (context.format == null)
@@ -618,7 +619,7 @@ public class UserServlet extends ZimbraServlet {
     }
 
     private void proxyOnMountpoint(HttpServletRequest req, HttpServletResponse resp, Context context, Mountpoint mpt)
-    throws IOException, ServletException, ServiceException, UserServletException {
+    throws IOException, ServiceException, UserServletException {
         String uri = SERVLET_PATH + "/~/?" + QP_ID + '=' + mpt.getOwnerId() + "%3A" + mpt.getRemoteId();
         if (context.format != null)
             uri += '&' + QP_FMT + '=' + URLEncoder.encode(context.format, "UTF-8");
@@ -642,8 +643,7 @@ public class UserServlet extends ZimbraServlet {
         if (targetAccount == null)
             throw new UserServletException(HttpServletResponse.SC_BAD_REQUEST, "referenced account not found");
 
-        proxyServletRequest(req, resp, prov.getServer(targetAccount), uri,
-                    context.basicAuthHappened ? context.authTokenCookie : null);
+        proxyServletRequest(req, resp, prov.getServer(targetAccount), uri, context.basicAuthHappened ? context.authTokenCookie : null);
     }
 
     public static class Context {
@@ -880,7 +880,7 @@ public class UserServlet extends ZimbraServlet {
             case MailItem.TYPE_CONTACT:
                 return context.target instanceof Folder? "csv" : "vcf";
             case MailItem.TYPE_WIKI:
-            case MailItem.TYPE_DOCUMENT:
+            //case MailItem.TYPE_DOCUMENT:   // use native formatter for Document
                 return "wiki";
             default:
                 return "native";
@@ -975,9 +975,9 @@ public class UserServlet extends ZimbraServlet {
 		private GetMethod get;
     	private InputStream in;
     	
-    	HttpInputStream(GetMethod get) throws IOException {
-    		this.get = get;
-    		in = get.getResponseBodyAsStream();
+    	HttpInputStream(GetMethod getmethod) throws IOException {
+    		this.get = getmethod;
+    		in = getmethod.getResponseBodyAsStream();
     	}
     	
     	@Override
@@ -1040,7 +1040,9 @@ public class UserServlet extends ZimbraServlet {
     	} catch (IOException x) {
     		throw ServiceException.FAILURE("Can't read response body " + url, x);
     	} finally {
-            get.releaseConnection();
+    		if (get != null) {
+    			get.releaseConnection();
+    		}
         }
     }
     

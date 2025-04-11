@@ -35,6 +35,7 @@ import java.util.List;
 import com.zimbra.cs.im.IMNotification;
 import com.zimbra.cs.index.ZimbraQueryResults;
 import com.zimbra.cs.mailbox.*;
+import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.service.mail.GetFolder;
 import com.zimbra.cs.service.mail.ToXML;
 import com.zimbra.cs.service.mail.GetFolder.FolderNode;
@@ -47,6 +48,7 @@ import com.zimbra.common.soap.AdminConstants;
 import com.zimbra.common.soap.ZimbraNamespace;
 import com.zimbra.common.soap.HeaderConstants;
 import com.zimbra.common.soap.Element;
+import com.zimbra.soap.DocumentHandler;
 import com.zimbra.soap.ZimbraSoapContext;
 
 
@@ -58,12 +60,17 @@ import com.zimbra.soap.ZimbraSoapContext;
 public class SoapSession extends Session {
 
     // Read/write access to all these members requires synchronizing on "this".
-    private String  mQueryStr = "";
-    private String  mGroupBy  = "";
-    private String  mSortBy   = "";
-    private boolean mNotify   = true;
-    private ZimbraQueryResults mQueryResults = null;
-    
+    private String mQueryStr = "";
+    private String mGroupBy  = "";
+    private String mSortBy   = "";
+    private ZimbraQueryResults mQueryResults;
+
+    private boolean mNotify = true;
+
+    private int  mRecentMessages;
+    private long mPreviousAccess = -1;
+    private long mLastWrite      = -1;
+
     private List<PendingModifications> mSentChanges = new LinkedList<PendingModifications>();
     private PendingModifications mChanges = new PendingModifications(1);
 
@@ -87,6 +94,29 @@ public class SoapSession extends Session {
     }
 
     @Override
+    public Session register() throws ServiceException {
+        super.register();
+        mRecentMessages = mMailbox.getRecentMessageCount();
+        mPreviousAccess = mMailbox.getLastSoapAccessTime();
+        return this;
+    }
+
+    @Override
+    public Session unregister() {
+        // when the session goes away, record the timestamp of the last write op to the database
+        if (mLastWrite != -1 && mMailbox != null) {
+            try {
+                mMailbox.recordLastSoapAccessTime(mLastWrite);
+            } catch (Throwable t) {
+                ZimbraLog.session.warn("exception recording unloaded session's last access time", t);
+            }
+        }
+
+        // note that Session.unregister() unsets mMailbox...
+        return super.unregister();
+    }
+
+    @Override
     protected boolean isMailboxListener() {
         return true;
     }
@@ -95,10 +125,33 @@ public class SoapSession extends Session {
     protected boolean isRegisteredInCache() {
         return true;
     }
+    
 
     @Override
     protected long getSessionIdleLifetime() {
         return SOAP_SESSION_TIMEOUT_MSEC;
+    }
+
+    /** Returns the number of messages added to the Mailbox since the time
+     *  returned by {@link #getPreviousSessionTime()}.  Note that this means
+     *  that messages added to the Mailbox during this session are included
+     *  in the count. */
+    public int getRecentMessageCount() {
+        return mRecentMessages;
+    }
+
+    /** Returns the time (in milliseconds) of last write op from any SOAP
+     *  session <u>before</u> this session was initiated.  This value remains
+     *  constant for the duration of this session. */
+    public long getPreviousSessionTime() { 
+        return mPreviousAccess;
+    }
+
+    /** Returns the time (in milliseconds) of the last write operation
+     *  initiated by this session.  If the session has not done any write ops
+     *  yet, returns {@link #getPreviousSessionTime()}. */
+    public long getLastWriteAccessTime() {
+        return mLastWrite == -1 ? mPreviousAccess : mLastWrite;
     }
 
     @Override
@@ -130,13 +183,15 @@ public class SoapSession extends Session {
         if (!mNotify)
             return;
 
-        PendingModifications pm = new PendingModifications();
-        pm.addIMNotification(imn);
-        notifyPendingChanges(-1, pm);
+        PendingModifications pms = new PendingModifications();
+        pms.addIMNotification(imn);
+        notifyPendingChanges(pms, -1, null);
     }
 
     @Override
-    protected boolean shouldRegisterWithIM() { return true; }
+    protected boolean shouldRegisterWithIM() {
+        return true;
+    }
 
     /**
      * A callback interface which is listening on this session and waiting for new notifications
@@ -145,7 +200,7 @@ public class SoapSession extends Session {
         public void close();
         public int getLastKnownSeqNo();
         public ZimbraSoapContext getSoapContext();
-        public void notificationsReady(SoapSession session) throws ServiceException; 
+        public void notificationsReady() throws ServiceException; 
     }
     
     public static enum RegisterNotificationResult {
@@ -183,7 +238,7 @@ public class SoapSession extends Session {
                 int lastSeqNo = sc.getLastKnownSeqNo();
                 boolean isEmpty = mSentChanges.isEmpty();
                 if (notifying || (mChanges.getSequence() > lastSeqNo + 1 && !isEmpty)) {
-                    sc.notificationsReady(this);  
+                    sc.notificationsReady();  
                     return RegisterNotificationResult.DATA_READY;
                 } else {
                     mPushChannel = sc;
@@ -202,14 +257,33 @@ public class SoapSession extends Session {
      *  on the Mailbox.
      *  <p>
      *  *All* changes are currently cached, regardless of the client's state/views.
-     *
-     * @param changeId The sync-token change Id of the change 
-     * @param pms   A set of new change notifications from our Mailbox  */
+     * @param changeId  The sync-token change id of the change.
+     * @param pms       A set of new change notifications from our Mailbox. */
     @Override
-    public void notifyPendingChanges(int changeId, PendingModifications pms) {
+    public void notifyPendingChanges(PendingModifications pms, int changeId, Session source) {
         if (!pms.hasNotifications() || !mNotify || mMailbox == null)
             return;
-        
+
+        if (source == this && mAuthenticatedAccountId.equalsIgnoreCase(mTargetAccountId)) {
+            // on the session's first write op, record the timestamp to the database
+            boolean firstWrite = mLastWrite == -1;
+            mLastWrite = System.currentTimeMillis();
+            if (firstWrite) {
+                try {
+                    mMailbox.recordLastSoapAccessTime(mLastWrite);
+                } catch (ServiceException e) {
+                    ZimbraLog.session.warn("ServiceException in notifyPendingChanges ", e);
+                }
+            }
+        } else {
+            // keep track of "recent" message count: all present before the session started, plus all received during the session
+            if (pms.created != null) {
+                for (MailItem item : pms.created.values())
+                    if (item instanceof Message && (item.getFlagBitmask() & Mailbox.NON_DELIVERY_FLAGS) == 0)
+                        mRecentMessages++;
+            }
+        }
+
         try {
             // must lock the Mailbox before locking the Session to avoid deadlock
             //   because ToXML functions can now call back into the Mailbox
@@ -219,7 +293,7 @@ public class SoapSession extends Session {
                     mChanges.add(pms);
                     
                     if (mPushChannel != null) {
-                        mPushChannel.notificationsReady(this);
+                        mPushChannel.notificationsReady();
                         mPushChannel = null;
                     }
                 }
@@ -242,9 +316,8 @@ public class SoapSession extends Session {
      *  
      *  This API implicitly clears all cached notifications and therefore 
      *  should only been used during session creation.
-     *  
      * @param ctxt  An existing SOAP header <context> element 
-     * @param zsc    The SOAP request's encapsulated context */
+     * @param zsc   The SOAP request's encapsulated context */
     public void putRefresh(Element ctxt, ZimbraSoapContext zsc) throws ServiceException {
         synchronized (this) {
             if (!mNotify || mMailbox == null)
@@ -254,15 +327,15 @@ public class SoapSession extends Session {
 
         Element eRefresh = ctxt.addUniqueElement(ZimbraNamespace.E_REFRESH);
 
-        Mailbox.OperationContext octxt = zsc.getOperationContext();
+        OperationContext octxt = DocumentHandler.getOperationContext(zsc, this);
+        ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
+
         // Lock the mailbox but not the "this" object, to avoid deadlock
         // with another thread that calls a Session method from within a
         // synchronized Mailbox method.
         synchronized (mMailbox) {
             // dump current mailbox status (currently just size)
             ToXML.encodeMailbox(eRefresh, mMailbox);
-
-            ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
             // dump all tags under a single <tags> parent
             List<Tag> tags = mMailbox.getTagList(octxt);
@@ -277,7 +350,7 @@ public class SoapSession extends Session {
             try {
             	// use the operation here just so we can re-use the logic...
                 FolderNode root = GetFolder.getFolderTree(octxt, mMailbox, null, true);
-                GetFolder.encodeFolderNode(ifmt, zsc.getOperationContext(), eRefresh, root);
+                GetFolder.encodeFolderNode(ifmt, octxt, eRefresh, root);
             } catch (ServiceException e) {
                 if (e.getCode() != ServiceException.PERM_DENIED)
                     throw e;
@@ -324,12 +397,12 @@ public class SoapSession extends Session {
      *  </pre>
      *  Also adds a "last server change" changestamp to the <context> block.
      *  <p>
-     * @param zsc    The SOAP request context from the client's request
      * @param ctxt  An existing SOAP header &lt;context> element
+     * @param zsc    The SOAP request context from the client's request
      * @param lastSequence  The highest notification-sequence-number that the client has
      *         received (0 means none)
      * @return The passed-in <code>&lt;context></code> element */
-    public Element putNotifications(ZimbraSoapContext zsc, Element ctxt, int lastSequence) {
+    public Element putNotifications(Element ctxt, ZimbraSoapContext zsc, int lastSequence) {
         if (ctxt == null || mMailbox == null)
             return null;
 
@@ -381,7 +454,7 @@ public class SoapSession extends Session {
                 
                     // send all the old changes
                     for (PendingModifications pms : mSentChanges)
-                        putPendingModifications(zsc, pms, ctxt, mMailbox, explicitAcct);
+                        putPendingModifications(pms, ctxt, zsc, mMailbox, explicitAcct);
                 }
             }
         }
@@ -391,25 +464,31 @@ public class SoapSession extends Session {
     /**
      * Write a single instance of the PendingModifications structure into the 
      * passed-in <notify> block 
-     * 
-     * @param zsc
      * @param pms
      * @param parent
+     * @param zsc
      * @param mbox
      * @param explicitAcct
      */
-    private static void putPendingModifications(ZimbraSoapContext zsc, PendingModifications pms, Element parent, Mailbox mbox, String explicitAcct) {
+    private void putPendingModifications(PendingModifications pms, Element parent, ZimbraSoapContext zsc, Mailbox mbox, String explicitAcct) {
         assert(pms.getSequence() > 0);
         
         // <notify [acct="4f778920-1a84-11da-b804-6b188d2a20c4"]/>
         Element eNotify = parent.addElement(ZimbraNamespace.E_NOTIFY)
-                              .addAttribute(HeaderConstants.A_ACCOUNT_ID, explicitAcct)
-                              .addAttribute(HeaderConstants.A_SEQNO, pms.getSequence());
+                                .addAttribute(HeaderConstants.A_ACCOUNT_ID, explicitAcct)
+                                .addAttribute(HeaderConstants.A_SEQNO, pms.getSequence());
 
 
+        OperationContext octxt = null;
+        try {
+            octxt = DocumentHandler.getOperationContext(zsc, this);
+        } catch (ServiceException e) {
+            ZimbraLog.session.warn("error fetching operation context for: " + zsc.getAuthtokenAccountId(), e);
+            return;
+        }
         ItemIdFormatter ifmt = new ItemIdFormatter(zsc);
 
-        if (pms.deleted != null && pms.deleted.size() > 0) {
+        if (pms.deleted != null && pms.deleted.size() > 0) { 
             StringBuilder ids = new StringBuilder ();
             for (Object obj : pms.deleted.values()) {
                 if (ids.length() != 0)
@@ -427,7 +506,7 @@ public class SoapSession extends Session {
             Element eCreated = eNotify.addUniqueElement(ZimbraNamespace.E_CREATED);
             for (MailItem item : pms.created.values()) {
                 try {
-                    ToXML.encodeItem(eCreated, ifmt, zsc.getOperationContext(), item, ToXML.NOTIFY_FIELDS);
+                    ToXML.encodeItem(eCreated, ifmt, octxt, item, ToXML.NOTIFY_FIELDS);
                 } catch (ServiceException e) {
                     ZimbraLog.session.warn("error encoding item " + item.getId(), e);
                     return;
@@ -441,7 +520,7 @@ public class SoapSession extends Session {
                 if (chg.why != 0 && chg.what instanceof MailItem) {
                     MailItem item = (MailItem) chg.what;
                     try {
-                        ToXML.encodeItem(eModified, ifmt, zsc.getOperationContext(), item, chg.why);
+                        ToXML.encodeItem(eModified, ifmt, octxt, item, chg.why);
                     } catch (ServiceException e) {
                         ZimbraLog.session.warn("error encoding item " + item.getId(), e);
                         return;

@@ -157,7 +157,7 @@ function() {
 ZmTagTreeController.prototype._itemClicked =
 function(tag) {
 	var sc = this._appCtxt.getSearchController();
-	var app = this._appCtxt.getAppController().getActiveApp();
+	var app = this._appCtxt.getCurrentAppName();
 
 	var searchFor;
 	if (app == ZmApp.CONTACTS) {
@@ -254,4 +254,8 @@ function(ev, treeView, overviewId) {
 			ZmTreeController.prototype._changeListener.call(this, ev, treeView, overviewId);
 		}
 	}
+};
+
+ZmTagTreeController.prototype._setTreeItemColor =
+function(treeItem, organizer) {
 };

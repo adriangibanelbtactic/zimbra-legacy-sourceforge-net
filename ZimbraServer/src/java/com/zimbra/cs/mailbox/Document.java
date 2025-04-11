@@ -37,7 +37,9 @@ import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.mailbox.MetadataList;
 import com.zimbra.cs.mime.ParsedDocument;
 import com.zimbra.cs.redolog.op.IndexItem;
+import com.zimbra.cs.store.Blob;
 import com.zimbra.cs.store.StoreManager;
+import com.zimbra.cs.store.Volume;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.ZimbraLog;
@@ -149,6 +151,27 @@ public class Document extends MailItem {
             mi.indexDocument(mMailbox, redo, deleteFirst,  pd, this);
     }
 
+    public void rename(String name, Folder target) throws ServiceException {
+    	byte[] data = getContent();
+    	String digest = getDigest();
+    	short volumeId = Volume.getCurrentMessageVolume().getId();
+    	
+    	// rename
+    	super.rename(name, target);
+    	
+    	// then increment the revision
+    	try {
+    		StoreManager sm = StoreManager.getInstance();
+    		Blob blob = sm.storeIncoming(data, digest, null, volumeId);
+    		MailboxBlob mblob = sm.renameTo(blob, mMailbox, mId, getSavedSequence(), volumeId);
+    		mMailbox.markOtherItemDirty(mblob);
+    		Metadata rev = getRevisionMetadata(mMailbox.getOperationChangeID(), getCreator(), getDate(), getSize(), mFragment);
+    		addRevision(rev, getName());
+    	} catch (IOException e) {
+    		throw ServiceException.FAILURE("rename caught IOException: "+e.getMessage(), e);
+    	}
+    }
+    
     public DocumentRevision getRevision(int rev) throws ServiceException {
         if (rev < 1 || rev > mRevisionList.size())
             throw new IllegalArgumentException("no such revision: "+rev);
@@ -171,13 +194,14 @@ public class Document extends MailItem {
         return getVersion() + 1;
     }
 
-    private static Metadata getRevisionMetadata(int changeID, ParsedDocument pd) {
+    private static Metadata getRevisionMetadata(int changeID, String cr, long cd, int s, String fr) {
+    	// to be moved to a separate revision table
         Metadata rev = new Metadata();
         rev.put(Metadata.FN_REV_ID, changeID);
-        rev.put(Metadata.FN_CREATOR, pd.getCreator());
-        rev.put(Metadata.FN_REV_DATE, pd.getCreatedDate());
-        rev.put(Metadata.FN_REV_SIZE, pd.getSize());
-        rev.put(Metadata.FN_FRAGMENT, pd.getFragment());
+        rev.put(Metadata.FN_CREATOR, cr);
+        rev.put(Metadata.FN_REV_DATE, cd);
+        rev.put(Metadata.FN_REV_SIZE, s);
+        rev.put(Metadata.FN_FRAGMENT, fr);
         return rev;
     }
 
@@ -186,24 +210,36 @@ public class Document extends MailItem {
             throw ServiceException.FAILURE("cannot reanalyze non-ParsedDocument object", null);
 
     	ParsedDocument pd = (ParsedDocument) obj;
-        Metadata rev = getRevisionMetadata(mMailbox.getOperationChangeID(), pd);
-        rev.put(Metadata.FN_VERSION, getNextVersion());
-        mRevisionList.add(rev);
         mFragment = pd.getFragment();
         mData.size = pd.getSize();
-            DbMailItem.saveName(this, getFolderId());
         pd.setVersion(getVersion());
+        Metadata rev = getRevisionMetadata(mMailbox.getOperationChangeID(), pd.getCreator(), pd.getCreatedDate(), pd.getSize(), pd.getFragment());
+        addRevision(rev, pd.getFilename());
+    }
 
-        String encodedMetadata = encodeMetadata();
-        saveMetadata(encodedMetadata);
-        saveData(pd.getCreator(), encodedMetadata);
-        if (!pd.getFilename().equals(getName())) {
-        	rename(pd.getFilename());
+    private synchronized void addRevision(Metadata rev, String name) throws ServiceException {
+        rev.put(Metadata.FN_VERSION, getNextVersion());
+        mRevisionList.add(rev);
+        saveData(rev.get(Metadata.FN_CREATOR), encodeMetadata());
+        if (!name.equals(getName())) {
+        	rename(name);
         	saveName();
         }
     }
-
+    
+    /* delete all the old revisions */
+    PendingDelete getDeletionInfo() throws ServiceException {
+    	purgeOldRevisions(1);
+    	return super.getDeletionInfo();
+    }
+    
+    /* don't delete current blob after every save */
+    void markBlobForDeletion() {
+    }
+    
     public synchronized void purgeOldRevisions(int revToKeep) throws ServiceException {
+    	if (revToKeep == 0)
+    		return;
         int last = mRevisionList.size() - revToKeep;
         StoreManager sm = StoreManager.getInstance();
         while (last > 0) {

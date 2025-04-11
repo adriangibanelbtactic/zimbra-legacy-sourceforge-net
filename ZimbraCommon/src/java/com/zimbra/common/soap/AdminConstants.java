@@ -77,6 +77,8 @@ public class AdminConstants {
     public static final QName CREATE_DOMAIN_RESPONSE = QName.get("CreateDomainResponse", NAMESPACE);
     public static final QName GET_DOMAIN_REQUEST = QName.get("GetDomainRequest", NAMESPACE);
     public static final QName GET_DOMAIN_RESPONSE = QName.get("GetDomainResponse", NAMESPACE);
+    public static final QName GET_DOMAIN_INFO_REQUEST = QName.get("GetDomainInfoRequest", NAMESPACE);
+    public static final QName GET_DOMAIN_INFO_RESPONSE = QName.get("GetDomainInfoResponse", NAMESPACE);
     public static final QName MODIFY_DOMAIN_REQUEST = QName.get("ModifyDomainRequest", NAMESPACE);
     public static final QName MODIFY_DOMAIN_RESPONSE = QName.get("ModifyDomainResponse", NAMESPACE);
     public static final QName DELETE_DOMAIN_REQUEST = QName.get("DeleteDomainRequest", NAMESPACE);
@@ -287,6 +289,10 @@ public class AdminConstants {
     public static final QName ADD_ACCOUNT_LOGGER_RESPONSE = QName.get("AddAccountLoggerResponse", NAMESPACE);
     public static final QName REMOVE_ACCOUNT_LOGGER_REQUEST = QName.get("RemoveAccountLoggerRequest", NAMESPACE);
     public static final QName REMOVE_ACCOUNT_LOGGER_RESPONSE = QName.get("RemoveAccountLoggerResponse", NAMESPACE);
+    public static final QName GET_ACCOUNT_LOGGERS_REQUEST = QName.get("GetAccountLoggersRequest", NAMESPACE);
+    public static final QName GET_ACCOUNT_LOGGERS_RESPONSE = QName.get("GetAccountLoggersResponse", NAMESPACE);
+    public static final QName GET_ALL_ACCOUNT_LOGGERS_REQUEST = QName.get("GetAllAccountLoggersRequest", NAMESPACE);
+    public static final QName GET_ALL_ACCOUNT_LOGGERS_RESPONSE = QName.get("GetAllAccountLoggersResponse", NAMESPACE);
 
     // DumpSessions
     public static final String E_SESSION = "session";
@@ -442,6 +448,7 @@ public class AdminConstants {
     public static final String A_QUOTA_LIMIT = "limit";
 
     public static final String E_TEMPLATE = "template";
+    public static final String E_TEST = "test";
     public static final String A_DEST = "dest";
 
     public static final String A_CONCURRENCY = "concurrency";
@@ -455,7 +462,7 @@ public class AdminConstants {
     
     // Account loggers
     public static final String E_LOGGER = "logger";
+    public static final String E_ACCOUNT_LOGGER = "accountLogger";
     public static final String A_CATEGORY = "category";
     public static final String A_LEVEL = "level";
-
 }

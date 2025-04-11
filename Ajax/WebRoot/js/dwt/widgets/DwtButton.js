@@ -236,6 +236,27 @@ function(enabled) {
 	}
 }
 
+DwtButton.prototype.setImage =
+function(imageInfo) {
+	DwtLabel.prototype.setImage.call(this, imageInfo);
+	this._setMinWidth();
+}
+
+DwtButton.prototype.setText =
+function(text) {
+	DwtLabel.prototype.setText.call(this, text);
+	this._setMinWidth();
+}
+
+DwtButton.prototype._setMinWidth =
+function() {
+	if (this.getText() != null) {
+		Dwt.addClass(this.getHtmlElement(), "ZHasText");
+	} else {
+		Dwt.delClass(this.getHtmlElement(), "ZHasText");
+	}
+}
+
 DwtButton.prototype.setHoverImage =
 function (hoverImageInfo) {
     this._hoverImageInfo = hoverImageInfo;
@@ -524,7 +545,7 @@ function(ev) {
 		AjxImg.setImage(dropDown, this._dropDownHovImg);
     }
 
-    ev._topPropagation = true;
+    ev._stopPropagation = true;
 }
 
 // Triggers the button.

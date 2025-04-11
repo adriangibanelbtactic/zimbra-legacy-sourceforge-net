@@ -73,6 +73,7 @@ import com.zimbra.cs.index.MailboxIndex.SortBy;
 import com.zimbra.cs.index.queryparser.ParseException;
 import com.zimbra.cs.localconfig.DebugConfig;
 import com.zimbra.cs.mailbox.BrowseResult.DomainItem;
+import com.zimbra.cs.mailbox.CalendarItem.ReplyInfo;
 import com.zimbra.cs.mailbox.MailItem.TargetConstraint;
 import com.zimbra.cs.mailbox.MailItem.UnderlyingData;
 import com.zimbra.cs.mailbox.MailServiceException.NoSuchItemException;
@@ -99,8 +100,8 @@ import com.zimbra.cs.session.AllAccountsRedoCommitCallback;
 import com.zimbra.cs.session.PendingModifications;
 import com.zimbra.cs.session.Session;
 import com.zimbra.cs.session.SessionCache;
+import com.zimbra.cs.session.SoapSession;
 import com.zimbra.cs.session.PendingModifications.Change;
-import com.zimbra.cs.stats.StatsFile;
 import com.zimbra.cs.stats.ZimbraPerf;
 import com.zimbra.cs.store.Blob;
 import com.zimbra.cs.store.StoreManager;
@@ -136,8 +137,9 @@ public class Mailbox {
     public static final int ID_FOLDER_AUTO_CONTACTS = 13;
     public static final int ID_FOLDER_IM_LOGS   = 14;
     public static final int ID_FOLDER_TASKS     = 15;
+    public static final int ID_FOLDER_BRIEFCASE = 16;
 
-    public static final int HIGHEST_SYSTEM_ID = 15;
+    public static final int HIGHEST_SYSTEM_ID = 16;
     public static final int FIRST_USER_ID     = 256;
 
     static final String MD_CONFIG_VERSION = "ver";
@@ -153,6 +155,8 @@ public class Mailbox {
         public int     lastItemId;
         public int     lastChangeId;
         public long    lastChangeDate;
+        public int     lastWriteDate;
+        public int     recentMessages;
         public int     trackSync;
         public boolean trackImap;
         public Set<String> configKeys;
@@ -171,12 +175,14 @@ public class Mailbox {
         OperationContext octxt = null;
         TargetConstraint tcon  = null;
 
-        Integer  sync     = null;
-        Boolean  imap     = null;
-        long     size     = NO_CHANGE;
-        int      itemId   = NO_CHANGE;
-        int      changeId = NO_CHANGE;
-        int      contacts = NO_CHANGE;
+        Integer sync     = null;
+        Boolean imap     = null;
+        long    size     = NO_CHANGE;
+        int     itemId   = NO_CHANGE;
+        int     changeId = NO_CHANGE;
+        int     contacts = NO_CHANGE;
+        int     accessed = NO_CHANGE;
+        int     recent  = NO_CHANGE;
         Pair<String,Metadata> config = null;
 
         PendingModifications mDirty = new PendingModifications();
@@ -194,9 +200,10 @@ public class Mailbox {
                 recorder = op;
                 if (ZimbraLog.mailbox.isDebugEnabled())
                     ZimbraLog.mailbox.debug("beginning operation: " + caller);
-            } else
+            } else {
                 if (ZimbraLog.mailbox.isDebugEnabled())
                     ZimbraLog.mailbox.debug("  increasing stack depth to " + depth + " (" + caller + ')');
+            }
         }
         boolean endChange() {
             if (ZimbraLog.mailbox.isDebugEnabled()) {
@@ -243,7 +250,7 @@ public class Mailbox {
             active = false;
             conn = null;  octxt = null;  tcon = null;
             depth = 0;
-            size = changeId = itemId = contacts = NO_CHANGE;
+            size = changeId = itemId = contacts = accessed = recent = NO_CHANGE;
             sync = null;  config = null;
             itemCache = null;  indexItems.clear();
             mDirty.clear();  mOtherDirtyStuff.clear();
@@ -257,6 +264,7 @@ public class Mailbox {
 
         private Account    authuser;
         private boolean    isAdmin;
+        private Session    session;
         private RedoableOp player;
         private String     requestIP;
         
@@ -285,7 +293,7 @@ public class Mailbox {
                 throw AccountServiceException.NO_SUCH_ACCOUNT(accountId);
         }
         public OperationContext(OperationContext octxt) {
-            player     = octxt.player;
+            player     = octxt.player;      session = octxt.session;
             authuser   = octxt.authuser;    isAdmin = octxt.isAdmin;
             changetype = octxt.changetype;  change  = octxt.change;
         }
@@ -295,6 +303,13 @@ public class Mailbox {
         }
         public OperationContext unsetChangeConstraint() {
             changetype = CHECK_CREATED;  change = -1;  return this;
+        }
+
+        public OperationContext setSession(Session s) {
+            session = s;  return this;
+        }
+        Session getSession() {
+            return session;
         }
 
         public RedoableOp getPlayer() {
@@ -320,8 +335,8 @@ public class Mailbox {
             return authuser != null && !authuser.getId().equalsIgnoreCase(mbox.getAccountId());
         }
         
-        public void setRequestIP(String addr) {
-            requestIP = addr;
+        public OperationContext setRequestIP(String addr) {
+            requestIP = addr;  return this;
         }
         public String getRequestIP() {
             return requestIP;
@@ -368,16 +383,20 @@ public class Mailbox {
     public Flag mNotifiedFlag;
     /** flag: unread messages */
     public Flag mUnreadFlag;
+    /** flag: when a message is a valid Invite */
+    public Flag mInviteFlag;
+    /** flag: urgent messages */
+    public Flag mUrgentFlag;
+    /** flag: low-priority messages */
+    public Flag mBulkFlag;
     /** flag: IMAP-subscribed folders */
-    public Flag mSubscribeFlag;
+    public Flag mSubscribedFlag;
     /** flag: exclude folder from free-busy calculations */
     public Flag mExcludeFBFlag;
     /** flag: folders "checked" for display in the web UI */
     public Flag mCheckedFlag;
     /** flag: whether a folder does not inherit permissions from its parent */
     public Flag mNoInheritFlag;
-    /** flag: when a message is a valid Invite */
-    public Flag mInviteFlag;
 
     /** the full set of message flags, in order */
     final Flag[] mFlags = new Flag[31];
@@ -712,7 +731,48 @@ public class Mailbox {
             throw MailServiceException.QUOTA_EXCEEDED(quota);
     }
 
-    /** Returns the numer of contacts currently in the mailbox.
+    /** Returns the last time that the mailbox had a write op caused by a SOAP
+     *  session.  This value is written both right after the session's first
+     *  write op as well as right after the session expires.
+     * 
+     * @see #recordLastSoapAccessTime(long) */
+    public synchronized long getLastSoapAccessTime() {
+        long lastAccess = (mCurrentChange.accessed == MailboxChange.NO_CHANGE ? mData.lastWriteDate : mCurrentChange.accessed) * 1000L;
+        for (Session s : mListeners) {
+            if (s instanceof SoapSession)
+                lastAccess = Math.max(lastAccess, ((SoapSession) s).getLastWriteAccessTime());
+        }
+        return lastAccess;
+    }
+
+    /** Records the last time that the mailbox had a write op caused by a SOAP
+     *  session.  This value is written both right after the session's first
+     *  write op as well as right after the session expires.
+     * 
+     * @see #getLastSoapAccessTime() */
+    public synchronized void recordLastSoapAccessTime(long time) throws ServiceException {
+        boolean success = false;
+        try {
+            beginTransaction("recordLastSoapAccessTime", null);
+            if (time > getLastSoapAccessTime()) {
+                mCurrentChange.accessed = (int) (time / 1000);
+                DbMailbox.recordLastSoapAccess(this);
+            }
+            success = true;
+        } finally {
+            endTransaction(success);
+        }
+    }
+
+    /** Returns the number of "recent" messages in the mailbox.  A message is
+     *  considered "recent" if (a) it's not a draft or a sent message, and
+     *  (b) it was added since the last write operation associated with any
+     *  SOAP session. */
+    public int getRecentMessageCount() {
+        return (mCurrentChange.recent == MailboxChange.NO_CHANGE ? mData.recentMessages : mCurrentChange.recent);
+    }
+
+    /** Returns the number of contacts currently in the mailbox.
      * 
      * @see #updateContactCount(int) */
     public int getContactCount() {
@@ -1118,6 +1178,7 @@ public class Mailbox {
         Folder.create(ID_FOLDER_TASKS,    this, userRoot, "Tasks",    system, MailItem.TYPE_TASK,        Flag.BITMASK_CHECKED, MailItem.DEFAULT_COLOR, null);
         Folder.create(ID_FOLDER_AUTO_CONTACTS, this, userRoot, "Emailed Contacts", system, MailItem.TYPE_CONTACT, 0, MailItem.DEFAULT_COLOR, null);
         Folder.create(ID_FOLDER_IM_LOGS,  this, userRoot, "Chats",    system, MailItem.TYPE_MESSAGE, 0, MailItem.DEFAULT_COLOR, null);
+        Folder.create(ID_FOLDER_BRIEFCASE, this, userRoot, "Briefcase", system, MailItem.TYPE_DOCUMENT, 0, MailItem.DEFAULT_COLOR, null);
         
 
         mCurrentChange.itemId = getInitialItemId();
@@ -1134,21 +1195,24 @@ public class Mailbox {
 
     private void initFlags() throws ServiceException {
         // flags will be added to mFlags array via call to cache() in MailItem constructor
-        mSentFlag      = Flag.instantiate(this, "\\Sent",       Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_FROM_ME);
-        mAttachFlag    = Flag.instantiate(this, "\\Attached",   Flag.FLAG_GENERIC,         Flag.ID_FLAG_ATTACHED);
-        mReplyFlag     = Flag.instantiate(this, "\\Answered",   Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_REPLIED);
-        mForwardFlag   = Flag.instantiate(this, "\\Forwarded",  Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_FORWARDED);
-        mCopiedFlag    = Flag.instantiate(this, "\\Copied",     Flag.FLAG_GENERIC,         Flag.ID_FLAG_COPIED);
-        mFlaggedFlag   = Flag.instantiate(this, "\\Flagged",    Flag.FLAG_GENERIC,         Flag.ID_FLAG_FLAGGED);
-        mDraftFlag     = Flag.instantiate(this, "\\Draft",      Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_DRAFT);
-        mDeletedFlag   = Flag.instantiate(this, "\\Deleted",    Flag.FLAG_GENERIC,         Flag.ID_FLAG_DELETED);
-        mNotifiedFlag  = Flag.instantiate(this, "\\Notified",   Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_NOTIFIED);
-        mUnreadFlag    = Flag.instantiate(this, "\\Unread",     Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_UNREAD);
-        mSubscribeFlag = Flag.instantiate(this, "\\Subscribed", Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_SUBSCRIBED);
-        mExcludeFBFlag = Flag.instantiate(this, "\\ExcludeFB",  Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_EXCLUDE_FREEBUSY);
-        mCheckedFlag   = Flag.instantiate(this, "\\Checked",    Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_CHECKED);
-        mNoInheritFlag = Flag.instantiate(this, "\\NoInherit",  Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_NO_INHERIT);
-        mInviteFlag   =  Flag.instantiate(this, "\\Invite",     Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_INVITE);
+        mSentFlag       = Flag.instantiate(this, "\\Sent",       Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_FROM_ME);
+        mAttachFlag     = Flag.instantiate(this, "\\Attached",   Flag.FLAG_GENERIC,         Flag.ID_FLAG_ATTACHED);
+        mReplyFlag      = Flag.instantiate(this, "\\Answered",   Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_REPLIED);
+        mForwardFlag    = Flag.instantiate(this, "\\Forwarded",  Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_FORWARDED);
+        mCopiedFlag     = Flag.instantiate(this, "\\Copied",     Flag.FLAG_GENERIC,         Flag.ID_FLAG_COPIED);
+        mFlaggedFlag    = Flag.instantiate(this, "\\Flagged",    Flag.FLAG_GENERIC,         Flag.ID_FLAG_FLAGGED);
+        mDraftFlag      = Flag.instantiate(this, "\\Draft",      Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_DRAFT);
+        mDeletedFlag    = Flag.instantiate(this, "\\Deleted",    Flag.FLAG_GENERIC,         Flag.ID_FLAG_DELETED);
+        mNotifiedFlag   = Flag.instantiate(this, "\\Notified",   Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_NOTIFIED);
+        mUnreadFlag     = Flag.instantiate(this, "\\Unread",     Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_UNREAD);
+        mInviteFlag     = Flag.instantiate(this, "\\Invite",     Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_INVITE);
+        mUrgentFlag     = Flag.instantiate(this, "\\Urgent",     Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_HIGH_PRIORITY);
+        mBulkFlag       = Flag.instantiate(this, "\\Bulk",       Flag.FLAG_IS_MESSAGE_ONLY, Flag.ID_FLAG_LOW_PRIORITY);
+
+        mSubscribedFlag = Flag.instantiate(this, "\\Subscribed", Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_SUBSCRIBED);
+        mExcludeFBFlag  = Flag.instantiate(this, "\\ExcludeFB",  Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_EXCLUDE_FREEBUSY);
+        mCheckedFlag    = Flag.instantiate(this, "\\Checked",    Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_CHECKED);
+        mNoInheritFlag  = Flag.instantiate(this, "\\NoInherit",  Flag.FLAG_IS_FOLDER_ONLY,  Flag.ID_FLAG_NO_INHERIT);
     }
 
     private void loadFoldersAndTags() throws ServiceException {
@@ -2003,7 +2067,6 @@ public class Mailbox {
                 if (comp != null)
                     Collections.sort(result, comp);
                 success = true;
-                return result;
             } else if (type == MailItem.TYPE_FOLDER || type == MailItem.TYPE_SEARCHFOLDER || type == MailItem.TYPE_MOUNTPOINT) {
                 for (Folder subfolder : mFolderCache.values())
                     if (subfolder.getType() == type)
@@ -2013,21 +2076,23 @@ public class Mailbox {
                 if (comp != null)
                     Collections.sort(result, comp);
                 success = true;
-                return result;
+            } else {
+            	List<MailItem.UnderlyingData> dataList = null;
+            	if (folder != null)
+            		dataList = DbMailItem.getByFolder(folder, type, sort);
+            	else
+            		dataList = DbMailItem.getByType(this, type, sort);
+            	if (dataList == null)
+            		return Collections.emptyList();
+            	for (MailItem.UnderlyingData data : dataList)
+            		if (data != null)
+            			result.add(getItem(data));
+            	// except for sort == SORT_BY_NAME_NAT,
+            	// sort was already done by the DbMailItem call...
+            	if ((sort & DbMailItem.SORT_BY_NAME_NATURAL_ORDER) > 0)
+                    Collections.sort(result, MailItem.getComparator(sort));
+            	success = true;
             }
-
-            List<MailItem.UnderlyingData> dataList = null;
-            if (folder != null)
-                dataList = DbMailItem.getByFolder(folder, type, sort);
-            else
-                dataList = DbMailItem.getByType(this, type, sort);
-            if (dataList == null)
-                return Collections.emptyList();
-            for (MailItem.UnderlyingData data : dataList)
-                if (data != null)
-                    result.add(getItem(data));
-            // sort was already done by the DbMailItem call...
-            success = true;
         } finally {
             endTransaction(success);
         }
@@ -2467,7 +2532,9 @@ public class Mailbox {
                             }
                             unmatched.append(segments[j]);
                         }
-                        if (unmatched.length() > 0) {
+                        if (unmatched.length() > 0 && !(curFolder instanceof Mountpoint)) {
+                            // We have an unmatched part, but the last matched folder wasn't a mountpoint,
+                            // so throw an exception
                             throw MailServiceException.NO_SUCH_FOLDER(startingFolder.getPath()+"/"+path);
                         }
                         return new Pair<Folder, String>(curFolder, unmatched.toString());
@@ -3034,21 +3101,21 @@ public class Mailbox {
         public Invite mInv;
         public boolean mForce;
         public ParsedMessage mPm;
-
+        
         public String toString() {
             StringBuilder toRet = new StringBuilder();
             toRet.append("inv:").append(mInv.toString()).append("\n");
             toRet.append("force:").append(mForce ? "true\n" : "false\n");
-            toRet.append("pm:").append(mPm.getFragment()).append("\n");
             return toRet.toString();
         }
     }
 
     public synchronized int setCalendarItem(OperationContext octxt, int folderId,
                                             SetCalendarItemData defaultInv,
-                                            SetCalendarItemData exceptions[])
+                                            SetCalendarItemData exceptions[],
+                                            List<ReplyInfo> replies)
     throws ServiceException {
-        return setCalendarItem(octxt, folderId, 0, 0, defaultInv, exceptions);
+        return setCalendarItem(octxt, folderId, 0, 0, defaultInv, exceptions, replies);
     }
 
     /**
@@ -3057,8 +3124,10 @@ public class Mailbox {
      * @return calendar item ID 
      * @throws ServiceException
      */
-    public synchronized int setCalendarItem(OperationContext octxt, int folderId, int flags, long tags, SetCalendarItemData defaultInv,
-                                            SetCalendarItemData exceptions[])
+    public synchronized int setCalendarItem(OperationContext octxt, int folderId, int flags, long tags,
+                                            SetCalendarItemData defaultInv,
+                                            SetCalendarItemData exceptions[],
+                                            List<ReplyInfo> replies)
     throws ServiceException {
         flags = (flags & ~Flag.FLAG_SYSTEM);
         SetCalendarItem redoRecorder = new SetCalendarItem(getId(), attachmentsIndexingEnabled(), flags, tags);
@@ -3077,7 +3146,7 @@ public class Mailbox {
                         sad.mInv.setMailItemId(getNextItemId(Mailbox.ID_AUTO_INCREMENT));
                 }
             }
-            redoRecorder.setData(defaultInv, exceptions);
+            redoRecorder.setData(defaultInv, exceptions, replies);
 
             short volumeId = redoPlayer == null ? Volume.getCurrentMessageVolume().getId() : redoPlayer.getVolumeId();
 
@@ -3098,15 +3167,20 @@ public class Mailbox {
             }
 
             redoRecorder.setCalendarItemAttrs(calItem.getId(), calItem.getFolderId(), volumeId);
-
+            
             // handle the exceptions!
             if (exceptions != null) {
                 for (SetCalendarItemData sad : exceptions)
                     calItem.processNewInvite(sad.mPm, sad.mInv, sad.mForce, folderId, volumeId);
-            }
-            
-            if (calItem != null)
-                queueForIndexing(calItem, !calItemIsNew, null);
+                }
+
+            // Override replies list if one is provided.
+            // Null list means keep existing replies.  Empty list means to clear existing replies.
+            // List with one or more replies means replacing exisitng replies.
+            if (replies != null)
+                calItem.setReplies(replies);
+
+            queueForIndexing(calItem, !calItemIsNew, null);
 
             success = true;
             return calItem.getId();
@@ -3543,6 +3617,10 @@ public class Mailbox {
                 flags |= Flag.BITMASK_ATTACHED;
             else
                 flags &= ~Flag.BITMASK_ATTACHED;
+
+            // priority is calculated from headers
+            flags &= ~(Flag.BITMASK_HIGH_PRIORITY | Flag.BITMASK_LOW_PRIORITY);
+            flags |= pm.getPriorityBitmask();
 
             Folder folder  = getFolderById(folderId);
             String subject = pm.getNormalizedSubject();
@@ -4878,7 +4956,8 @@ public class Mailbox {
             doc.setContent(pd.getContent(), pd.getDigest(), volumeId, pd);
             queueForIndexing(doc, false, pd);
 
-            doc.purgeOldRevisions(1);  // purge all but 1 revisions.
+            int maxNumRevisions = doc.getAccount().getIntAttr(Provisioning.A_zimbraNotebookMaxNumRevisions, 0);
+            doc.purgeOldRevisions(maxNumRevisions);
             success = true;
             return doc;
         } catch (IOException ioe) {
@@ -5345,8 +5424,21 @@ public class Mailbox {
         }
     }
 
+    public static final int NON_DELIVERY_FLAGS = Flag.BITMASK_DRAFT | Flag.BITMASK_FROM_ME;
+
     void snapshotCounts() throws ServiceException {
-        if (mCurrentChange.size != MailboxChange.NO_CHANGE || mCurrentChange.contacts != MailboxChange.NO_CHANGE)
+        // for write ops, update the "new messages" count in the DB appropriately
+        RedoableOp recorder = mCurrentChange.recorder;
+        if (recorder != null && mCurrentChange.getRedoPlayer() == null) {
+            boolean isNewMessage = recorder.getOpCode() == RedoableOp.OP_CREATE_MESSAGE && (((CreateMessage) recorder).getFlags() & NON_DELIVERY_FLAGS) == 0;
+            boolean isSoapRequest = mCurrentChange.octxt != null && mCurrentChange.octxt.getSession() instanceof SoapSession;
+            if (isNewMessage)
+                mCurrentChange.recent = mData.recentMessages + 1;
+            else if (isSoapRequest && mData.recentMessages != 0)
+                mCurrentChange.recent = 0;
+        }
+
+        if (mCurrentChange.recent != MailboxChange.NO_CHANGE || mCurrentChange.size != MailboxChange.NO_CHANGE || mCurrentChange.contacts != MailboxChange.NO_CHANGE)
             DbMailbox.updateMailboxStats(this);
 
         if (mCurrentChange.mDirty != null && mCurrentChange.mDirty.hasNotifications()) {
@@ -5382,6 +5474,8 @@ public class Mailbox {
             change.mDirty = new PendingModifications();
         }
 
+        Session source = mCurrentChange.octxt == null ? null : mCurrentChange.octxt.getSession();
+
         try {
             // the mailbox data has changed, so commit the changes
             if (change.sync != null)
@@ -5398,6 +5492,10 @@ public class Mailbox {
                 mData.lastChangeId   = change.changeId;
                 mData.lastChangeDate = change.timestamp;
             }
+            if (change.accessed != MailboxChange.NO_CHANGE)
+                mData.lastWriteDate = change.accessed;
+            if (change.recent != MailboxChange.NO_CHANGE)
+                mData.recentMessages = change.recent;
             if (change.config != null) {
                 if (change.config.getSecond() == null) {
                     if (mData.configKeys != null)
@@ -5453,7 +5551,7 @@ public class Mailbox {
         if (!mListeners.isEmpty() && dirty != null && dirty.hasNotifications()) {
             for (Session session : new ArrayList<Session>(mListeners)) {
                 try {
-                    session.notifyPendingChanges(mData.lastChangeId, dirty);
+                    session.notifyPendingChanges(dirty, mData.lastChangeId, source);
                 } catch (RuntimeException e) {
                     ZimbraLog.mailbox.error("ignoring error during notification", e);
                 }
@@ -5558,9 +5656,6 @@ public class Mailbox {
         return getAccount().getBooleanAttr(Provisioning.A_zimbraAttachmentsIndexingEnabled, true);
     }
 
-    private static final StatsFile STATS_FILE =
-        new StatsFile("perf_item_cache", new String[] { "id", "type", "hit" }, false);
-
     private void logCacheActivity(Integer key, byte type, MailItem item) {
         // The global item cache counter always gets updated
         if (!isCachedType(type)) {
@@ -5569,12 +5664,11 @@ public class Mailbox {
 
         // The per-access log only gets updated when cache or perf debug logging
         // is on
-        if (!ZimbraLog.cache.isDebugEnabled() && !ZimbraLog.perf.isDebugEnabled())
+        if (!ZimbraLog.cache.isDebugEnabled())
             return;
 
         if (item == null) {
             ZimbraLog.cache.debug("Cache miss for item " + key + " in mailbox " + getId());
-            ZimbraPerf.writeStats(STATS_FILE, key, type, "0");
             return;
         }
 
@@ -5583,7 +5677,6 @@ public class Mailbox {
         if (isCachedType(type))
             return;
         ZimbraLog.cache.debug("Cache hit for " + MailItem.getNameForType(type) + " " + key + " in mailbox " + getId());
-        ZimbraPerf.writeStats(STATS_FILE, key, type, "1");
     }
 
     private static final String CN_ID         = "id";

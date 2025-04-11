@@ -23,24 +23,17 @@
  * ***** END LICENSE BLOCK *****
  */
 
-/**
-* Create a new, empty appt list.
-* @constructor
-* @class
-* This class represents a list of appts.
-*
-*/
 ZmRoster = function(appCtxt, imApp) {
 	ZmModel.call(this, ZmEvent.S_ROSTER);
 
 	this._appCtxt = appCtxt;
-	this.getRosterItemTree(); // pre-create
 	this._newRosterItemtoastFormatter = new AjxMessageFormat(ZmMsg.imNewRosterItemToast);
 	this._presenceToastFormatter = new AjxMessageFormat(ZmMsg.imStatusToast);
 	this._leftChatFormatter = new AjxMessageFormat(ZmMsg.imLeftChat);
 	this._imApp = imApp;
-	this._requestGateways();
-}
+
+	this.reload();
+};
 
 ZmRoster.prototype = new ZmModel;
 ZmRoster.prototype.constructor = ZmRoster;
@@ -52,7 +45,7 @@ ZmRoster.NOTIFICATION_FOO_TIMEOUT = 10000; // 10 sec.
 ZmRoster.prototype.toString =
 function() {
 	return "ZmRoster";
-}
+};
 
 ZmRoster.prototype.getChatList =
 function() {
@@ -68,19 +61,10 @@ function() {
     return this._myAddress;
 };
 
-ZmRoster.prototype.getRosterItemTree =
-function() {
-	if (!this._rosterItemTree) {
-		this._rosterItemTree = new ZmFolderTree(this._appCtxt, ZmOrganizer.ROSTER_TREE_ITEM);
-		this._appCtxt.setTree(ZmOrganizer.ROSTER_TREE_ITEM, this._rosterItemTree);
-	}
-	return this._rosterItemTree;
-};
-
 ZmRoster.prototype.getRosterItem =
 function(addr) {
 	return this.getRosterItemList().getByAddr(addr);
-}
+};
 
 ZmRoster.prototype.getRosterItemList =
 function() {
@@ -190,7 +174,7 @@ function(subscribed) {
 			}
 		}
 	}
-}
+};
 
 /**
  * handle async notifications. we might need to queue this with timed action and return
@@ -205,24 +189,28 @@ function(im) {
 		var cl = this.getChatList();
 		for (var curNot=0; curNot < im.n.length; curNot++) {
 			var not = im.n[curNot];
-			// console.log("IM Notification: ", not);
 			if (not.type == "roster") {
 				this.getRosterItemList().removeAllItems();
 				var list = this.getRosterItemList();
 				if (not.n) {
 					for (var rosterNum=0; rosterNum < not.n.length; rosterNum++) {
 						var rosterItem = not.n[rosterNum];
-//						if (rosterItem.type == "subscribed") {
+						if (rosterItem.type == "subscribed") {
 							var item = new ZmRosterItem(rosterItem.to, list, this._appCtxt, rosterItem.name, null, rosterItem.groups);
 							list.addItem(item);
-//						}
+						}
 					}
 				}
 				// ignore unsubscribed entries for now (TODO FIXME)
+			} else if (not.type == "subscribe") {
+				var view = ZmChatMultiWindowView.getInstance();
+				// it should always be instantiated by this time, but whatever.
+				if (view) {
+					new ZmImSubscribeAuth(view.getActiveWM(), not.from).popup();
+				}
 			} else if (not.type == "subscribed") {
 				var sub = not;
 				if (sub.to) {
-					this._appCtxt.getApp(ZmApp.IM).prepareVisuals();
 					var list = this.getRosterItemList();
 					var item = list.getByAddr(sub.to);
 					if (item) {
@@ -244,7 +232,6 @@ function(im) {
 			} else if (not.type == "unsubscribed") {
 				var unsub = not;
 				if (unsub.to) {
-					this._appCtxt.getApp(ZmApp.IM).prepareVisuals();
 					var list = this.getRosterItemList();
 					var item = list.getByAddr(unsub.to);
 					if (item) list.removeItem(item);
@@ -274,34 +261,49 @@ function(im) {
 			} else if (not.type == "message") {
 				this._appCtxt.getApp(ZmApp.IM).prepareVisuals();
 				var msg = not;
-				var chatMessage = new ZmChatMessage(msg, msg.from == this.getMyAddress());
-				var chat = cl.getChatByThread(chatMessage.thread);
-				if (chat == null) {
-					if (!chatMessage.fromMe) {
-						chat = cl.getChatByRosterAddr(chatMessage.from, true);
-					} else {
-						chat = cl.getChatByRosterAddr(chatMessage.to, false);
+				var buddy = this.getRosterItem(msg.from);
+				if (msg.body == null || msg.body.length == 0) {
+					// typing notification
+					if (buddy)
+						buddy._notifyTyping(msg.typing);
+				} else {
+					// clear any previous typing notification, since it looks
+					// like we don't receive this when a message gets in.
+					if (buddy)
+						buddy._notifyTyping(false);
+
+					var chatMessage = new ZmChatMessage(msg, msg.from == this.getMyAddress());
+					var chat = cl.getChatByThread(chatMessage.thread);
+					if (chat == null) {
+						if (!chatMessage.fromMe) {
+							chat = cl.getChatByRosterAddr(chatMessage.from, true);
+						} else {
+							chat = cl.getChatByRosterAddr(chatMessage.to, false);
+						}
+						if (chat) chat.setThread(chatMessage.thread);
 					}
-					if (chat) chat.setThread(chatMessage.thread);
-				}
-				if (chat) {
-					if (!this._imApp.isActive()) {
-						this._appCtxt.setStatusIconVisible(ZmStatusView.ICON_IM, true);
-						this.startFlashingIcon();
+					if (chat) {
+						if (!this._imApp.isActive()) {
+							this._appCtxt.setStatusIconVisible(ZmStatusView.ICON_IM, true);
+							this.startFlashingIcon();
+						}
+						chat.addMessage(chatMessage);
 					}
-					chat.addMessage(chatMessage);
 				}
 			} else if (not.type == "leftchat") {
-				this._appCtxt.getApp(ZmApp.IM).prepareVisuals();
+				this._appCtxt.getApp(ZmApp.IM).prepareVisuals(); // not sure we want this here but whatever
 				var lc = not;
 				var chat = this.getChatList().getChatByThread(lc.thread);
 				if (chat) {
 					chat.addMessage(ZmChatMessage.system(this._leftChatFormatter.format([lc.addr])));
 					chat.setThread(null);
 				}
+			} else if (not.type == "otherLocation") {
+				var gw = this.getGatewayByType(not.service);
+				gw.setState(not.username, ZmImGateway.STATE.BOOTED_BY_OTHER_LOGIN);
 			} else if (not.type == "gwStatus") {
 				var gw = this.getGatewayByType(not.service);
-				gw.setState("-", not.state);
+				gw.setState(not.name || null, not.state);
 				if (not.state == ZmImGateway.STATE.BAD_AUTH) {
 					this._appCtxt.setStatusMsg(ZmMsg.errorNotAuthenticated, ZmStatusView.LEVEL_WARNING);
 				}
@@ -317,6 +319,24 @@ ZmRoster.prototype.startFlashingIcon = function() {
 
 ZmRoster.prototype.stopFlashingIcon = function() {
 	this._imApp.stopFlashingIcon();
+};
+
+ZmRoster.prototype.sendSubscribeAuthorization = function(accept, add, addr) {
+	var sd = AjxSoapDoc.create("IMAuthorizeSubscribeRequest", "urn:zimbraIM");
+	var method = sd.getMethod();
+	method.setAttribute("addr", addr);
+	method.setAttribute("authorized", accept ? "true" : "false");
+	method.setAttribute("add", add ? "true" : "false");
+	this._appCtxt.getAppController().sendRequest({ soapDoc: sd, asyncMode: true });
+};
+
+ZmRoster.prototype.reconnectGateway = function(gw) {
+	var sd = AjxSoapDoc.create("IMGatewayRegisterRequest", "urn:zimbraIM");
+	var method = sd.getMethod();
+	method.setAttribute("op", "reconnect");
+	method.setAttribute("service", gw.type);
+	this._appCtxt.getAppController().sendRequest({ soapDoc: sd, asyncMode: true });
+	this.__avoidNotifyTimeout = new Date().getTime();
 };
 
 ZmRoster.prototype.unregisterGateway = function(service, screenName) {
@@ -340,6 +360,10 @@ ZmRoster.prototype.registerGateway = function(service, screenName, password) {
 						       asyncMode : true
 						     });
 	this.__avoidNotifyTimeout = new Date().getTime();
+	// since it's not returned by a gwStatus notification, let's
+	// set a nick here so the icon becomes "online" if a
+	// corresponding gwStatus notification gets in.
+	this.getGatewayByType(service).nick = screenName;
 };
 
 ZmRoster.prototype._requestGateways = function() {
@@ -411,8 +435,9 @@ ZmRoster.prototype.breakDownAddress = function(addr) {
 	if (m) {
 		var gw = this.getGatewayByDomain(m[1]);
 		if (gw) {
-			return { type: gw.type,
-				 addr: addr.substr(0, m.index)
+			return { type	 : gw.type,
+				 addr	 : addr.substr(0, m.index),
+				 gateway : gw
 			       };
 		}
 	}
@@ -422,4 +447,39 @@ ZmRoster.prototype.breakDownAddress = function(addr) {
 
 ZmRoster.prototype.getGroups = function() {
 	return AjxVector.fromArray(this.getRosterItemList().getGroupsArray());
+};
+
+
+
+
+//------------------------------------------
+// for autocomplete
+//------------------------------------------
+
+ZmRosterTreeGroups = function(roster) {
+	this._groups = roster.getGroups();
+};
+
+ZmRosterTreeGroups.prototype.constructor = ZmRosterTreeGroups;
+
+/**
+ * Returns a list of matching groups for a given string
+ */
+ZmRosterTreeGroups.prototype.autocompleteMatch = function(str, callback) {
+	str = str.toLowerCase();
+	var result = [];
+
+	var a = this._groups;
+	var sz = a.size();
+	for (var i = 0; i < sz; i++) {
+		var g = a.get(i);
+		if (g.toLowerCase().indexOf(str) == 0)
+			result.push({ data: g, text: g });
+	}
+	callback.run(result);
+};
+
+ZmRosterTreeGroups.prototype.isUniqueValue =
+function(str) {
+	return false;
 };

@@ -136,7 +136,9 @@ function(view) {
 */
 ZmPrefController.prototype._resetOperations =
 function(parent, view) {
-	parent.enable(ZmOperation.SAVE, view != ZmPrefView.FILTER_RULES);
+    var section = ZmPref.getPrefSectionMap()[view];
+    var manageChanges = section && section.manageChanges; 
+    parent.enable(ZmOperation.SAVE, !manageChanges);
 	parent.enable(ZmOperation.CANCEL, true);
 };
 
@@ -258,7 +260,11 @@ function(list, callback, noPop, result) {
 	if (list.length) {
 		this._appCtxt.setStatusMsg(ZmMsg.optionsSaved);
 	}
-	if (!noPop && (!result || !result._data.BatchResponse.Fault)) {
+
+	var hasFault = result && result._data && result._data.BatchResponse
+		? result._data.BatchResponse.Fault : null;
+
+	if (!noPop && (!result || !hasFault)) {
 		// pass force flag - we just saved, so we know view isn't dirty
 		this._appCtxt.getAppViewMgr().popView(true);
 	}

@@ -65,107 +65,125 @@ function() {
 	AjxDispatcher.registerMethod("GetRoster", "IM", new AjxCallback(this, this.getRoster));
 	AjxDispatcher.registerMethod("GetChatListController", "IM", new AjxCallback(this, this.getChatListController));
 };
-////	AjxDispatcher.run("GetRoster").reload();
 
 ZmImApp.prototype._registerOperations =
 function() {
-	ZmOperation.registerOp("IM_NEW_CHAT", {textKey:"imNewChat", image:"ImFree2Chat"});
-	ZmOperation.registerOp("IM_NEW_GROUP_CHAT", {textKey:"imNewGroupChat", image:"ImFree2Chat"});
-	ZmOperation.registerOp("IM_PRESENCE_AWAY", {textKey:"imStatusAway", image:"ImAway"});
-	ZmOperation.registerOp("IM_PRESENCE_CHAT", {textKey:"imStatusChat", image:"ImFree2Chat"});
-	ZmOperation.registerOp("IM_PRESENCE_DND", {textKey:"imStatusDND", image:"ImDnd"});
-	ZmOperation.registerOp("IM_PRESENCE_INVISIBLE", {textKey:"imStatusInvisible", image:"ImInvisible"});
-	ZmOperation.registerOp("IM_PRESENCE_MENU", {textKey:"imPresence"}, null, ZmImApp.addImPresenceMenu);
-	ZmOperation.registerOp("IM_PRESENCE_OFFLINE", {textKey:"imStatusOffline", image:"RoundMinusDis"});
-	ZmOperation.registerOp("IM_PRESENCE_ONLINE", {textKey:"imStatusOnline", image:"ImAvailable"});
-	ZmOperation.registerOp("IM_PRESENCE_XA", {textKey:"imStatusExtAway", image:"ImExtendedAway"});
-	ZmOperation.registerOp("NEW_ROSTER_ITEM", {textKey:"newRosterItem", image:"ImBuddy"});
-	ZmOperation.registerOp("IM_CREATE_CONTACT", { textKey: "addToNewContact", image: "NewContact" });
-	ZmOperation.registerOp("IM_ADD_TO_CONTACT", { textKey: "addToExistingContact", image: "Edit" });
-	ZmOperation.registerOp("IM_EDIT_CONTACT", { textKey: "editContact", image: "Edit" });
-	ZmOperation.registerOp("IM_GATEWAY_LOGIN", { textKey: "imGatewayLogin" });
-	ZmOperation.registerOp("IM_TOGGLE_OFFLINE", { textKey: "imToggleOffline" });
+	ZmOperation.registerOp("IM_NEW_CHAT"	       , { textKey: "imNewChat", image: "ImFree2Chat" });
+	ZmOperation.registerOp("IM_NEW_GROUP_CHAT"     , { textKey: "imNewGroupChat", image: "ImFree2Chat" });
+	ZmOperation.registerOp("IM_PRESENCE_AWAY"      , { textKey: "imStatusAway", image: "ImAway" });
+	ZmOperation.registerOp("IM_PRESENCE_CHAT"      , { textKey: "imStatusChat", image: "ImFree2Chat" });
+	ZmOperation.registerOp("IM_PRESENCE_DND"       , { textKey: "imStatusDND", image: "ImDnd" });
+	ZmOperation.registerOp("IM_PRESENCE_INVISIBLE" , { textKey: "imStatusInvisible", image: "ImInvisible" });
+	ZmOperation.registerOp("IM_PRESENCE_MENU"      , { textKey: "imPresence" }, null, ZmImApp.addImPresenceMenu );
+	ZmOperation.registerOp("IM_PRESENCE_OFFLINE"   , { textKey: "imStatusOffline", image: "RoundMinusDis" });
+	ZmOperation.registerOp("IM_PRESENCE_ONLINE"    , { textKey: "imStatusOnline", image: "ImAvailable" });
+	ZmOperation.registerOp("IM_PRESENCE_XA"	       , { textKey: "imStatusExtAway", image: "ImExtendedAway" });
+	ZmOperation.registerOp("NEW_ROSTER_ITEM"       , { textKey: "newRosterItem", image: "ImBuddy" });
+	ZmOperation.registerOp("IM_CREATE_CONTACT"     , { textKey: "addToNewContact", image: "NewContact" });
+	ZmOperation.registerOp("IM_ADD_TO_CONTACT"     , { textKey: "addToExistingContact", image: "Edit" });
+	ZmOperation.registerOp("IM_EDIT_CONTACT"       , { textKey: "editContact", image: "Edit" });
+	ZmOperation.registerOp("IM_GATEWAY_LOGIN"      , { textKey: "imGatewayLogin" });
+	ZmOperation.registerOp("IM_TOGGLE_OFFLINE"     , { textKey: "imToggleOffline" });
 };
 
 ZmImApp.prototype._registerItems =
 function() {
 	ZmItem.registerItem(ZmItem.CHAT,
-						{app:			ZmApp.IM,
-						 nameKey:		"chat",
-						 icon:			"ImStartChat",
-						 soapCmd:		"ItemAction",
-						 itemClass:		"ZmChat",
-						 node:			"chat",
-						 organizer:		ZmOrganizer.ROSTER,
-						 searchType:	"chat"
-						});
-};
-
-ZmImApp.prototype._registerOrganizers =
-function() {
-// 	// not really sure what this is
-//	ZmOrganizer.registerOrg(ZmOrganizer.ROSTER_TREE,
-//							{app:				ZmApp.IM,
-//							 orgClass:			"ZmRosterTree",
-//							 orgPackage:		"IM",
-//							 labelKey:			"buddyList",
-//							 compareFunc:		"ZmRosterTreeItem.sortCompare"
-//							});
-
-	ZmOrganizer.registerOrg(ZmOrganizer.ROSTER_TREE_ITEM,
-							{app:				ZmApp.IM,
-							 orgClass:			"ZmRosterTreeItem",
-							 orgPackage:		"IM",
-							 treeController:	"ZmRosterTreeController",
-							 labelKey:			"buddyList",
-							 compareFunc:		"ZmRosterTreeItem.sortCompare"
-							});
+			    { app	 : ZmApp.IM,
+			      nameKey	 : "chat",
+			      icon	 : "ImStartChat",
+			      soapCmd	 : "ItemAction",
+			      itemClass	 : "ZmChat",
+			      node	 : "chat",
+			      organizer	 : ZmOrganizer.ROSTER,
+			      searchType : "chat"
+			    });
 };
 
 ZmImApp.prototype._registerApp =
 function() {
+	var newItemOps = {};
+	newItemOps[ZmOperation.IM_NEW_CHAT] = "chat";
 	ZmApp.registerApp(ZmApp.IM,
-							 {mainPkg:				"IM",
-							  nameKey:				"imAppTitle",
-							  icon:					"ImStartChat",
-							  chooserTooltipKey:	"goToIm",
-							  defaultSearch:		ZmSearchToolBar.FOR_MAIL_MI,
-							  organizer:			ZmOrganizer.ROSTER_TREE_ITEM,
-							  overviewTrees:		[ZmOrganizer.ROSTER_TREE_ITEM],
-							  showZimlets:			true,
-							  gotoActionCode:		ZmKeyMap.GOTO_IM,
-							  chooserSort:			40,
-							  defaultSort:			50
-							  });
+			  { mainPkg	      : "IM",
+			    nameKey	      : "imAppTitle",
+			    icon	      : "ImStartChat",
+			    chooserTooltipKey : "goToIm",
+			    defaultSearch     : ZmSearchToolBar.FOR_MAIL_MI,
+			    gotoActionCode    : ZmKeyMap.GOTO_IM,
+			    chooserSort	      : 40,
+			    defaultSort	      : 50,
+			    newItemOps        : newItemOps
+			  });
 };
 
 ZmImApp.prototype._registerSettings = function(settings) {
 	settings = settings || this._appCtxt.getSettings();
+
+	settings.registerSetting("IM_PREF_INSTANT_NOTIFY",
+				 { name         : "zimbraPrefIMInstantNotify",
+				   type         : ZmSetting.T_PREF,
+				   dataType     : ZmSetting.D_BOOLEAN,
+				   defaultValue : false });
+
+        settings.registerSetting("IM_PREF_AUTO_LOGIN",
+				 { name         : "zimbraPrefIMAutoLogin",
+                                   type         : ZmSetting.T_PREF,
+                                   dataType     : ZmSetting.D_BOOLEAN,
+				   defaultValue : false
+				 });
+
         settings.registerSetting("IM_PREF_FLASH_ICON",
 				 { name         : "zimbraPrefIMFlashIcon",
                                    type         : ZmSetting.T_PREF,
                                    dataType     : ZmSetting.D_BOOLEAN,
-                                   defaultValue : true });
+				   defaultValue : true
+				 });
 
         settings.registerSetting("IM_PREF_NOTIFY_PRESENCE",
 				 { name         : "zimbraPrefIMNotifyPresence",
                                    type         : ZmSetting.T_PREF,
                                    dataType     : ZmSetting.D_BOOLEAN,
-                                   defaultValue : true });
+				   defaultValue : true
+				 });
 
         settings.registerSetting("IM_PREF_NOTIFY_STATUS",
 				 { name         : "zimbraPrefIMNotifyStatus",
                                    type         : ZmSetting.T_PREF,
                                    dataType     : ZmSetting.D_BOOLEAN,
-                                   defaultValue : true });
+				   defaultValue : true
+				 });
+
+	settings.getSetting(ZmSetting.IM_PREF_INSTANT_NOTIFY).addChangeListener(new AjxListener(this, this._onSettingChange));
 };
 
 ZmImApp.prototype._registerPrefs = function() {
-	var list = [ ZmSetting.IM_PREF_FLASH_ICON,
-		     ZmSetting.IM_PREF_NOTIFY_PRESENCE,
-		     ZmSetting.IM_PREF_NOTIFY_STATUS ];
+	var sections = {
+		IM: {
+			title: ZmMsg.im,
+			templateId: "zimbraMail.prefs.templates.Pages#IM",
+			priority: 90,
+			precondition: ZmSetting.IM_ENABLED,
+			prefs: [
+				ZmSetting.IM_PREF_INSTANT_NOTIFY,
+				ZmSetting.IM_PREF_AUTO_LOGIN,
+				ZmSetting.IM_PREF_FLASH_ICON,
+				ZmSetting.IM_PREF_NOTIFY_PRESENCE,
+				ZmSetting.IM_PREF_NOTIFY_STATUS
+			]
+		}
+	};
+	for (var id in sections) {
+		ZmPref.registerPrefSection(id, sections[id]);
+	}
 
-	ZmPref.setPrefList("IM_PREFS", list);
+	ZmPref.registerPref("IM_PREF_INSTANT_NOTIFY",
+			    { displayName      : ZmMsg.imPrefInstantNotify,
+			      displayContainer : ZmPref.TYPE_CHECKBOX });
+
+	ZmPref.registerPref("IM_PREF_AUTO_LOGIN",
+			    { displayName      : ZmMsg.imPrefAutoLogin,
+			      displayContainer : ZmPref.TYPE_CHECKBOX });
 
 	ZmPref.registerPref("IM_PREF_FLASH_ICON",
 			    { displayName      : ZmMsg.imPrefFlashIcon,
@@ -180,12 +198,29 @@ ZmImApp.prototype._registerPrefs = function() {
 			      displayContainer : ZmPref.TYPE_CHECKBOX });
 };
 
-// App API
+ZmImApp.prototype._onSettingChange = function(ev) {
+	if (ev.type != ZmEvent.S_SETTING) return;
+
+	var id = ev.source.id;
+        if (id == ZmSetting.IM_PREF_INSTANT_NOTIFY) {
+		var val = this._appCtxt.get(ZmSetting.IM_PREF_INSTANT_NOTIFY);
+		this._appCtxt.getAppController().setInstantNotify(val);
+        }
+};
 
 ZmImApp.prototype.refresh =
 function() {
-	// console.log("refresh");
-	AjxDispatcher.run("GetRoster").reload();
+//	AjxDispatcher.run("GetRoster").reload();
+};
+
+ZmImApp.prototype.handleOp = function(op) {
+	switch (op) {
+	    case ZmOperation.IM_NEW_CHAT:
+		AjxDispatcher.run("GetRoster"); // forces loading IM...
+		this.prepareVisuals(); // ... and create views, if not yet done
+		this.getRosterTreeController()._imNewChatListener();
+		break;
+	}
 };
 
 ZmImApp.prototype.postNotify =
@@ -197,7 +232,6 @@ function(notify) {
 
 ZmImApp.prototype.launch =
 function(callback) {
-	// console.log("launch");
 	var loadCallback = new AjxCallback(this, this._handleLoadLaunch, [callback]);
 	AjxDispatcher.require("IM", true, loadCallback, null, true);
 };
@@ -205,7 +239,6 @@ function(callback) {
 ZmImApp.prototype._handleLoadLaunch =
 function(callback) {
 	var clc = this.getChatListController();
-	this.prepareVisuals();
 	clc.show();
 	if (callback)
 		callback.run();
@@ -213,13 +246,17 @@ function(callback) {
 
 ZmImApp.prototype.activate =
 function(active) {
-	// console.log("activate");
-	this._active = active;
 	if (active) {
 		this.stopFlashingIcon();
 	}
-	var treeController = this._appCtxt.getOverviewController().getTreeController(ZmOrganizer.ROSTER_TREE_ITEM);
-	treeController.appActivated(active);
+	return ZmApp.prototype.activate.call(this, active);
+};
+
+ZmImApp.prototype.getRosterTreeController = function() {
+	if (!this._rosterTreeController) {
+		this._rosterTreeController = new ZmRosterTreeController(this._appCtxt);
+	}
+	return this._rosterTreeController;
 };
 
 ZmImApp.prototype.isActive = function() {
@@ -237,6 +274,13 @@ ZmImApp.prototype.getRoster =
 function() {
 	if (!this._roster) {
 		this._roster = new ZmRoster(this._appCtxt, this);
+		if (this._initialGwResponse)
+			this._roster._handleRequestGateways(this._initialGwResponse);
+		else
+			this._roster._requestGateways();
+		// enable instant notify?
+		if (this._appCtxt.get(ZmSetting.IM_PREF_INSTANT_NOTIFY))
+			this._appCtxt.getAppController().setInstantNotify(true);
 	}
 	return this._roster;
 };
@@ -261,19 +305,27 @@ ZmImApp.prototype.stopFlashingIcon = function() {
 
 ZmImApp.addImPresenceMenu =
 function(parent) {
-	var list = [ ZmOperation.IM_PRESENCE_OFFLINE, ZmOperation.IM_PRESENCE_ONLINE, ZmOperation.IM_PRESENCE_CHAT,
-                     ZmOperation.IM_PRESENCE_DND, ZmOperation.IM_PRESENCE_AWAY, ZmOperation.IM_PRESENCE_XA,
-                     ZmOperation.IM_PRESENCE_INVISIBLE];
+	var list = [ ZmOperation.IM_PRESENCE_OFFLINE,
+		     ZmOperation.IM_PRESENCE_ONLINE,
+		     ZmOperation.IM_PRESENCE_CHAT,
+                     ZmOperation.IM_PRESENCE_DND,
+		     ZmOperation.IM_PRESENCE_AWAY,
+		     ZmOperation.IM_PRESENCE_XA,
+                     ZmOperation.IM_PRESENCE_INVISIBLE
+		   ];
 
 	var menu = new ZmPopupMenu(parent);
 
 	for (var i = 0; i < list.length; i++) {
 		var op = list[i];
-		var mi = menu.createMenuItem(op, {image:ZmOperation.getProp(op, "image"), text:ZmMsg[ZmOperation.getProp(op, "textKey")],
-										  style:DwtMenuItem.RADIO_STYLE});
+		var mi = menu.createMenuItem(op, { image : ZmOperation.getProp(op, "image"),
+						   text	 : ZmMsg[ZmOperation.getProp(op, "textKey")],
+						   style : DwtMenuItem.RADIO_STYLE
+						 });
 		mi.setData(ZmOperation.MENUITEM_ID, op);
 		mi.setData(ZmOperation.KEY_ID, op);
-		if (op == ZmOperation.IM_PRESENCE_OFFLINE) mi.setChecked(true, true);
+		if (op == ZmOperation.IM_PRESENCE_OFFLINE)
+			mi.setChecked(true, true);
 	}
 
 	parent.setMenu(menu, false, DwtMenuItem.RADIO_STYLE);
@@ -281,23 +333,38 @@ function(parent) {
 };
 
 ZmImApp.prototype.prepareVisuals = function() {
-	AjxDispatcher.require("IM", false);
-
-	if (!this.__haveRoster) {
-		// architecture... such a wonderful thing.  here's how we get a singleton:
-		var treeController = this._appCtxt.getOverviewController().getTreeController(ZmOrganizer.ROSTER_TREE_ITEM);
-
-		// and this seems to be the only way to properly instantiate the buddy list tree:
-		treeController.show({ overviewId  : ZmZimbraMail._OVERVIEW_ID,
-				      app	  : ZmApp.IM
-				    });
-
-		treeController.getTreeView(ZmZimbraMail._OVERVIEW_ID).setVisible(this._active);
-		treeController.appActivated(this._active);
-
+	if (!this._haveVisuals) {
+		this._haveVisuals = true;
 		this.getChatListController().prepareVisuals();
-		// setTimeout(AjxCallback.simpleClosure(this.refresh, this), 100);
-		this.__haveRoster = true;
-		this.refresh();
 	}
+};
+
+ZmImApp.prototype.getOverviewPanelContent = function() {
+	if (!this._imOvw)
+		this._imOvw = new ZmImOverview(this._appCtxt, this._container);
+	return this._imOvw;
+};
+
+ZmImApp.prototype.startup = function() {
+
+	var sd = AjxSoapDoc.create("IMGatewayListRequest", "urn:zimbraIM");
+	this._appCtxt.getAppController().sendRequest(
+		{ soapDoc   : sd,
+		  asyncMode : true,
+		  callback  : new AjxCallback(this, function(args) {
+			  this._initialGwResponse = args;
+		  })
+		}
+	);
+
+// 	var sd = AjxSoapDoc.create("IMGetRosterRequest", "urn:zimbraIM");
+// 	this._appCtxt.getAppController().sendRequest(
+// 		{ soapDoc   : sd,
+// 		  asyncMode : true,
+// 		  callback  : new AjxCallback(this, function(args) {
+// 			  this._initialRosterResponse = args;
+// 		  })
+// 		}
+// 	);
+
 };

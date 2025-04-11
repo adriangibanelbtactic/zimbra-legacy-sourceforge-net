@@ -27,8 +27,8 @@ package com.zimbra.cs.zclient;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.AccountConstants;
-import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.account.Provisioning;
 
 import java.util.ArrayList;
@@ -52,6 +52,7 @@ public class ZGetInfoResult {
     private ZFeatures mFeatures;
     private List<ZIdentity> mIdentities;
     private List<ZDataSource> mDataSources;
+    private List<ZSignature> mSignatures;
     private List<String> mMailURLs;
     private Set<String> mEmailAddresses;
     
@@ -103,8 +104,25 @@ public class ZGetInfoResult {
                     mDataSources.add(new ZPop3DataSource(source));
             }
         }
+        mSignatures = new ArrayList<ZSignature>();
+        Element sigs = e.getOptionalElement(AccountConstants.E_SIGNATURES);
+        if (sigs != null) {
+            for (Element sig: sigs.listElements()) {
+                if (sig.getName().equals(MailConstants.E_SIGNATURE))
+                    mSignatures.add(new ZSignature(sig));
+            }
+        }
+
     }
 
+    void setSignatures(List<ZSignature> sigs) {
+        mSignatures = sigs;
+    }
+    
+    public List<ZSignature> getSignatures() {
+        return mSignatures;
+    }
+    
     public List<ZIdentity> getIdentities() {
         return mIdentities;
     }

@@ -62,6 +62,9 @@ ZaCos.A_zimbraPasswordLocked = "zimbraPasswordLocked";
 ZaCos.A_name = "cn";
 ZaCos.A_description = "description";
 ZaCos.A_zimbraAttachmentsBlocked = "zimbraAttachmentsBlocked";
+ZaCos.A_zimbraQuotaWarnPercent = "zimbraQuotaWarnPercent";
+ZaCos.A_zimbraQuotaWarnInterval = "zimbraQuotaWarnInterval";
+ZaCos.A_zimbraQuotaWarnMessage = "zimbraQuotaWarnMessage";
 
 ZaCos.A_zimbraAdminAuthTokenLifetime = "zimbraAdminAuthTokenLifetime";
 ZaCos.A_zimbraAuthTokenLifetime = "zimbraAuthTokenLifetime";
@@ -91,7 +94,6 @@ ZaCos.A_zimbraPrefContactsPerPage="zimbraPrefContactsPerPage";
 ZaCos.A_zimbraPrefComposeInNewWindow = "zimbraPrefComposeInNewWindow";
 ZaCos.A_zimbraPrefForwardReplyInOriginalFormat = "zimbraPrefForwardReplyInOriginalFormat";
 ZaCos.A_zimbraPrefAutoAddAddressEnabled = "zimbraPrefAutoAddAddressEnabled";
-ZaCos.A_zimbraPrefMailItemsPerPage = "zimbraPrefMailItemsPerPage";
 ZaCos.A_zimbraPrefComposeFormat = "zimbraPrefComposeFormat";
 ZaCos.A_zimbraPrefMessageViewHtmlPreferred = "zimbraPrefMessageViewHtmlPreferred";
 ZaCos.A_zimbraPrefShowSearchString = "zimbraPrefShowSearchString";
@@ -101,6 +103,12 @@ ZaCos.A_zimbraPrefImapSearchFoldersEnabled = "zimbraPrefImapSearchFoldersEnabled
 ZaCos.A_zimbraPrefCalendarApptReminderWarningTime = "zimbraPrefCalendarApptReminderWarningTime";
 ZaCos.A_zimbraPrefSkin = "zimbraPrefSkin";
 ZaCos.A_zimbraPrefGalAutoCompleteEnabled = "zimbraPrefGalAutoCompleteEnabled";
+ZaCos.A_zimbraPrefWarnOnExit = "zimbraPrefWarnOnExit" ;
+ZaCos.A_zimbraPrefShowSelectionCheckbox = "zimbraPrefShowSelectionCheckbox" ;
+ZaCos.A_zimbraPrefHtmlEditorDefaultFontFamily = "zimbraPrefHtmlEditorDefaultFontFamily";
+ZaCos.A_zimbraPrefHtmlEditorDefaultFontSize = "zimbraPrefHtmlEditorDefaultFontSize" ;
+ZaCos.A_zimbraPrefHtmlEditorDefaultFontColor = "zimbraPrefHtmlEditorDefaultFontColor" ;
+ZaCos.A_zimbraMailSignatureMaxLength = "zimbraMailSignatureMaxLength" ;
 
 //features
 ZaCos.A_zimbraFeatureIMEnabled = "zimbraFeatureIMEnabled";
@@ -120,6 +128,7 @@ ZaCos.A_zimbraFeatureGalEnabled="zimbraFeatureGalEnabled";
 ZaCos.A_zimbraFeatureMailForwardingEnabled = "zimbraFeatureMailForwardingEnabled";
 ZaCos.A_zimbraFeatureSharingEnabled="zimbraFeatureSharingEnabled";
 ZaCos.A_zimbraFeatureNotebookEnabled="zimbraFeatureNotebookEnabled"
+ZaCos.A_zimbraFeatureBriefcasesEnabled="zimbraFeatureBriefcasesEnabled"
 ZaCos.A_zimbraImapEnabled = "zimbraImapEnabled";
 ZaCos.A_zimbraPop3Enabled = "zimbraPop3Enabled";
 ZaCos.A_zimbraFeatureHtmlComposeEnabled = "zimbraFeatureHtmlComposeEnabled";
@@ -127,7 +136,9 @@ ZaCos.A_zimbraFeatureGalAutoCompleteEnabled = "zimbraFeatureGalAutoCompleteEnabl
 ZaCos.A_zimbraFeatureSkinChangeEnabled = "zimbraFeatureSkinChangeEnabled";
 ZaCos.A_zimbraFeatureOutOfOfficeReplyEnabled = "zimbraFeatureOutOfOfficeReplyEnabled";
 ZaCos.A_zimbraFeatureNewMailNotificationEnabled = "zimbraFeatureNewMailNotificationEnabled";
-
+ZaCos.A_zimbraFeatureMailPollingIntervalPreferenceEnabled = "zimbraFeatureMailPollingIntervalPreferenceEnabled" ;
+ZaCos.A_zimbraFeatureOptionsEnabled = "zimbraFeatureOptionsEnabled" ;
+ZaCos.A_zimbraFeatureShortcutAliasesEnabled = "zimbraFeatureShortcutAliasesEnabled" ;
 
 //security
 ZaCos.A_zimbraPasswordLockoutEnabled = "zimbraPasswordLockoutEnabled";
@@ -144,10 +155,14 @@ function (by, val) {
 	var soapDoc = AjxSoapDoc.create("GetCosRequest", "urn:zimbraAdmin", null);
 	var el = soapDoc.set("cos", val);
 	el.setAttribute("by", by);
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	var resp = command.invoke(params).Body.GetCosResponse;
+	var reqMgrParams = {
+			controller: this._app.getCurrentController(),
+			busyMsg: ZaMsg.BUSY_GET_COS
+		}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.GetCosResponse;
 	this.initFromJS(resp.cos[0]);
 }
 ZaItem.loadMethods["ZaCos"].push(ZaCos.loadMethod);
@@ -230,10 +245,14 @@ function(name, mods) {
 			attr.setAttribute("n", aname);
 		}	
 	}
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	var resp = command.invoke(params).Body.CreateCosResponse;
+	var reqMgrParams = {
+			controller: this._app.getCurrentController(),
+			busyMsg : ZaMsg.BUSY_CREATE_COS
+		}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.CreateCosResponse;
 	this.initFromJS(resp.cos[0]);
 }
 
@@ -246,10 +265,14 @@ function(newName) {
 	var soapDoc = AjxSoapDoc.create("RenameCosRequest", "urn:zimbraAdmin", null);
 	soapDoc.set("id", this.id);
 	soapDoc.set("newName", newName);	
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	var resp = command.invoke(params).Body.RenameCosResponse;
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_RENAME_COS
+	}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.RenameCosResponse;
 	this.initFromJS(resp.cos[0]);	
 }
 
@@ -261,10 +284,14 @@ ZaCos.prototype.remove =
 function() {
 	var soapDoc = AjxSoapDoc.create("DeleteCosRequest", "urn:zimbraAdmin", null);
 	soapDoc.set("id", this.id);
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	command.invoke(params);
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_DELETE_COS
+	}
+	ZaRequestMgr.invoke(params, reqMgrParams);
 }
 /**
 * public ZaCos.modifyMethod
@@ -301,11 +328,15 @@ function (mods) {
 			attr.setAttribute("n", aname);
 		}
 	}
-	var command = new ZmCsfeCommand();
+	//var command = new ZmCsfeCommand();
 	var params = new Object();
 	params.soapDoc = soapDoc;	
-	var resp = command.invoke(params).Body.ModifyCosResponse;
-	this.initFromJS(resp.cos[0])
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_MODIFY_COS
+	}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.ModifyCosResponse;
+	this.initFromJS(resp.cos[0]);
 }
 ZaItem.modifyMethods["ZaCos"].push(ZaCos.modifyMethod);
 /**
@@ -339,10 +370,14 @@ function() {
 ZaCos.getAll =
 function(app) {
 	var soapDoc = AjxSoapDoc.create("GetAllCosRequest", "urn:zimbraAdmin", null);	
-	var getAllCosCmd = new ZmCsfeCommand ();
+	//var getAllCosCmd = new ZmCsfeCommand ();
 	var params = new Object ();
 	params.soapDoc = soapDoc ;
-	var resp = getAllCosCmd.invoke(params).Body.GetAllCosResponse;
+	var reqMgrParams = {
+			controller: app.getCurrentController(),
+			busyMsg: ZaMsg.BUSY_GET_ALL_COS
+		}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.GetAllCosResponse;
 	var list = new ZaItemList(ZaCos, app);
 	list.loadFromJS(resp);
 	//list.sortByName();	
@@ -356,16 +391,20 @@ function(app, container) {
 		throw new AjxException(AjxMessageFormat.format(ZaMsg.ERROR_ARGUMENT_X_MUST_BE_A, ["container", "ZaItemList"]), AjxException.INVALID_PARAM, "ZaCos.loadAll");
 	}
 	var soapDoc = AjxSoapDoc.create("GetAllCosRequest", "urn:zimbraAdmin", null);	
-	var getAllCosCmd = new ZmCsfeCommand ();
+	//var getAllCosCmd = new ZmCsfeCommand ();
 	var params = new Object ();
 	params.soapDoc = soapDoc ;
-	var resp = getAllCosCmd.invoke(params).Body.GetAllCosResponse;
+	var reqMgrParams = {
+		controller : app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_GET_ALL_COS
+	}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.GetAllCosResponse;
 	container.loadFromJS(resp);
 }
 
 
 ZaCos.getDefaultCos4Account =
-function (accountName, cosList){
+function (accountName, cosList, app){
 	if (!cosList) {
 		throw (new AjxException ("No cos is available.")) ;
 	}
@@ -389,10 +428,14 @@ function (accountName, cosList){
 		var soapDoc = AjxSoapDoc.create("GetDomainRequest", "urn:zimbraAdmin", null);	
 		var domainEl = soapDoc.set("domain", domainName);
 		domainEl.setAttribute ("by", "name");
-		var getDomainCommand = new ZmCsfeCommand();
+		//var getDomainCommand = new ZmCsfeCommand();
 		var params = new Object();
 		params.soapDoc = soapDoc;	
-		var resp = getDomainCommand.invoke(params).Body.GetDomainResponse;
+		var reqMgrParams = {
+			controller: app.getCurrentController(),
+			busyMsg: ZaMsg.BUSY_GET_DOMAIN
+		}
+		var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.GetDomainResponse;
 		var domain = new ZaItem ();
 		domain.initFromJS (resp.domain[0]);
 		domainCosId = domain.attrs[ZaDomain.A_domainDefaultCOSId] ;
@@ -451,18 +494,26 @@ ZaCos.myXModel = {
 		{id:ZaCos.A_zimbraMailMessageLifetime, type:_MLIFETIME_, ref:"attrs/"+ZaCos.A_zimbraMailMessageLifetime},
 		{id:ZaCos.A_zimbraMailTrashLifetime, type:_MLIFETIME_, ref:"attrs/"+ZaCos.A_zimbraMailTrashLifetime},
 		{id:ZaCos.A_zimbraMailSpamLifetime, type:_MLIFETIME_, ref:"attrs/"+ZaCos.A_zimbraMailSpamLifetime},
+		
+		{id:ZaCos.A_zimbraQuotaWarnPercent, type:_NUMBER_, ref:"attrs/" + ZaCos.A_zimbraQuotaWarnPercent},
+		{id:ZaCos.A_zimbraQuotaWarnInterval, type:_MLIFETIME_, ref:"attrs/"+ZaCos.A_zimbraQuotaWarnInterval},
+		{id:ZaCos.A_zimbraQuotaWarnMessage, type:_STRING_, ref:"attrs/" + ZaCos.A_zimbraQuotaWarnMessage},
+		
 //pref		
 		{id:ZaCos.A_zimbraPrefTimeZoneId,type:_STRING_, ref:"attrs/"+ZaCos.A_zimbraPrefTimeZoneId, choices:ZaSettings.timeZoneChoices},
 		{id:ZaCos.A_zimbraPrefGroupMailBy, type:_STRING_, ref:"attrs/"+ZaCos.A_zimbraPrefGroupMailBy},
 		{id:ZaCos.A_zimbraPrefIncludeSpamInSearch, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefIncludeSpamInSearch, type:_ENUM_},
 		{id:ZaCos.A_zimbraPrefIncludeTrashInSearch, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefIncludeTrashInSearch, type:_ENUM_},		
 		{id:ZaCos.A_zimbraPrefMailInitialSearch, type:_STRING_, ref:"attrs/"+ZaCos.A_zimbraPrefMailInitialSearch},
-		{id:ZaCos.A_zimbraPrefMailItemsPerPage, type:_NUMBER_, ref:"attrs/"+ZaCos.A_zimbraPrefMailItemsPerPage},
 		{id:ZaCos.A_zimbraPrefUseKeyboardShortcuts, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefUseKeyboardShortcuts, type:_ENUM_},
 		{id:ZaCos.A_zimbraAllowAnyFromAddress, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraAllowAnyFromAddress, type:_ENUM_},
 		{id:ZaCos.A_zimbraPrefSaveToSent, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefSaveToSent, type:_ENUM_},
 		{id:ZaCos.A_zimbraPrefContactsPerPage, type:_NUMBER_, ref:"attrs/"+ZaCos.A_zimbraPrefContactsPerPage, choices:[10,25,50,100]},
 		{id:ZaCos.A_zimbraPrefMailItemsPerPage, type:_NUMBER_, ref:"attrs/"+ZaCos.A_zimbraPrefMailItemsPerPage, choices:[10,25,50,100]},
+		{id:ZaCos.A_zimbraPrefHtmlEditorDefaultFontFamily, choices:ZaModel.FONT_FAMILY_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefHtmlEditorDefaultFontFamily, type:_ENUM_},		
+		{id:ZaCos.A_zimbraPrefHtmlEditorDefaultFontSize, choices:ZaModel.FONT_SIZE_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefHtmlEditorDefaultFontSize, type:_ENUM_},		
+		{id:ZaCos.A_zimbraPrefHtmlEditorDefaultFontColor, ref:"attrs/"+ZaCos.A_zimbraPrefHtmlEditorDefaultFontColor, type:_STRING_},		
+		{id:ZaCos.A_zimbraMailSignatureMaxLength, type:_NUMBER_, ref:"attrs/"+ZaCos.A_zimbraMailSignatureMaxLength},
 		{id:ZaCos.A_zimbraPrefComposeInNewWindow, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefComposeInNewWindow, type:_ENUM_},				
 		{id:ZaCos.A_zimbraPrefForwardReplyInOriginalFormat, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefForwardReplyInOriginalFormat, type:_ENUM_},
 		{id:ZaCos.A_zimbraPrefComposeFormat, choices:ZaModel.COMPOSE_FORMAT_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefComposeFormat, type:_ENUM_},		
@@ -479,6 +530,8 @@ ZaCos.myXModel = {
 		{id:ZaCos.A_zimbraPrefCalendarApptReminderWarningTime, choices:ZaModel.REMINDER_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefCalendarApptReminderWarningTime, type:_ENUM_},				
 		{id:ZaCos.A_zimbraPrefSkin, ref:"attrs/"+ZaCos.A_zimbraPrefSkin, type:_STRING_},	
 		{id:ZaCos.A_zimbraPrefGalAutoCompleteEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefGalAutoCompleteEnabled, type:_ENUM_},							
+		{id:ZaCos.A_zimbraPrefWarnOnExit, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefWarnOnExit, type:_ENUM_},	
+		{id:ZaCos.A_zimbraPrefShowSelectionCheckbox, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraPrefShowSelectionCheckbox, type:_ENUM_},	
 		{id:ZaCos.A_zimbraAvailableSkin, ref:"attrs/" + ZaCos.A_zimbraAvailableSkin, type:_LIST_, dataType: _STRING_,outputType:_LIST_},
 		{id:ZaCos.A_zimbraZimletAvailableZimlets, ref:"attrs/" + ZaCos.A_zimbraZimletAvailableZimlets, type:_LIST_, dataType: _STRING_,outputType:_LIST_},		
 //features
@@ -499,6 +552,7 @@ ZaCos.myXModel = {
 		{id:ZaCos.A_zimbraFeatureGalEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureGalEnabled, type:_ENUM_},
 		{id:ZaCos.A_zimbraFeatureMailForwardingEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureMailForwardingEnabled, type:_ENUM_},		
 		{id:ZaCos.A_zimbraFeatureNotebookEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureNotebookEnabled, type:_ENUM_},				
+		{id:ZaCos.A_zimbraFeatureBriefcasesEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureBriefcasesEnabled, type:_ENUM_},				
 		{id:ZaCos.A_zimbraFeatureGalAutoCompleteEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureGalAutoCompleteEnabled, type:_ENUM_},				
 		{id:ZaCos.A_zimbraImapEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraImapEnabled, type:_ENUM_},
 		{id:ZaCos.A_zimbraFeatureHtmlComposeEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureHtmlComposeEnabled, type:_ENUM_},		
@@ -507,8 +561,10 @@ ZaCos.myXModel = {
 		{id:ZaCos.A_zimbraFeatureSharingEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureSharingEnabled, type:_ENUM_},
 		{id:ZaCos.A_zimbraFeatureOutOfOfficeReplyEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureOutOfOfficeReplyEnabled, type:_ENUM_},
 		{id:ZaCos.A_zimbraFeatureNewMailNotificationEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureNewMailNotificationEnabled, type:_ENUM_},				
+		{id:ZaCos.A_zimbraFeatureMailPollingIntervalPreferenceEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureMailPollingIntervalPreferenceEnabled, type:_ENUM_},				
+		{id:ZaCos.A_zimbraFeatureOptionsEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureOptionsEnabled, type:_ENUM_},				
 		{id:ZaCos.A_zimbraFeatureSkinChangeEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureSkinChangeEnabled, type:_ENUM_},
-		
+		{id:ZaCos.A_zimbraFeatureShortcutAliasesEnabled, choices:ZaModel.BOOLEAN_CHOICES, ref:"attrs/"+ZaCos.A_zimbraFeatureShortcutAliasesEnabled, type:_ENUM_},
 		//security
 		{id:ZaCos.A_zimbraPasswordLockoutEnabled, type:_ENUM_, ref:"attrs/"+ZaCos.A_zimbraPasswordLockoutEnabled, choices:ZaModel.BOOLEAN_CHOICES},		
 		{id:ZaCos.A_zimbraPasswordLockoutDuration, type:_MLIFETIME_, ref:"attrs/"+ZaCos.A_zimbraPasswordLockoutDuration},		

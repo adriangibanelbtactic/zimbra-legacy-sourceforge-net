@@ -56,8 +56,12 @@ public class ZIdentity  {
         mId = get(Provisioning.A_zimbraPrefIdentityId);
     }
 
-    public String getName() {
+    public String getRawName() {
         return mName;
+    }
+
+    public String getName() {
+        return get(Provisioning.A_zimbraPrefIdentityName);
     }
 
     public String getId() {
@@ -114,6 +118,8 @@ public class ZIdentity  {
         return new ZEmailAddress(getFromAddress(), null, getFromDisplay(), ZEmailAddress.EMAIL_TYPE_FROM);
     }
 
+    public String getSignatureId() { return get(Provisioning.A_zimbraPrefDefaultSignatureId); }
+
     public String getSignature() { return get(Provisioning.A_zimbraPrefMailSignature); }
 
     public boolean getSignatureEnabled() { return getBool(Provisioning.A_zimbraPrefMailSignatureEnabled); }
@@ -124,7 +130,7 @@ public class ZIdentity  {
 
     public String getReplyIncludeOriginalText() { return get(Provisioning.A_zimbraPrefReplyIncludeOriginalText); }
 
-    public boolean getReplyIncludeAsAttachment() { return "includeAsAttachment".equals(getForwardIncludeOriginalText()); }
+    public boolean getReplyIncludeAsAttachment() { return "includeAsAttachment".equals(getReplyIncludeOriginalText()); }
     public boolean getReplyIncludeBody() { return "includeBody".equals(getReplyIncludeOriginalText()); }
     public boolean getReplyIncludeBodyWithPrefx() { return "includeBodyWithPrefix".equals(getReplyIncludeOriginalText()); }
     public boolean getReplyIncludeNone() { return "includeNone".equals(getReplyIncludeOriginalText()); }

@@ -100,6 +100,20 @@ function (value, event, form){
 	   searchField.invokeCallback();
 	} else {
 		this.setInstanceValue(value);
+		
+		//handle the special cases
+		//1) domain admin and admin account search option is mutual exclusive.
+		var invertValue ;
+		if (value == "TRUE") { 
+			invertValue = "FALSE";
+		}
+		//can't both be set
+		if (invertValue == "FALSE" && this.getRef () == ZaSearchOption.A_objTypeAccountDomainAdmin) {
+			this.setInstanceValue (invertValue, ZaSearchOption.A_objTypeAccountAdmin) ;
+		}else if (invertValue == "FALSE" && this.getRef () == ZaSearchOption.A_objTypeAccountAdmin) {
+			this.setInstanceValue (invertValue, ZaSearchOption.A_objTypeAccountDomainAdmin) ;
+		}
+		
 		//set the query value
 		controller.setQuery () ;
 	}
@@ -127,7 +141,8 @@ function (value, event, form) {
 			//offset:this.RESULTSPERPAGE*(this._currentPageNum-1),
 			//sortAscending:"0",
 			//limit: 20,
-			callback:callback
+			callback:callback,
+			controller: form.parent._app.getCurrentController()
 	}
 	ZaSearch.searchDirectory(searchParams);
 }
@@ -223,6 +238,23 @@ function (resp) {
 	}
 }
 
+ZaSearchBuilderController.prototype.handleSpecialQueries = 
+function () {
+	var optionViews = this.getOptionViews () ;
+	this._includeNeverLoggedInAccts = false ; //by default
+	for (var i =0 ; i < optionViews.length; i++) {
+		var optionId = optionViews[i]._optionId ;
+		var instance = optionViews[i]._localXForm.getInstance () ;
+		//handle the special case never logged in accounts
+		if (this._includeNeverLoggedInAccts == false //if it is set, then we won't change it again.
+				&& instance[ZaSearchOption.A_includeNeverLoginedAccounts]
+				&& instance[ZaSearchOption.A_includeNeverLoginedAccounts] == "TRUE" ) 
+		{
+			this._includeNeverLoggedInAccts = true ;	
+		}
+	}
+}
+
 /**
  * Set the query value based on the LDAP query language for the advanced search 
  * and the query value will be displayed on the search bar also.
@@ -230,7 +262,9 @@ function (resp) {
  */
 ZaSearchBuilderController.prototype.setQuery =
 function () {
+	this.handleSpecialQueries () ;
 	var optionViews = this.getOptionViews () ;
+		
 	this._query = null ;
 	this._searchTypes = null ;
 	//_filterObj holds all the options objects
@@ -244,6 +278,7 @@ function () {
 	for (var i =0 ; i < optionViews.length; i++) {
 		var optionId = optionViews[i]._optionId ;
 		var instance = optionViews[i]._localXForm.getInstance () ;
+		
 		var options = instance ["options"] ;
 		var filter = [];
 		for (var key in options) {
@@ -254,13 +289,23 @@ function () {
 					value = ZaUtil.getAdminServerDateTime(value, true) ;
 				}
 				if (key == ZaSearchOption.A_accountLastLoginTime_From) {
-					key = ZaAccount.A_zimbraLastLogonTimestamp ;
-					op = ">=" ;
+					if (instance[ZaSearchOption.A_enableAccountLastLoginTime_From] == "TRUE") {
+						key = ZaAccount.A_zimbraLastLogonTimestamp ;
+						op = ">=" ;
+					}else{
+						continue ;
+					}
 				}
+				
 				if (key == ZaSearchOption.A_accountLastLoginTime_To) {
-					key = ZaAccount.A_zimbraLastLogonTimestamp ;
-					op = "<=" ;
+					if (instance[ZaSearchOption.A_enableAccountLastLoginTime_To] == "TRUE") {
+						key = ZaAccount.A_zimbraLastLogonTimestamp ;
+						op = "<=" ;
+					}else{
+						continue ;
+					}
 				}
+				
 				if ((value.length > 0) 
 						|| ((value instanceof AjxVector) && (value.size() > 0)))  {
 					//TODO: handle the checkbox TRUE or FALSE value
@@ -364,7 +409,7 @@ function () {
 	
 	for (var key in this._filterObj) {
 		if (key != ZaSearchOption.OBJECT_TYPE_ID) {
-			var filter = this.getOrFilter4SameOptionType (this._filterObj [key]) ;
+			var filter = this.getOrFilter4SameOptionType (this._filterObj [key], key) ;
 			if (filter != null && filter.length > 0) {
 				query += filter ;
 				i ++ ;	
@@ -409,12 +454,22 @@ function () {
 
 //For the same option types
 ZaSearchBuilderController.prototype.getOrFilter4SameOptionType =
-function (arr) {
+function (arr, key) {
 	var query = "";
+	var numberOfFilters = 0;
+	//special cases for the Never Logged In Accounts
+	if (key == ZaSearchOption.ADVANCED_ID){ //for the advanced attribute tab
+		if (this._includeNeverLoggedInAccts) {
+			query += "(!(" + ZaAccount.A_zimbraLastLogonTimestamp + "=*))" ;
+			numberOfFilters ++ ;
+		}
+	}
+	
 	for (var i=0; i < arr.length; i++) {
 		query += this.getAndFilter4EntriesInOneOption (arr[i]);
+		numberOfFilters ++ ;
 	}
-	if (arr.length > 1) {
+	if (numberOfFilters > 1) {
 		query = "(|" + query + ")";	
 	}
 	DBG.println (AjxDebug.DBG3, "Same Option Type Filter = " + query) ;

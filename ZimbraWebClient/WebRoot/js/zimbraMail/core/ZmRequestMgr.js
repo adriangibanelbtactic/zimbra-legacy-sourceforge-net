@@ -45,7 +45,7 @@ ZmRequestMgr = function(appCtxt, controller, domain) {
 
 	ZmCsfeCommand.setServerUri(location.protocol + "//" + domain + appCtxt.get(ZmSetting.CSFE_SERVER_URI));
 	var cv = appCtxt.get(ZmSetting.CLIENT_VERSION);
-	ZmCsfeCommand.clientVersion = (cv.indexOf('@') == 0) ? "dev build" : cv;
+	ZmCsfeCommand.clientVersion = (!cv || cv.indexOf('@') == 0) ? "dev build" : cv;
 	
 	this._shell = appCtxt.getShell();
 
@@ -100,12 +100,18 @@ ZmRequestMgr.prototype.sendRequest =
 function(params) {
 	var reqId = params.reqId = ZmRequestMgr.getNextReqId();
 	var timeout = (params.timeout != null) ? params.timeout : this._stdTimeout;
-	if (timeout) timeout = timeout * 1000; // convert seconds to ms
+	if (timeout) {
+		timeout = timeout * 1000; // convert seconds to ms
+	}
 	var asyncCallback = params.asyncMode ? new AjxCallback(this, this._handleResponseSendRequest, [params]) : null;
 	var command = new ZmCsfeCommand();
 	// bug fix #10652 - dont set change token if accountName is specified
 	// (since we're executing on someone else's mbox)
-	var accountName = params.accountName || this._appCtxt.getActiveAccountName();
+	var accountName = params.accountName;
+	if (!accountName) {
+		var acct = this._appCtxt.getActiveAccount();
+		accountName = (acct && acct.id != ZmAccount.DEFAULT_ID) ? acct.name : null;
+	}
 	var changeToken = accountName ? null : this._changeToken;
 	var cmdParams = {soapDoc:params.soapDoc, accountName:accountName, useXml:this._useXml,
 					 changeToken:changeToken, asyncMode:params.asyncMode, callback:asyncCallback,
@@ -203,10 +209,13 @@ function(params, result) {
 
 	this._clearPendingRequest(params.reqId);
 
+	var methodName = params.soapDoc._methodEl.tagName;
 	if (params.asyncMode && params.callback) {
+		DBG.println(AjxDebug.DBG1, "------------------------- Running response callback for " + methodName);
 		params.callback.run(result);
 	}
 
+	DBG.println(AjxDebug.DBG1, "------------------------- Processing notifications for " + methodName);
 	this._handleNotifications(response.Header);
 
 	if (!params.asyncMode) {
@@ -255,17 +264,10 @@ function(hdr) {
 		this._changeToken = hdr.context.change.token;
 	}
 
-	// refresh block causes the overview panel to get updated
 	if (hdr && hdr.context && hdr.context.refresh) {
 		this._highestNotifySeen = 0;
-		var callback = new AjxCallback(this, this._handleHeaderResponse);
-		this._refreshHandler(hdr.context.refresh, callback);
+		this._refreshHandler(hdr.context.refresh);
 	}
-};
-
-ZmRequestMgr.prototype._handleHeaderResponse =
-function(ev) {
-	this._controller._checkOverviewLayout();
 };
 
 /**
@@ -291,18 +293,21 @@ function(hdr) {
 	}
 };
 
-// A <refresh> block is returned in a SOAP response any time the session ID has 
-// changed. It always happens on the first SOAP command (GetInfoRequest).
-// After that, it happens after a session timeout.
+/**
+ * A <refresh> block is returned in a SOAP response any time the session ID has 
+ * changed. It always happens on the first SOAP command (GetInfoRequest).
+ * After that, it happens after a session timeout. 
+ * 
+ * @param refresh	[object]	refresh block (JSON)
+ */
 ZmRequestMgr.prototype._refreshHandler =
-function(refresh, callback) {
+function(refresh) {
 	DBG.println(AjxDebug.DBG1, "Handling REFRESH");
 	this._controller.runAppFunction("_clearDeferredFolders");
 
 	var unread = {};
 	this._loadTree(ZmOrganizer.TAG, unread, refresh.tags);
 	this._loadTree(ZmOrganizer.FOLDER, unread, refresh.folder[0], "folder");
-	this._controller._needOverviewLayout = true;
 	
 	var inbox = this._appCtxt.getById(ZmFolder.ID_INBOX);
 	if (inbox) {
@@ -311,30 +316,27 @@ function(refresh, callback) {
 
 	// XXX: temp, get additional share info (see bug #4434)
 	if (refresh.folder) {
-		var respCallback = new AjxCallback(this, this._handleRefreshHandler, [refresh, callback]);
+		var respCallback = new AjxCallback(this, this._handleResponseRefreshHandler, [refresh]);
 		this._appCtxt.getFolderTree().getPermissions(null, respCallback, true);
 	} else {
-		// Run any app-requested refresh routines
-		this._controller.runAppFunction("refresh", refresh);
+		this._handleResponseRefreshHandler(refresh);
 	}
 };
 
-ZmRequestMgr.prototype._handleRefreshHandler =
-function(refresh, callback) {
+ZmRequestMgr.prototype._handleResponseRefreshHandler =
+function(refresh) {
 	// Run any app-requested refresh routines
 	this._controller.runAppFunction("refresh", refresh);
-
-	if (callback) callback.run();
 };
 
 ZmRequestMgr.prototype._loadTree =
-function(type, unread, obj, objType) {
+function(type, unread, obj, objType, account) {
 	var isTag = (type == ZmOrganizer.TAG);
-	var tree = isTag ? this._appCtxt.getTagTree() : this._appCtxt.getFolderTree();
+	var tree = this._appCtxt.getTree(type, account);
 	if (!tree) {
 		tree = isTag ? new ZmTagTree(this._appCtxt) : new ZmFolderTree(this._appCtxt);
 	}
-	isTag ? this._appCtxt.setTagTree(tree) : this._appCtxt.setFolderTree(tree);
+	this._appCtxt.setTree(type, tree, account);
 	tree.addChangeListener(this._unreadListener);
 	tree.getUnreadHash(unread);
 	tree.reset();
@@ -414,7 +416,10 @@ function(creates) {
 	
 			DBG.println(AjxDebug.DBG1, "ZmRequestMgr: handling CREATE for node: " + name);
 			if (name == "tag") {
-				this._appCtxt.getTagTree().root.notifyCreate(create);
+				var tagTree = this._appCtxt.getTagTree();
+				if (tagTree) {
+					tagTree.root.notifyCreate(create);
+				}
 			} else if (name == "folder" || name == "search") {
 				var parentId = create.l;
 				var parent = this._appCtxt.getById(parentId);

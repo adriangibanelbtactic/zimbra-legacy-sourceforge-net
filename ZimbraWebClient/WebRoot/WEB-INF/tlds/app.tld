@@ -122,6 +122,11 @@
     </tag-file>
 
     <tag-file>
+        <name>attachment</name>
+        <path>/WEB-INF/tags/compose/attachment.tag</path>
+    </tag-file>
+
+    <tag-file>
         <name>composeCheck</name>
         <path>/WEB-INF/tags/compose/composeCheck.tag</path>
     </tag-file>
@@ -129,6 +134,11 @@
     <tag-file>
         <name>attachments</name>
         <path>/WEB-INF/tags/message/attachments.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>body</name>
+        <path>/WEB-INF/tags/message/body.tag</path>
     </tag-file>
 
     <tag-file>
@@ -365,15 +375,24 @@
         <path>/WEB-INF/tags/options/optSubToolbar.tag</path>
     </tag-file>
 
+    <tag-file>
+        <name>optSignatures</name>
+        <path>/WEB-INF/tags/options/optSignatures.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>optAccounts</name>
+        <path>/WEB-INF/tags/options/optAccounts.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>optComposing</name>
+        <path>/WEB-INF/tags/options/optComposing.tag</path>
+    </tag-file>
 
     <tag-file>
         <name>optMail</name>
         <path>/WEB-INF/tags/options/optMail.tag</path>
-    </tag-file>
-
-    <tag-file>
-        <name>optMailIdentity</name>
-        <path>/WEB-INF/tags/options/optMailIdentity.tag</path>
     </tag-file>
 
     <tag-file>
@@ -412,6 +431,16 @@
     </tag-file>
 
     <tag-file>
+        <name>optShortcutSection</name>
+        <path>/WEB-INF/tags/options/optShortcutSection.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>optShortcutKey</name>
+        <path>/WEB-INF/tags/options/optShortcutKey.tag</path>
+    </tag-file>
+
+    <tag-file>
         <name>optCheckbox</name>
         <path>/WEB-INF/tags/options/optCheckbox.tag</path>
     </tag-file>
@@ -439,16 +468,6 @@
    <tag-file>
         <name>optAction</name>
         <path>/WEB-INF/tags/options/optAction.tag</path>
-    </tag-file>
-
-   <tag-file>
-        <name>optShortcutKey</name>
-        <path>/WEB-INF/tags/options/optShortcutKey.tag</path>
-    </tag-file>
-
-    <tag-file>
-        <name>optShortcutSection</name>
-        <path>/WEB-INF/tags/options/optShortcutSection.tag</path>
     </tag-file>
 
     <tag-file>
@@ -536,6 +555,65 @@
         <path>/WEB-INF/tags/keyboard.tag</path>
     </tag-file>
 
+    <tag-file>
+        <name>voiceMailListView</name>
+        <path>/WEB-INF/tags/voice/voiceMailListView.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>voiceMailListViewAction</name>
+        <path>/WEB-INF/tags/voice/voiceMailListViewAction.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>voiceFolderTree</name>
+        <path>/WEB-INF/tags/voice/voiceFolderTree.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>voiceFolder</name>
+        <path>/WEB-INF/tags/voice/voiceFolder.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>doVoiceFolderTree</name>
+        <path>/WEB-INF/tags/voice/doVoiceFolderTree.tag</path>
+    </tag-file>
+
+    <tag-file>
+         <name>voiceMailListViewToolbar</name>
+         <path>/WEB-INF/tags/voice/voiceMailListViewToolbar.tag</path>
+     </tag-file>
+
+    <tag-file>
+        <name>callListView</name>
+        <path>/WEB-INF/tags/voice/callListView.tag</path>
+    </tag-file>
+
+    <tag-file>
+         <name>callListViewToolbar</name>
+         <path>/WEB-INF/tags/voice/callListViewToolbar.tag</path>
+     </tag-file>
+
+    <tag-file>
+        <name>optVoice</name>
+        <path>/WEB-INF/tags/options/optVoice.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>optVoiceAction</name>
+        <path>/WEB-INF/tags/options/optVoiceAction.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>forwardFromRow</name>
+        <path>/WEB-INF/tags/voice/forwardFromRow.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>getCallFeatures</name>
+        <path>/WEB-INF/tags/voice/getCallFeatures.tag</path>
+    </tag-file>
 
 </taglib>
 

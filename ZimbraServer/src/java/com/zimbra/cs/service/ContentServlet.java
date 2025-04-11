@@ -74,12 +74,12 @@ import com.zimbra.common.util.ZimbraLog;
 public class ContentServlet extends ZimbraServlet {
     private static final long serialVersionUID = 6466028729668217319L;
 
-    protected static final String SERVLET_PATH = "/service/content";
+    public static final String SERVLET_PATH = "/service/content";
 
-    protected static final String PREFIX_GET = "/get";
+    public static final String PREFIX_GET = "/get";
     protected static final String PREFIX_PROXY = "/proxy";
 
-    protected static final String PARAM_MSGID = "id";
+    public static final String PARAM_MSGID = "id";
     protected static final String PARAM_UPLOAD_ID = "aid";
     protected static final String PARAM_PART = "part";
     protected static final String PARAM_FORMAT = "fmt";
@@ -234,7 +234,7 @@ public class ContentServlet extends ZimbraServlet {
         } catch (NoSuchItemException e) {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND, "no such item");
         } catch (ServiceException e) {
-            throw new ServletException(e);
+        	returnError(resp, e);
 		} finally {
             ZimbraLog.clearContext();      
         }
@@ -276,7 +276,7 @@ public class ContentServlet extends ZimbraServlet {
 
             FileUploadServlet.deleteUpload(up);
         } catch (ServiceException e) {
-            throw new ServletException(e);
+        	returnError(resp, e);
         } catch (AuthTokenException e) {
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
         }

@@ -32,7 +32,8 @@ ZmPopAccountsView = function(parent, appCtxt, controller) {
     };
 	ZmPrefListView.call(this, parent, appCtxt, controller, labels, "ZmPopAccountView");
 
-	this._title = [ZmMsg.zimbraTitle, ZmMsg.options, ZmPrefView.TAB_NAME[ZmPrefView.POP_ACCOUNTS]].join(": ");
+    var section = ZmPref.getPrefSectionWithPref(ZmSetting.ACCOUNTS);
+	this._title = [ZmMsg.zimbraTitle, ZmMsg.options, section && section.title].join(": ");
 };
 
 ZmPopAccountsView.prototype = new ZmPrefListView;
@@ -804,7 +805,7 @@ ZmPopAccountBasicPage.prototype._folderListener = function(evt) {
     var dialog = this._appCtxt.getChooseFolderDialog();
     dialog.reset();
     dialog.registerCallback(DwtDialog.OK_BUTTON, this._folderOkListener, this, [dialog]);
-    dialog.popup({treeIds:[ZmOrganizer.FOLDER], skipReadOnly:true, description:ZmMsg.popAccountFolderSelect});
+    dialog.popup({skipReadOnly:true, description:ZmMsg.popAccountFolderSelect, overviewId:this.toString()});
 };
 ZmPopAccountBasicPage.prototype._folderOkListener = function(dialog, folder) {
     dialog.popdown();

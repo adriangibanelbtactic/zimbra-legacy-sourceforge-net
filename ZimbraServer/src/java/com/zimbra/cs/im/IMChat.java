@@ -41,8 +41,10 @@ import org.xmpp.muc.LeaveRoom;
 import org.xmpp.packet.JID;
 import org.xmpp.packet.Presence;
 
+import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ClassLogger;
+import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.im.IMMessage.Lang;
 import com.zimbra.cs.im.IMMessage.TextPart;
@@ -125,8 +127,20 @@ public class IMChat extends ClassLogger {
 
     private TIMER_STATE mTimerState = TIMER_STATE.NONE;
     private FlushTask mTimer = null;
-    static final int sSaveTimerMs =  10 * 60 * 1000; // 1 min
-    static final int sCloseTimerMs = 10 * 60 * 1000; // 10 min
+    
+    private final long getCloseTimeout() {
+        long tmp = LC.zimbra_im_chat_close_time.longValue() * Constants.MILLIS_PER_SECOND;
+        if (tmp <= Constants.MILLIS_PER_MINUTE)
+            tmp = Constants.MILLIS_PER_MINUTE;
+        return tmp;
+    }
+    
+    private final long getSaveTimeout() {
+        long tmp = LC.zimbra_im_chat_flush_time.longValue() * Constants.MILLIS_PER_SECOND;
+        if (tmp <= Constants.MILLIS_PER_SECOND)
+            tmp = Constants.MILLIS_PER_SECOND;
+        return tmp;
+    }
     
     boolean isMUC() { return mIsMUC; }
     
@@ -238,7 +252,7 @@ public class IMChat extends ClassLogger {
         info("Got a presence update packet for chat: %s", pres);
         if (isMUC()) {
             if (pres.getType() == org.xmpp.packet.Presence.Type.error) {
-                addMessage(true, new IMAddr(pres.getFrom()), null, "ERROR: "+pres.toXML()); 
+                addMessage(true, new IMAddr(pres.getFrom()), null, "ERROR: "+pres.toXML(), false); 
             } else {
                 JID  fromFullJID = null;
                 IMAddr fromNick = new IMAddr(pres.getFrom().getResource());
@@ -267,7 +281,7 @@ public class IMChat extends ClassLogger {
                 }
                 String body = new Formatter().format("%s has %s the chat.",
                             pres.getFrom().getResource(), action).toString();
-                addMessage(true, new IMAddr(pres.getFrom()), null, body);
+                addMessage(true, new IMAddr(pres.getFrom()), null, body, false);
             }
         }
     }
@@ -360,15 +374,34 @@ public class IMChat extends ClassLogger {
                     debug("Message is from Conference itself"); 
                 }
             }
+
+            boolean typing = false;
             
+            // first, look for JEP-0085 events
+            org.dom4j.Element x = msg.getChildElement("composing", "http://jabber.org/protocol/chatstates");
+            if (x != null) {
+                typing = true;
+            } else if ((x = msg.getChildElement("active", "http://jabber.org/protocol/chatstates")) != null) {
+                typing = false;
+            } else {
+                // look for old-style JEP-0022 <composing>
+                if ((x = msg.getChildElement("x", "http://jabber.org/protocol/chatstates")) != null) {
+                    if (x.element("composing") != null) {
+                        typing = true;
+                    } else {
+                        typing = false;
+                    }
+                }
+            }
+
             if (mucInvitationFrom == null && 
                         (subject == null || subject.length() == 0) &&
                         (body == null || body.length() == 0)) 
             {
-                // ignore empty message for now (<composing> update!)
-                ZimbraLog.im.debug("Ignoring empty <message>  (composing update): %s"+msg.toXML());
+                IMBaseMessageNotification notification = 
+                    new IMBaseMessageNotification(msg.getFrom().toBareJID(), getThreadId(), typing, System.currentTimeMillis());  
+                mPersona.postIMNotification(notification);
             } else {
-                
                 if (mucInvitationFrom != null && mMessages.size() > 0) {
                     if (mucInvitationFrom != null) {
                         systemNotification("Automatically joining converted multi-user-chat");
@@ -379,7 +412,7 @@ public class IMChat extends ClassLogger {
                         new IMChatInviteNotification(new IMAddr(msg.getFrom().toBareJID()),
                                     getThreadId(), body);
                     mPersona.postIMNotification(inviteNot);
-                    addMessage(true, new IMAddr(messageFrom), subject, body);
+                    addMessage(true, new IMAddr(messageFrom), subject, body, typing);
                     assert(this.getHighestSeqNo() > seqNoStart);
                 }
             }
@@ -397,7 +430,7 @@ public class IMChat extends ClassLogger {
      * @param text
      */
     void systemNotification(String text) {
-        IMMessage message = new IMMessage(null, new TextPart(text));
+        IMMessage message = new IMMessage(null, new TextPart(text), false);
         
         IMMessageNotification notification = new IMMessageNotification(new IMAddr("SYSTEM"), getThreadId(), message, 0);
         mPersona.postIMNotification(notification);
@@ -416,9 +449,9 @@ public class IMChat extends ClassLogger {
     {
         IMAddr fromAddr = mPersona.getAddr();
         message.setFrom(fromAddr);
-	message.setTo(toAddr);
+        message.setTo(toAddr);
         addMessage(true, message);
-
+        
         org.xmpp.packet.Message xmppMsg = new org.xmpp.packet.Message();
         xmppMsg.setFrom(fromAddr.makeFullJID());
         xmppMsg.setTo(mDestJid);
@@ -434,6 +467,20 @@ public class IMChat extends ClassLogger {
 
         if (message.getSubject(Lang.DEFAULT) != null)
             xmppMsg.setSubject(message.getSubject(Lang.DEFAULT).getPlainText());
+        
+        if (message.isTyping()) {
+            // xep-0085: the "right way" to do it
+            xmppMsg.addChildElement("composing", "http://jabber.org/protocol/chatstates");
+            
+            // xep-0022: the old way that is actually supported by clients 
+            //    <x xmlns='jabber:x:event'>
+            //       <composing/>
+            //       <id>message22</id>
+            //    </x>            
+            org.dom4j.Element x = xmppMsg.addChildElement("x", "jabber:x:event");
+            x.addElement("composing");
+            x.addElement("id").addText("composing");
+        }
 
         mPersona.xmppRoute(xmppMsg);
     }
@@ -557,10 +604,10 @@ public class IMChat extends ClassLogger {
      * 
      * @param msg
      */
-    private void addMessage(boolean notify, IMAddr from, String subject, String body)
+    private void addMessage(boolean notify, IMAddr from, String subject, String body, boolean isTyping)
     {
         IMMessage immsg = new IMMessage(subject==null?null:new TextPart(subject),
-                    body==null?null:new TextPart(body));
+                    body==null?null:new TextPart(body), isTyping);
         immsg.setFrom(from);
         addMessage(notify, immsg);
     }
@@ -669,7 +716,7 @@ public class IMChat extends ClassLogger {
             mTimer.cancel();
         }
         mTimer = new FlushTask();
-        Zimbra.sTimer.schedule(mTimer, sSaveTimerMs);
+        Zimbra.sTimer.schedule(mTimer, getSaveTimeout());
     }
 
     private void startCloseTimer() {
@@ -678,7 +725,7 @@ public class IMChat extends ClassLogger {
             mTimer.cancel();
         }
         mTimer = new FlushTask();
-        Zimbra.sTimer.schedule(mTimer, sCloseTimerMs);
+        Zimbra.sTimer.schedule(mTimer, getCloseTimeout());
     }
 
 

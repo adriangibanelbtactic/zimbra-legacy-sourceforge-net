@@ -19,7 +19,7 @@
             <c:if test="${mailbox.features.skinChange}">
                 <zm:pref name="zimbraPrefSkin" value="${param.zimbraPrefSkin}"/>
             </c:if>
-            <zm:pref name="zimbraPrefTimeZoneId" value="${param.zimbraPrefTimeZoneId}"/>            
+            <zm:pref name="zimbraPrefTimeZoneId" value="${param.zimbraPrefTimeZoneId}"/>
         </c:when>
         <%-- MAIL --%>
         <c:when test="${selected eq 'mail'}">
@@ -32,8 +32,6 @@
                 <zm:pref name="zimbraPrefMailInitialSearch" value="${param.zimbraPrefMailInitialSearch}"/>
             </c:if>
 
-            <zm:pref name="zimbraPrefSaveToSent" value="${param.zimbraPrefSaveToSent eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
-
             <c:if test="${mailbox.features.outOfOfficeReply}">
                 <zm:pref name="zimbraPrefOutOfOfficeReplyEnabled" value="${param.zimbraPrefOutOfOfficeReplyEnabled eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
                 <zm:pref name="zimbraPrefOutOfOfficeReply" value="${param.zimbraPrefOutOfOfficeReply}"/>
@@ -45,26 +43,34 @@
             </c:if>
 
             <c:if test="${mailbox.features.mailForwarding}">
-                <zm:pref name="zimbraPrefMailForwardingAddress" value="${param.zimbraPrefMailForwardingAddress}"/>
+                <zm:pref name="zimbraPrefMailForwardingAddress" value="${param.FORWARDCHECKED eq 'TRUE' ? param.zimbraPrefMailForwardingAddress : ''}"/>
                 <zm:pref name="zimbraPrefMailLocalDeliveryDisabled" value="${param.zimbraPrefMailLocalDeliveryDisabled eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
             </c:if>
 
             <zm:pref name="zimbraPrefMessageViewHtmlPreferred" value="${param.zimbraPrefMessageViewHtmlPreferred eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
             <zm:pref name="zimbraPrefDedupeMessagesSentToSelf" value="${param.zimbraPrefDedupeMessagesSentToSelf}"/>
         </c:when>
-        <%-- MAIL IDENTITY --%>
-        <c:when test="${selected eq 'identity'}">
+        <%-- COMPOSING --%>
+        <c:when test="${selected eq 'composing'}">
+            <zm:pref name="zimbraPrefReplyIncludeOriginalText" value="${param.zimbraPrefReplyIncludeOriginalText}"/>
+            <zm:pref name="zimbraPrefForwardIncludeOriginalText" value="${param.zimbraPrefForwardIncludeOriginalText}"/>
+            <zm:pref name="zimbraPrefForwardReplyPrefixChar" value="${param.zimbraPrefForwardReplyPrefixChar}"/>
+            <zm:pref name="zimbraPrefSaveToSent" value="${param.zimbraPrefSaveToSent eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
+        </c:when>
+        <%-- SIGNATURES --%>
+        <c:when test="${selected eq 'signatures'}">
+            <zm:pref name="zimbraPrefMailSignatureStyle" value="${param.zimbraPrefMailSignatureStyle}"/>
+            <zm:pref name="zimbraPrefMailSignatureEnabled" value="${param.zimbraPrefMailSignatureEnabled eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
+        </c:when>
+        <%-- ACCOUNTS --%>
+        <c:when test="${selected eq 'accounts'}">
+            <zm:pref name="zimbraPrefIdentityName" value="${param.zimbraPrefIdentityName}"/>
             <zm:pref name="zimbraPrefFromDisplay" value="${param.zimbraPrefFromDisplay}"/>
             <zm:pref name="zimbraPrefFromAddress" value="${param.zimbraPrefFromAddress}"/>
             <zm:pref name="zimbraPrefReplyToDisplay" value="${param.zimbraPrefReplyToDisplay}"/>
             <zm:pref name="zimbraPrefReplyToAddress" value="${param.zimbraPrefReplyToAddress}"/>
             <zm:pref name="zimbraPrefReplyToEnabled" value="${param.zimbraPrefReplyToEnabled eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
-            <zm:pref name="zimbraPrefMailSignature" value="${param.zimbraPrefMailSignature}"/>            
-            <zm:pref name="zimbraPrefMailSignatureStyle" value="${param.zimbraPrefMailSignatureStyle}"/>
-            <zm:pref name="zimbraPrefMailSignatureEnabled" value="${param.zimbraPrefMailSignatureEnabled eq 'TRUE' ? 'TRUE' : 'FALSE'}"/>
-            <zm:pref name="zimbraPrefReplyIncludeOriginalText" value="${param.zimbraPrefReplyIncludeOriginalText}"/>
-            <zm:pref name="zimbraPrefForwardIncludeOriginalText" value="${param.zimbraPrefForwardIncludeOriginalText}"/>
-            <zm:pref name="zimbraPrefForwardReplyPrefixChar" value="${param.zimbraPrefForwardReplyPrefixChar}"/>
+            <zm:pref name="zimbraPrefDefaultSignatureId" value="${param.zimbraPrefDefaultSignatureId}"/>            
         </c:when>
         <%-- ADDRESS BOOK --%>
         <c:when test="${selected eq 'addressbook'}">
@@ -82,8 +88,56 @@
     </c:choose>
 </zm:modifyPrefs>
 
+<c:if test="${selected eq 'signatures'}">
+    <c:forEach var="i" begin="0" end="${param.numSignatures}">
+        <c:set var="origSignatureNameKey" value="origSignatureName${i}"/>
+        <c:set var="signatureNameKey" value="signatureName${i}"/>
+        <c:set var="origSignatureValueKey" value="origSignatureValue${i}"/>
+        <c:set var="signatureValueKey" value="signatureValue${i}"/>
+        <c:if test="${(param[origSignatureNameKey] ne param[signatureNameKey]) or
+                (param[origSignatureValueKey] ne param[signtureValueKey])}">
+            <c:set var="modSignatureWarning" value="${true}" scope="request"/>
+            <c:choose>
+                <c:when test="${empty param[signatureNameKey]}">
+                    <app:status style="Warning"><fmt:message key="optionsNoSignatureName"/></app:status>
+                </c:when>
+                <c:when test="${empty param[signatureValueKey]}">
+                    <app:status style="Warning"><fmt:message key="optionsNoSignatureValue"/></app:status>
+                </c:when>
+                <c:otherwise>
+                    <c:set var="signatureIdKey" value="signatureId${i}"/>
+                    <zm:modifySiganture id="${param[signatureIdKey]}"
+                                        name="${param[signatureNameKey]}" value="${param[signatureValueKey]}"/>
+                    <c:set var="signatureUpdated" value="${true}"/>
+                    <c:set var="modSignatureWarning" value="${false}" scope="request"/>
+                </c:otherwise>
+            </c:choose>
+        </c:if>
+    </c:forEach>
+</c:if>
+
+<c:if test="${selected eq 'signatures' and not empty param.newSignature}">
+    <c:set var="newSignatureWarning" value="${true}" scope="request"/>
+    <c:choose>
+        <c:when test="${empty param.newSignatureName}">
+            <app:status style="Warning"><fmt:message key="optionsNoSignatureName"/></app:status>
+        </c:when>
+        <c:when test="${empty param.newSignatureValue}">
+            <app:status style="Warning"><fmt:message key="optionsNoSignatureValue"/></app:status>
+        </c:when>
+        <c:otherwise>
+            <zm:createSiganture var="sigId" name="${param.newSignatureName}" value="${param.newSignatureValue}"/>
+            <c:set var="updated" value="${true}"/>
+            <c:set var="newSignatureWarning" value="${false}" scope="request"/>
+        </c:otherwise>
+    </c:choose>
+</c:if>
+
 <c:choose>
-    <c:when test="${updated}">
+    <c:when test="${newSignatureWarning or modSignatureWarning}">
+        <%-- do nothing --%>
+    </c:when>
+    <c:when test="${updated or signatureUpdated}">
         <zm:getMailbox var="mailbox" refreshaccount="${true}"/>
         <app:status><fmt:message key="optionsSaved"/></app:status>
     </c:when>

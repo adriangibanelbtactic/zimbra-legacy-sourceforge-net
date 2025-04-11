@@ -37,11 +37,12 @@ ZmContactsHelper = function() {};
  * the source list view with the results.
  *
  * @param obj			[object]		object that is doing the search
- * @param columnItem	[constant]		ID of column to sort by
- * @param ascending		[boolean]		if true, sort in ascending order
+ * @param ascending		[boolean]*		if true, sort in ascending order
+ * @param respCallback	[AjxCallback]*	callback to call once response comes back from server
+ * @param errorCallback	[AjxCallback]*	callback to call if error returned from server
  */
 ZmContactsHelper.search =
-function(obj, columnItem, ascending, respCallback, errorCallback) {
+function(obj, ascending, respCallback, errorCallback) {
 	if (obj._searchButton) {
 		obj._searchButton.setEnabled(false);
 	}
@@ -90,7 +91,7 @@ function(list, contact, addr, isGroup) {
 
 // The items are AjxEmailAddress objects
 ZmContactsHelper._getEmailField =
-function(html, idx, item, field, colIdx, params) {
+function(html, idx, item, field, colIdx) {
 	if (field == ZmItem.F_TYPE) {
 		html[idx++] = AjxImg.getImageHtml(item.icon);
 	} else if (field == ZmItem.F_NAME) {

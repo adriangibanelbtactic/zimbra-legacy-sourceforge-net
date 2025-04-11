@@ -61,6 +61,7 @@ my %startorder = (
 	"snmp" 		=> 6,
 	"spell" 	=> 7,
 	"mta" 		=> 8,
+	"stats"		=> 9,
 );
 
 my %allservices = ( 
@@ -72,7 +73,8 @@ my %allservices = (
 	"snmp" => "/opt/zimbra/bin/zmswatchctl", 
 	"ldap" => "/opt/zimbra/bin/ldap",
 	"spell" => "/opt/zimbra/bin/zmspellctl",
-	"imapproxy" => "/opt/zimbra/bin/zmperditionctl",
+	"imapproxy" => "/opt/zimbra/bin/zmproxyctl",
+	"stats" => "/opt/zimbra/bin/zmstatctl",
 );
 
 my %rewrites = ( 
@@ -80,7 +82,7 @@ my %rewrites = (
 	"antispam" => "antispam", 
 	"mta" => "antispam antivirus mta sasl", 
 	"mailbox" => "webxml mailbox", 
-	"perdition" => "perdition",
+	"proxy" => "proxy",
 );
 
 my %GlobalOpts = ();

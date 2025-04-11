@@ -75,13 +75,16 @@ ZmApptComposeView = function(parent, className, calApp, controller) {
 	
 	this._msgDialog = this._appCtxt.getMsgDialog();
 
-	this._tabIds = [ZmApptComposeView.TAB_APPOINTMENT, ZmApptComposeView.TAB_SCHEDULE];
-	if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED)) {
-		this._tabIds.push(ZmApptComposeView.TAB_ATTENDEES);
-	}
-	if (this._appCtxt.get(ZmSetting.GAL_ENABLED)) {
-		this._tabIds.push(ZmApptComposeView.TAB_LOCATIONS);
-		this._tabIds.push(ZmApptComposeView.TAB_EQUIPMENT);
+	this._tabIds = [ZmApptComposeView.TAB_APPOINTMENT];
+	if (this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED)) {
+		this._tabIds.push(ZmApptComposeView.TAB_SCHEDULE);
+		if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED)) {
+			this._tabIds.push(ZmApptComposeView.TAB_ATTENDEES);
+		}
+		if (this._appCtxt.get(ZmSetting.GAL_ENABLED)) {
+			this._tabIds.push(ZmApptComposeView.TAB_LOCATIONS);
+			this._tabIds.push(ZmApptComposeView.TAB_EQUIPMENT);
+		}
 	}
 
 	this._initialize();
@@ -149,9 +152,6 @@ function(appt, mode, isDirty) {
 		button.setImage("Appointment");
 	}
 
-	// always switch to appointment tab
-	this.switchToTab(this._apptTabKey);
-
 	for (var i = 0; i < this._tabIds.length; i++) {
 		var id = this._tabIds[i];
 		var tabPage = this._tabPages[id];
@@ -159,6 +159,9 @@ function(appt, mode, isDirty) {
 			tabPage.initialize(appt, mode, isDirty);
 		}
 	}
+	
+	// always switch to appointment tab
+	this.switchToTab(this._apptTabKey);
 };
 
 ZmApptComposeView.prototype.cleanup = 

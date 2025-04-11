@@ -76,7 +76,8 @@ ZmPageEditView.prototype._setResponse = function(page) {
 	var appCtxt = this._appCtxt;
 
 	var content;
-	if (page.folderId == ZmFolder.ID_ROOT) {
+	var rootId = ZmOrganizer.getSystemId(this._appCtxt, ZmOrganizer.ID_ROOT);
+	if (page.folderId == rootId) {
 		content = this._appCtxt.getById(page.folderId).name;
 	}
 	else {
@@ -86,11 +87,11 @@ ZmPageEditView.prototype._setResponse = function(page) {
 		var a = [ ];
 
 		var folderId = page.folderId;
-		while (folderId != ZmFolder.ID_ROOT) {
+		while (folderId != rootId) {
 			var notebook = this._appCtxt.getById(folderId);
 			a.unshift(ZmWikletProcessor.process(appCtxt, notebook, iconAndName));
 			folderId = notebook.parent.id;
-			if (folderId != ZmFolder.ID_ROOT) {
+			if (folderId != rootId) {
 				a.unshift(separator);
 			}
 		}
@@ -559,6 +560,12 @@ ZmPageEditor.prototype._createToolBar2 = function(parent) {
 	button.setImage("URL");
 	button.setToolTipContent(ZmMsg.insertLink);
 	button.addSelectionListener(new AjxListener(this, this._insertLinkListener));
+	
+	button = new DwtToolBarButton(this._toolbar2, null);
+	button.setImage("FindReplace");
+	button.setToolTipContent(ZmMsg.findNReplaceTitle);
+	button.addSelectionListener(new AjxListener(this, this._findReplaceListener));
+	
 };
 
 /*** TODO: Add this back later...
@@ -654,7 +661,8 @@ function(ev) {
 };
 
 ZmPageEditor.prototype._insertLinkListener = function(event) {
-	this._popupLinkPropsDialog();
+	var text = this._getSelectedText();
+	this._popupLinkPropsDialog(null,null,text);
 };
 
 // @param afterTarget	true: insert link after target, false: replace target with link
@@ -779,4 +787,22 @@ function() {
 	ZmHtmlEditor.prototype._onContentInitialized.call(this); // otherwise ALE objects won't be deserialized
 	this.parent._onEditorContentInitialized();	
 	this._resetFormatControls();
+	var action = new AjxTimedAction(this, this.focus);
+	AjxTimedAction.scheduleAction(action, DwtHtmlEditor._INITDELAY + 3);
+};
+
+ZmPageEditor.prototype._findReplaceListener =
+function(){	
+	this.focus();	
+	var sel_findnreplace = this._getSelection();
+	this.range_findnreplace = this._createRange(sel_findnreplace);
+	this._popupReplaceDialog();				
+};
+
+ZmPageEditor.prototype._popupReplaceDialog = function(target, url, text) {
+	var editorInfo = {
+		document: this._getIframeDoc(),editor: this
+	}
+	var dialog = this._appCtxt.getReplaceDialog();
+	dialog.popup(editorInfo);
 };

@@ -56,6 +56,10 @@ class YMSGTester implements YahooEventListener {
         mQuit = true;
     }
     
+    public void connectedFromOtherLocation(YahooSession session) {
+        System.out.println("You have connected from another location: "+session.toString());
+    }
+    
     public void buddyAddedUs(YahooSession session, String ourId, String theirId, String msg) {
         System.out.println("Remote user "+theirId+" added us ("+ourId+") to their buddy list, with msg \""+
             msg+"\"");
@@ -98,6 +102,12 @@ class YMSGTester implements YahooEventListener {
     public void buddyStatusChanged(YahooSession session, YahooBuddy buddy) {
         System.out.println("BuddyStatusChanged: "+buddy.toString());
     }
+    
+    
+    public synchronized void receivedTypingStatus(YahooSession session, String fromId, boolean isTyping, YahooBuddy buddyOrNull) {
+        System.out.println("ReceivedTypingStatus: "+fromId+(isTyping ? " TYPING" : "NOT TYPING")+" "+(buddyOrNull != null ? buddyOrNull.toString() : ""));
+    }
+    
 
     public void loggedOn(YahooSession session) {
         System.out.println("LoggedOn");
@@ -306,7 +316,7 @@ class YMSGTester implements YahooEventListener {
             } catch (RuntimeIOException e) {
                 System.err.println( "Failed to connect." );
                 e.printStackTrace();
-            } catch (InterruptedException e) { }
+            }
         }
         
         tester.run();

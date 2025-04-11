@@ -29,15 +29,6 @@
  */
 package com.zimbra.cs.account;
 
-import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-
-import javax.mail.internet.InternetAddress;
-
 import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ZimbraLog;
@@ -45,6 +36,14 @@ import com.zimbra.cs.account.ldap.LdapProvisioning;
 import com.zimbra.cs.mime.MimeTypeInfo;
 import com.zimbra.cs.util.AccountUtil;
 import com.zimbra.cs.util.L10nUtil;
+
+import javax.mail.internet.InternetAddress;
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * @author schemers
@@ -99,7 +98,14 @@ public abstract class Provisioning {
      * zimbraAuthMech type of "ad" means use configured LDAP attrs
      * (zimbraAuthLdapURL, zimbraAuthLdapBindDn) for use with ActiveDirectory
      */
-    public static final String AM_AD = "ad";    
+    public static final String AM_AD = "ad";
+    
+    /**
+     * zimbraAuthMech type of "custom:{handler}" means use registered extension
+     * of ZimbraCustomAuth.authenticate() method 
+     * see customauth.txt
+     */
+    public static final String AM_CUSTOM = "custom:";  
     
     /**
      * the account is active, and allows logins, etc.
@@ -302,7 +308,7 @@ public abstract class Provisioning {
     public static final String A_zimbraAuthTokenKey = "zimbraAuthTokenKey";
 
     /**
-     * auth mech to use. should be AM_ZIMBRA or AM_LDAP. 
+     * auth mech to use. 
      */
     public static final String A_zimbraAuthMech = "zimbraAuthMech";
 
@@ -373,6 +379,8 @@ public abstract class Provisioning {
     public static final String A_zimbraLocale = "zimbraLocale";
     
     public static final String A_zimbraPrefLocale = "zimbraPrefLocale";
+    
+    public static final String A_zimbraAvailableLocale = "zimbraAvailableLocale";
     
     /**
      * compat mode for calendar
@@ -535,6 +543,7 @@ public abstract class Provisioning {
     
     public static final String A_zimbraMessageIdDedupeCacheSize = "zimbraMessageIdDedupeCacheSize";
 
+    public static final String A_zimbraMtaAuthTarget = "zimbraMtaAuthTarget";
     public static final String A_zimbraMtaAuthEnabled = "zimbraMtaAuthEnabled";
     public static final String A_zimbraMtaAuthHost = "zimbraMtaAuthHost";
     public static final String A_zimbraMtaAuthURL = "zimbraMtaAuthURL";
@@ -579,12 +588,15 @@ public abstract class Provisioning {
     public static final String A_zimbraPrefShowSearchString = "zimbraPrefShowSearchString";
 
     public static final String A_zimbraPrefShowFragments = "zimbraPrefShowFragments";
+    
+    public static final String A_zimbraPrefShowSelectionCheckbox = "zimbraPrefShowSelectionCheckbox";
 
     public static final String A_zimbraPrefMessageViewHtmlPreferred = "zimbraPrefMessageViewHtmlPreferred";
 
     public static final String A_zimbraPrefAutoAddAddressEnabled = "zimbraPrefAutoAddAddressEnabled";
 
-    public static final String A_zimbraPrefContactsPerPage = "zimbraPrefContactsPerPage";    
+    public static final String A_zimbraPrefContactsPerPage = "zimbraPrefContactsPerPage";   
+    
 
 
     /**
@@ -624,6 +636,8 @@ public abstract class Provisioning {
 
     public static final String A_zimbraPrefReadingPaneEnabled = "zimbraPrefReadingPaneEnabled";
 
+    public static final String A_zimbraPrefShortcuts = "zimbraPrefShortcuts";
+
     public static final String A_zimbraPrefUseKeyboardShortcuts = "zimbraPrefUseKeyboardShortcuts";
 
     public static final String A_zimbraPrefNewMailNotificationEnabled = "zimbraPrefNewMailNotificationEnabled";
@@ -639,10 +653,16 @@ public abstract class Provisioning {
     public static final String A_zimbraAllowAnyFromAddress = "zimbraAllowAnyFromAddress";
 
     public static final String A_zimbraAllowFromAddress = "zimbraAllowFromAddress";
+    
+    public static final String A_zimbraFeatureMailEnabled = "zimbraFeatureMailEnabled";
 
     public static final String A_zimbraFeatureContactsEnabled = "zimbraFeatureContactsEnabled";
 
+    public static final String A_zimbraFeatureVoiceEnabled = "zimbraFeatureVoiceEnabled";
+    
     public static final String A_zimbraFeatureCalendarEnabled = "zimbraFeatureCalendarEnabled";
+    
+    public static final String A_zimbraFeatureGroupCalendarEnabled = "zimbraFeatureGroupCalendarEnabled";
 
     public static final String A_zimbraFeatureTasksEnabled = "zimbraFeatureTasksEnabled";
 
@@ -681,10 +701,16 @@ public abstract class Provisioning {
     public static final String A_zimbraFeatureNewMailNotificationEnabled = "zimbraFeatureNewMailNotificationEnabled";
 
     public static final String A_zimbraFeatureIdentitiesEnabled = "zimbraFeatureIdentitiesEnabled";
+    
+    public static final String A_zimbraFeatureSignaturesEnabled = "zimbraFeatureSignaturesEnabled";
 
     public static final String A_zimbraFeaturePop3DataSourceEnabled = "zimbraFeaturePop3DataSourceEnabled";
     
     public static final String A_zimbraFeatureShortcutAliasesEnabled = "zimbraFeatureShortcutAliasesEnabled";
+    
+    public static final String A_zimbraFeatureBriefcasesEnabled = "zimbraFeatureBriefcasesEnabled";
+    
+    public static final String A_zimbraFeatureFlaggingEnabled = "zimbraFeatureFlaggingEnabled";
 
     /**
      * administrative notes for an entry.
@@ -848,6 +874,7 @@ public abstract class Provisioning {
      * the mail .signature value
      */
     public static final String A_zimbraPrefMailSignature = "zimbraPrefMailSignature";
+    public static final String A_zimbraPrefMailSignatureHTML = "zimbraPrefMailSignatureHTML";
     public static final String A_zimbraMailSignatureMaxLength = "zimbraMailSignatureMaxLength";
     
     /**
@@ -881,7 +908,12 @@ public abstract class Provisioning {
     public static final String A_zimbraPrefIdentityId = "zimbraPrefIdentityId";
     public static final String A_zimbraPrefIdentityName = "zimbraPrefIdentityName";
     
+    public static final String A_zimbraPrefDefaultSignatureId = "zimbraPrefDefaultSignatureId";
+    public static final String A_zimbraSignatureId = "zimbraSignatureId";
+    public static final String A_zimbraSignatureName = "zimbraSignatureName";
+    
     public static final String DEFAULT_IDENTITY_NAME = "DEFAULT";
+    // public static final String DEFAULT_SIGNATURE_NAME = "DEFAULT";
     
     /**
      * delete appointment invite (from our inbox) when we've replied to it?
@@ -965,7 +997,8 @@ public abstract class Provisioning {
     public static final String A_zimbraMailSpamLifetime = "zimbraMailSpamLifetime";
     public static final String A_zimbraMailMessageLifetime = "zimbraMailMessageLifetime";
     public static final String A_zimbraContactMaxNumEntries = "zimbraContactMaxNumEntries";
-    public static final String A_zimbraIdentityMaxNumEntries = "zimbraIdentityMaxNumEntries";    
+    public static final String A_zimbraIdentityMaxNumEntries = "zimbraIdentityMaxNumEntries";
+    public static final String A_zimbraSignatureMaxNumEntries = "zimbraSignatureMaxNumEntries";
     public static final String A_zimbraAuthTokenLifetime = "zimbraAuthTokenLifetime";
     public static final String A_zimbraAdminAuthTokenLifetime = "zimbraAdminAuthTokenLifetime";
     public static final String A_zimbraMailMinPollingInterval =  "zimbraMailMinPollingInterval";
@@ -984,7 +1017,9 @@ public abstract class Provisioning {
     public static final String A_zimbraAttachmentsScanEnabled = "zimbraAttachmentsScanEnabled";
     public static final String A_zimbraAttachmentsScanClass = "zimbraAttachmentsScanClass";
     public static final String A_zimbraAttachmentsScanURL = "zimbraAttachmentsScanURL";
-    
+
+    public static final String A_zimbraClusterType = "zimbraClusterType";
+
     public static final String A_zimbraServiceHostname = "zimbraServiceHostname";
 
     public static final String A_zimbraRedoLogEnabled            = "zimbraRedoLogEnabled";
@@ -1030,6 +1065,7 @@ public abstract class Provisioning {
     public static final String A_zimbraMimeHandlerClass         = "zimbraMimeHandlerClass";
     public static final String A_zimbraMimeHandlerExtension     = "zimbraMimeHandlerExtension";
     public static final String A_zimbraMimeFileExtension        = "zimbraMimeFileExtension";
+    public static final String A_zimbraMimePriority             = "zimbraMimePriority";
     
     /**
      * Attributes for object type handlers.
@@ -1131,6 +1167,7 @@ public abstract class Provisioning {
     public static final String A_zimbraNotebookFolderCacheSize = "zimbraNotebookFolderCacheSize";
     public static final String A_zimbraNotebookMaxCachedTemplatesPerFolder = "zimbraNotebookMaxCachedTemplatesPerFolder";
     public static final String A_zimbraIsSystemResource        = "zimbraIsSystemResource";
+    public static final String A_zimbraNotebookMaxNumRevisions = "zimbraNotebookMaxNumRevisions";
     
     /*
      * data sources
@@ -1147,6 +1184,14 @@ public abstract class Provisioning {
     public static final String A_zimbraDataSourceMaxNumEntries = "zimbraDataSourceMaxNumEntries";    
     public static final String A_zimbraDataSourceLeaveOnServer = "zimbraDataSourceLeaveOnServer";
     public static final String A_zimbraDataSourcePollingInterval = "zimbraDataSourcePollingInterval";
+    public static final String A_zimbraDataSourceEmailAddress = "zimbraDataSourceEmailAddress";
+    public static final String A_zimbraDataSourceUseAddressForForwardReply = "zimbraDataSourceUseAddressForForwardReply";
+    
+    // Quota warning
+    public static final String A_zimbraQuotaWarnPercent = "zimbraQuotaWarnPercent";
+    public static final String A_zimbraQuotaLastWarnTime = "zimbraQuotaLastWarnTime";
+    public static final String A_zimbraQuotaWarnInterval = "zimbraQuotaWarnInterval";
+    public static final String A_zimbraQuotaWarnMessage = "zimbraQuotaWarnMessage";
     
     // Server/globalconfig
     public static final String A_zimbraDataSourceNumThreads = "zimbraDataSourceNumThreads";
@@ -1192,22 +1237,54 @@ public abstract class Provisioning {
     public static final String A_zimbraBackupReportEmailRecipients = "zimbraBackupReportEmailRecipients";
     public static final String A_zimbraBackupReportEmailSender = "zimbraBackupReportEmailSender";
     public static final String A_zimbraBackupReportEmailSubjectPrefix = "zimbraBackupReportEmailSubjectPrefix";
-    
+    public static final String A_zimbraBackupMode = "zimbraBackupMode";
+    public static final String A_zimbraBackupAutoGroupedInterval = "zimbraBackupAutoGroupedInterval";
+    public static final String A_zimbraBackupAutoGroupedNumGroups = "zimbraBackupAutoGroupedNumGroups";
+    public static final String A_zimbraBackupAutoGroupedThrottled = "zimbraBackupAutoGroupedThrottled";
+
     /*
      * IM
      */
     public static final String A_zimbraPrefIMFlashIcon      = "zimbraPrefIMFlashIcon";
     public static final String A_zimbraPrefIMNotifyPresence = "zimbraPrefIMNotifyPresence";
     public static final String A_zimbraPrefIMNotifyStatus   = "zimbraPrefIMNotifyStatus";
+    public static final String A_zimbraPrefIMAutoLogin      = "zimbraPrefIMAutoLogin";
+    public static final String A_zimbraPrefIMInstantNotify  = "zimbraPrefIMInstantNotify";
     
-
     /*
      * spam report headers
      */
     public static final String A_zimbraSpamReportSenderHeader = "zimbraSpamReportSenderHeader";
     public static final String A_zimbraSpamReportTypeHeader   = "zimbraSpamReportTypeHeader";
     public static final String A_zimbraSpamReportTypeSpam     = "zimbraSpamReportTypeSpam";
-    public static final String A_zimbraSpamReportTypeHam     = "zimbraSpamReportTypeHam";
+    public static final String A_zimbraSpamReportTypeHam      = "zimbraSpamReportTypeHam";
+    
+    /*
+     * proxy
+     */
+    
+    public static final String A_zimbraReverseProxyLookupTarget         = "zimbraReverseProxyLookupTarget";
+    
+    public static final String A_zimbraReverseProxyMailHostQuery        = "zimbraReverseProxyMailHostQuery";
+    public static final String A_zimbraReverseProxyMailHostSearchBase   = "zimbraReverseProxyMailHostSearchBase";
+    public static final String A_zimbraReverseProxyMailHostAttribute    = "zimbraReverseProxyMailHostAttribute";
+    public static final String A_zimbraReverseProxyPortQuery            = "zimbraReverseProxyPortQuery";
+    public static final String A_zimbraReverseProxyPortSearchBase       = "zimbraReverseProxyPortSearchBase";
+    public static final String A_zimbraReverseProxyPop3PortAttribute    = "zimbraReverseProxyPop3PortAttribute";
+    public static final String A_zimbraReverseProxyPop3SSLPortAttribute = "zimbraReverseProxyPop3SSLPortAttribute";
+    public static final String A_zimbraReverseProxyImapPortAttribute    = "zimbraReverseProxyImapPortAttribute";
+    public static final String A_zimbraReverseProxyImapSSLPortAttribute = "zimbraReverseProxyImapSSLPortAttribute";
+
+    /*
+     * whether to use <> or account's real address for out of office 
+     * and new mail notifications 
+     */
+    public static final String A_zimbraAutoSubmittedNullReturnPath = "zimbraAutoSubmittedNullReturnPath";    
+
+    /*
+     * Cross mailbox search
+     */
+    public static final String A_zimbraExcludeFromCMBSearch = "zimbraExcludeFromCMBSearch";  
     
     private static Provisioning sProvisioning;
 
@@ -1358,9 +1435,9 @@ public abstract class Provisioning {
 
     public abstract Config getConfig() throws ServiceException;
     
-    public abstract MimeTypeInfo getMimeType(String name) throws ServiceException;
+    public abstract List<MimeTypeInfo> getMimeTypes(String mimeType) throws ServiceException;
     
-    public abstract MimeTypeInfo getMimeTypeByExtension(String ext) throws ServiceException;
+    public abstract List<MimeTypeInfo> getMimeTypesByExtension(String ext) throws ServiceException;
     
     public abstract List<Zimlet> getObjectTypes() throws ServiceException;
     
@@ -1803,13 +1880,14 @@ public abstract class Provisioning {
 
     public static class SearchOptions {
         private Domain mDomain;
+        private String mBase;
         private String mQuery;
         private String mReturnAttrs[];
         private String mSortAttr;
         private boolean mSortAscending;
         private int mFlags;
         private int mMaxResults;
-
+        
 
         public Domain getDomain() {
             return mDomain;
@@ -1817,6 +1895,14 @@ public abstract class Provisioning {
 
         public void setDomain(Domain domain) {
             mDomain = domain;
+        }
+        
+        public String getBase() {
+            return mBase;
+        }
+
+        public void setBase(String base) {
+            mBase = base;
         }
 
         public String getQuery() {
@@ -1982,7 +2068,7 @@ public abstract class Provisioning {
     }
     
     public abstract Identity createIdentity(Account account, String identityName, Map<String, Object> attrs) throws ServiceException;
-    
+
     public abstract void modifyIdentity(Account account, String identityName, Map<String, Object> attrs) throws ServiceException;
     
     public abstract void deleteIdentity(Account account, String identityName) throws ServiceException;
@@ -1990,6 +2076,30 @@ public abstract class Provisioning {
     public abstract List<Identity> getAllIdentities(Account account) throws ServiceException;
     
     public abstract Identity get(Account account, IdentityBy keyType, String key) throws ServiceException;
+    
+    // signatures
+    public static enum SignatureBy {
+        
+        id, name;
+        
+        public static SignatureBy fromString(String s) throws ServiceException {
+            try {
+                return SignatureBy.valueOf(s);
+            } catch (IllegalArgumentException e) {
+                throw ServiceException.INVALID_REQUEST("unknown key: "+s, e);
+            }
+        }
+    }
+    
+    public abstract Signature createSignature(Account account, String signatureName, Map<String, Object> attrs) throws ServiceException;
+    
+    public abstract void modifySignature(Account account, String signatureId, Map<String, Object> attrs) throws ServiceException;
+    
+    public abstract void deleteSignature(Account account, String signatureId) throws ServiceException;
+    
+    public abstract List<Signature> getAllSignatures(Account account) throws ServiceException;
+    
+    public abstract Signature get(Account account, SignatureBy keyType, String key) throws ServiceException;
     
     // data sources
     public static enum DataSourceBy {
@@ -2015,7 +2125,7 @@ public abstract class Provisioning {
     public abstract List<DataSource> getAllDataSources(Account account) throws ServiceException;
     
     /**
-     * Looks up an identity by the specified key.
+     * Looks up a data source by the specified key.
      * 
      * @return the <code>DataSource</code>, or <code>null</code> if no <code>DataSource</code>
      * with the given key exists.

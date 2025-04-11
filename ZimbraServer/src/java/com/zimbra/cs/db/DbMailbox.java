@@ -34,6 +34,7 @@ import java.io.StringReader;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -65,7 +66,10 @@ public class DbMailbox {
     public static final int CI_CHANGE_CHECKPOINT;
     public static final int CI_TRACKING_SYNC;
     public static final int CI_TRACKING_IMAP;
+    public static final int CI_LAST_BACKUP_AT;
     public static final int CI_COMMENT;
+    public static final int CI_LAST_SOAP_ACCESS;
+    public static final int CI_NEW_MESSAGES;
 
     static {
         int pos = 1;
@@ -81,7 +85,10 @@ public class DbMailbox {
         CI_CHANGE_CHECKPOINT = pos++;
         CI_TRACKING_SYNC = pos++;
         CI_TRACKING_IMAP = pos++;
+        CI_LAST_BACKUP_AT = pos++;
         CI_COMMENT = pos++;
+        CI_LAST_SOAP_ACCESS = pos++;
+        CI_NEW_MESSAGES = pos++;
     }
 
     public static final int CI_METADATA_MAILBOX_ID = 1;
@@ -97,7 +104,9 @@ public class DbMailbox {
         public int groupId;
     }
 
-    public synchronized static NewMboxId createMailbox(Connection conn, int mailboxId, String accountId, String comment) throws ServiceException {
+    public synchronized static NewMboxId createMailbox(
+            Connection conn, int mailboxId, String accountId, String comment, int lastBackupAt)
+    throws ServiceException {
         if (comment != null && comment.length() > MAX_COMMENT_LENGTH)
             comment = comment.substring(0, MAX_COMMENT_LENGTH);
 
@@ -109,13 +118,17 @@ public class DbMailbox {
             String idSource = (explicitId ? "?" : "next_mailbox_id");
             String limitClause = Db.supports(Db.Capability.LIMIT_CLAUSE) ? " ORDER BY index_volume_id LIMIT 1" : "";
             stmt = conn.prepareStatement("INSERT INTO mailbox" +
-                    "(account_id, id, group_id, index_volume_id, item_id_checkpoint, comment)" +
-                    " SELECT ?, " + idSource + ", 0, index_volume_id, " + (Mailbox.FIRST_USER_ID - 1) + ", ?" +
+                    "(account_id, id, group_id, index_volume_id, item_id_checkpoint, last_backup_at, comment)" +
+                    " SELECT ?, " + idSource + ", 0, index_volume_id, " + (Mailbox.FIRST_USER_ID - 1) + ", ?, ?" +
                     " FROM current_volumes" + limitClause);
             int attr = 1;
             stmt.setString(attr++, accountId);
             if (explicitId)
                 stmt.setInt(attr++, mailboxId);
+            if (lastBackupAt >= 0)
+                stmt.setInt(attr++, lastBackupAt);
+            else
+                stmt.setNull(attr++, Types.INTEGER);
             stmt.setString(attr++, comment);
             stmt.executeUpdate();
             stmt.close();
@@ -175,11 +188,11 @@ public class DbMailbox {
 
         PreparedStatement stmt = null;
         try {
-            if (databaseExists(conn, mailboxId, groupId))
+            String dbName = getDatabaseName(mailboxId, groupId);
+            if (Db.getInstance().databaseExists(conn, dbName))
                 return;
 
             // Create the new database
-            String dbName = getDatabaseName(mailboxId, groupId);
             ZimbraLog.mailbox.info("Creating database " + dbName);
 
             String template = new String(ByteUtil.getContent(file));
@@ -208,28 +221,6 @@ public class DbMailbox {
             DbMailItem.TABLE_TOMBSTONE,
             DbPop3Message.TABLE_POP3_MESSAGE
         };
-    }
-
-    private static boolean databaseExists(Connection conn, int mailboxId, int groupId)
-    throws ServiceException {
-        for (int i = 0; i < sTables.length; i++) {
-            String table = getDatabaseName(mailboxId, groupId) + "." + sTables[i];
-
-            String sql = "SELECT * FROM " + table + (Db.supports(Db.Capability.LIMIT_CLAUSE) ? " LIMIT 1" : "");
-            PreparedStatement stmt = null;
-            ResultSet rs = null;
-            try {
-                stmt = conn.prepareStatement(sql);
-                rs = stmt.executeQuery();
-                rs.next();
-            } catch (SQLException e) {
-                return false;
-            } finally {
-                DbPool.closeResults(rs);
-                DbPool.closeStatement(stmt);
-            }
-        }
-        return true;
     }
 
     private static void dropMailboxFromGroup(Connection conn, Mailbox mbox)
@@ -293,22 +284,39 @@ public class DbMailbox {
         }
     }
 
+    public static void recordLastSoapAccess(Mailbox mbox) throws ServiceException {
+        Connection conn = mbox.getOperationConnection();
+        PreparedStatement stmt = null;
+        try {
+            stmt = conn.prepareStatement("UPDATE mailbox SET last_soap_access = ? WHERE id = ?");
+            stmt.setInt(1, (int) (mbox.getLastSoapAccessTime() / 1000));
+            stmt.setInt(2, mbox.getId());
+            int num = stmt.executeUpdate();
+            assert(num == 1);
+        } catch (SQLException e) {
+            throw ServiceException.FAILURE("updating last SOAP access time for mailbox " + mbox.getId(), e);
+        } finally {
+            DbPool.closeStatement(stmt);
+        }
+    }
+
     public static void updateMailboxStats(Mailbox mbox) throws ServiceException {
         Connection conn = mbox.getOperationConnection();
         PreparedStatement stmt = null;
         try {
             stmt = conn.prepareStatement("UPDATE mailbox" +
-                    " SET item_id_checkpoint = ?, contact_count = ?, change_checkpoint = ?, size_checkpoint = ?" +
+                    " SET item_id_checkpoint = ?, contact_count = ?, change_checkpoint = ?, size_checkpoint = ?, new_messages = ?" +
                     " WHERE id = ?");
             stmt.setInt(1, mbox.getLastItemId());
             stmt.setInt(2, mbox.getContactCount());
             stmt.setInt(3, mbox.getLastChangeID());
             stmt.setLong(4, mbox.getSize());
-            stmt.setInt(5, mbox.getId());
+            stmt.setInt(5, mbox.getRecentMessageCount());
+            stmt.setInt(6, mbox.getId());
             int num = stmt.executeUpdate();
             assert(num == 1);
         } catch (SQLException e) {
-            throw ServiceException.FAILURE("updating item ID highwater mark for mailbox " + mbox.getId(), e);
+            throw ServiceException.FAILURE("updating mailbox statistics for mailbox " + mbox.getId(), e);
         } finally {
             DbPool.closeStatement(stmt);
         }
@@ -461,7 +469,7 @@ public class DbMailbox {
             stmt = conn.prepareStatement(
                     "SELECT account_id, group_id," +
                     " size_checkpoint, contact_count, item_id_checkpoint, change_checkpoint, tracking_sync," +
-                    " tracking_imap, index_volume_id " +
+                    " tracking_imap, index_volume_id, last_soap_access, new_messages " +
                     "FROM mailbox WHERE id = ?");
             stmt.setInt(1, mailboxId);
             rs = stmt.executeQuery();
@@ -484,6 +492,8 @@ public class DbMailbox {
             mbd.trackSync     = rs.getInt(pos++);
             mbd.trackImap     = rs.getBoolean(pos++);
             mbd.indexVolumeId = rs.getShort(pos++);
+            mbd.lastWriteDate = rs.getInt(pos++);
+            mbd.recentMessages = rs.getInt(pos++);
 
             // round lastItemId and lastChangeId up so that they get written on the next change
             long rounding = mbd.lastItemId % ITEM_CHECKPOINT_INCREMENT;

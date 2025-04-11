@@ -34,7 +34,7 @@
 ZaServerStatsController = function(appCtxt, container, app) {
 
 	ZaController.call(this, appCtxt, container, app, "ZaServerStatsController");
-	this._helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/monitoring/checking_usage_statistics.htm";
+	this._helpURL = location.pathname + "adminhelp/html/WebHelp/monitoring/checking_usage_statistics.htm";
 	this.tabConstructor = ZaServerStatsView;
 }
 
@@ -54,7 +54,7 @@ function(entry, openInNewTab, skipRefresh) {
 ZaServerStatsController.setViewMethod =
 function(item) {	
     if (!this._contentView) {
-		this._contentView = new this.tabConstructor(this._container, this._app);
+		this._view = this._contentView = new this.tabConstructor(this._container, this._app);
 		var elements = new Object();
 		this._ops = new Array();
 		this._ops.push(new ZaOperation(ZaOperation.REFRESH, ZaMsg.TBB_Refresh, ZaMsg.TBB_Refresh_tt, "Refresh", "Refresh", new AjxListener(this, this.refreshListener)));
@@ -66,7 +66,7 @@ function(item) {
 		
 		this._ops.push(new ZaOperation(ZaOperation.SEP));								
 		this._ops.push(new ZaOperation(ZaOperation.LABEL, AjxMessageFormat.format (ZaMsg.MBXStats_PAGEINFO, [1,1]),
-														 null, null, null, null,null,null,null,"PageInfo"));	
+														 null, null, null, null,null,null, "ZaSearchResultCountLabel", "PageInfo"));	
 		this._ops.push(new ZaOperation(ZaOperation.SEP));							
 		
 		this._ops.push(new ZaOperation(ZaOperation.PAGE_FORWARD, ZaMsg.Next, ZaMsg.NextPage_tt,

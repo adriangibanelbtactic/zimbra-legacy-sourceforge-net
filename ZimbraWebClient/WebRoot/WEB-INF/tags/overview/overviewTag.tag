@@ -21,10 +21,11 @@
             </c:url>
         </c:otherwise>
     </c:choose>
-    <a href='${url}'>
+    <%-- don't change format of ID without updating BindKeyTag.java --%>
+    <a id="TAG${tag.id}" href='${url}'>
         <app:img src="${tag.image}" alt='${fn:escapeXml(tag.name)}'/>
         <span <c:if test="${tag.id eq requestScope.context.selectedId}">class='ZhTISelected'</c:if>>
-            <c:out value="${tag.name}"/>
+            <c:out value="${zm:truncate(tag.name,20,true)}"/>
             <c:if test="${tag.hasUnread}"> (${tag.unreadCount}) </c:if>
         </span>
     </a>

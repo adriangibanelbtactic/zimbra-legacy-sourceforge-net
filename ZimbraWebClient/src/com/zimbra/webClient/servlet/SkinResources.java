@@ -30,6 +30,9 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.Cookie;
@@ -38,10 +41,30 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.*;
-import java.util.*;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.CharArrayWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.Writer;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.Stack;
+import java.util.StringTokenizer;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import com.zimbra.common.util.ZimbraLog;
 
 /**
  * TODO: Clean up this code!
@@ -109,9 +132,14 @@ extends HttpServlet {
 	// HttpServlet methods
 	//
 
-	public void doGet(HttpServletRequest req, HttpServletResponse resp)
+    public void doPost(HttpServletRequest req, HttpServletResponse resp)
 	throws IOException, ServletException {
-		String uri = getRequestURI(req);
+            doGet(req, resp);
+    }
+    
+    public void doGet(HttpServletRequest req, HttpServletResponse resp)
+	throws IOException, ServletException {
+        String uri = getRequestURI(req);
 		String contentType = getContentType(uri);
 		String type = contentType.replaceAll("^.*/", "");
 		boolean debug = req.getParameter(P_DEBUG) != null;
@@ -124,18 +152,20 @@ extends HttpServlet {
 		String cacheId = skin+": "+browserType;
 
 		if (DEBUG) {
-			System.err.println("DEBUG: browserType="+browserType);
-			System.err.println("DEBUG: uri="+uri);
-			System.err.println("DEBUG: cacheId="+cacheId);
-            System.err.println("DEBUG: contentType="+contentType);
-            System.err.println("DEBUG: type="+type);
+			ZimbraLog.webclient.debug("DEBUG: skin="+skin);
+			ZimbraLog.webclient.debug("DEBUG: skin="+skin);
+			ZimbraLog.webclient.debug("DEBUG: browserType="+browserType);
+			ZimbraLog.webclient.debug("DEBUG: uri="+uri);
+			ZimbraLog.webclient.debug("DEBUG: cacheId="+cacheId);
+            ZimbraLog.webclient.debug("DEBUG: contentType="+contentType);
+            ZimbraLog.webclient.debug("DEBUG: type="+type);
         }
 
 		// generate buffer
 		Map<String,String> buffers = cache.get(cacheId);
 		String buffer = buffers != null && !debug ? buffers.get(uri) : null;
 		if (buffer == null) {
-			if (DEBUG) System.err.println("DEBUG: generating buffer");
+			if (DEBUG) ZimbraLog.webclient.debug("DEBUG: generating buffer");
 			buffer = generate(req, macros, type);
             if (!debug) {
 				if (buffers == null) {
@@ -146,7 +176,7 @@ extends HttpServlet {
 			}
 		}
 		else {
-			if (DEBUG) System.err.println("DEBUG: using previous buffer");
+			if (DEBUG) ZimbraLog.webclient.debug("DEBUG: using previous buffer");
 		}
 
 		// write buffer
@@ -237,7 +267,7 @@ extends HttpServlet {
 		StringTokenizer tokenizer = new StringTokenizer(filenames, ",");
 		while (tokenizer.hasMoreTokens()) {
 			String filename = tokenizer.nextToken();
-            if (DEBUG) System.err.println("DEBUG: filename "+filename);
+            if (DEBUG) ZimbraLog.webclient.debug("DEBUG: filename "+filename);
             String filenameExt = filename + ext;
 
 			List<File> files = new LinkedList<File>();
@@ -247,10 +277,10 @@ extends HttpServlet {
 			}
 			else {
 				File file = new File(skinDir, filenameExt);
-                if (DEBUG) System.err.println("DEBUG: file "+file.getAbsolutePath());
+                if (DEBUG) ZimbraLog.webclient.debug("DEBUG: file "+file.getAbsolutePath());
 				if (!file.exists()) {
 					file = new File(fileDir, filenameExt);
-                    if (DEBUG) System.err.println("DEBUG: !file.exists() "+file.getAbsolutePath());
+                    if (DEBUG) ZimbraLog.webclient.debug("DEBUG: !file.exists() "+file.getAbsolutePath());
 				}
 				files.add(file);
 			}
@@ -263,7 +293,7 @@ extends HttpServlet {
 					out.println();
 					continue;
 				}
-                if (DEBUG) System.err.println("DEBUG: preprocess "+file.getAbsolutePath());
+                if (DEBUG) ZimbraLog.webclient.debug("DEBUG: preprocess "+file.getAbsolutePath());
 				preprocess(file, cout, macros, manifest,
 							commentStart, commentContinue, commentEnd);
 			}
@@ -384,11 +414,22 @@ extends HttpServlet {
 	}
 
 	private static String getSkin(HttpServletRequest req) {
+		String zimbraAdminURL = "/zimbraAdmin";
+	    try {
+	        Context initCtx = new InitialContext();
+	        Context envCtx = (Context) initCtx.lookup("java:comp/env");
+	        zimbraAdminURL = (String) envCtx.lookup("adminUrl");
+	    } catch (NamingException ne) {
+	       ne.printStackTrace();
+	    }
+	    if (zimbraAdminURL == null) {
+	    	zimbraAdminURL = "/zimbraAdmin";
+        } 		
 		String skin = req.getParameter(P_SKIN);
 		if (skin == null) {
 			String contentPath = req.getContextPath();
 			Cookie cookie;
-			if(contentPath != null && contentPath.equalsIgnoreCase("/zimbraadmin")) {
+			if(contentPath != null && contentPath.equalsIgnoreCase(zimbraAdminURL)) {
 				cookie = getCookie(req, C_ADMIN_SKIN);
 			} else {
 				cookie = getCookie(req, C_SKIN);
@@ -684,7 +725,7 @@ extends HttpServlet {
 
             // process substitutions
 			for (File file : substList) {
-				if (DEBUG) System.err.println("DEBUG: subst file = "+file);
+				if (DEBUG) ZimbraLog.webclient.debug("DEBUG: subst file = "+file);
 				try {
 					/***/
 					CharArrayWriter out = new CharArrayWriter(4096); // 4K
@@ -699,27 +740,27 @@ extends HttpServlet {
 					substitutions.load(in);
 				}
 				catch (Throwable t) {
-					System.err.println("ERROR loading subst file: "+file);
+					ZimbraLog.webclient.debug("ERROR loading subst file: "+file);
 				}
 
-				if (DEBUG) System.err.println("DEBUG: _SkinName_ = "+substitutions.getProperty("_SkinName_"));
+				if (DEBUG) ZimbraLog.webclient.debug("DEBUG: _SkinName_ = "+substitutions.getProperty("_SkinName_"));
 			}
 
 			Stack<String> stack = new Stack<String>();
 			Enumeration substKeys = substitutions.propertyNames();
-			if (DEBUG) System.err.println("DEBUG: InsetBg (before) = "+substitutions.getProperty("InsetBg"));
+			if (DEBUG) ZimbraLog.webclient.debug("DEBUG: InsetBg (before) = "+substitutions.getProperty("InsetBg"));
 			while (substKeys.hasMoreElements()) {
 				stack.removeAllElements();
 
 				String substKey = (String)substKeys.nextElement();
 				if (substKey.equals("InsetBg")) {
-					if (DEBUG) System.err.println("DEBUG: InsetBg (loop) = "+substitutions.getProperty("InsetBg"));
+					if (DEBUG) ZimbraLog.webclient.debug("DEBUG: InsetBg (loop) = "+substitutions.getProperty("InsetBg"));
 				}
 				getProperty(stack, substKey);
 			}
-			if (DEBUG) System.err.println("DEBUG: InsetBg (after) = "+substitutions.getProperty("InsetBg"));
+			if (DEBUG) ZimbraLog.webclient.debug("DEBUG: InsetBg (after) = "+substitutions.getProperty("InsetBg"));
 
-			if (DEBUG) System.err.println("DEBUG: _SkinName_ = "+substitutions.getProperty("_SkinName_"));
+			if (DEBUG) ZimbraLog.webclient.debug("DEBUG: _SkinName_ = "+substitutions.getProperty("_SkinName_"));
 		}
 
 		//

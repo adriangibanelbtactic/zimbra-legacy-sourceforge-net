@@ -42,6 +42,7 @@ import javax.mail.internet.MailDateFormat;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeUtility;
 
+import com.zimbra.common.util.FileUtil;
 import com.zimbra.common.util.Log;
 import com.zimbra.common.util.LogFactory;
 import org.apache.lucene.document.Document;
@@ -52,6 +53,7 @@ import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.index.TopLevelMessageHandler;
 import com.zimbra.cs.index.LuceneFields;
 import com.zimbra.cs.localconfig.DebugConfig;
+import com.zimbra.cs.mailbox.Flag;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZCalendarBuilder;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.object.ObjectHandlerException;
@@ -319,6 +321,38 @@ public class ParsedMessage {
     public boolean hasAttachments() throws ServiceException {
         parse();
         return mHasAttachments;
+    }
+
+    public int getPriorityBitmask() throws ServiceException {
+        parse();
+
+        try {
+            String xprio = mMimeMessage.getHeader("X-Priority", null);
+            if (xprio != null) {
+                xprio = xprio.trim();
+                if (xprio.startsWith("1") || xprio.startsWith("2"))
+                    return Flag.BITMASK_HIGH_PRIORITY;
+                else if (xprio.startsWith("3"))
+                    return 0;
+                else if (xprio.startsWith("4") || xprio.startsWith("5"))
+                    return Flag.BITMASK_LOW_PRIORITY;
+            }
+        } catch (MessagingException me) { }
+
+        try {
+            String impt = mMimeMessage.getHeader("Importance", null);
+            if (impt != null) {
+                impt = impt.trim().toLowerCase();
+                if (impt.startsWith("high"))
+                    return Flag.BITMASK_HIGH_PRIORITY;
+                else if (impt.startsWith("normal"))
+                    return 0;
+                else if (impt.startsWith("low"))
+                    return Flag.BITMASK_LOW_PRIORITY;
+            }
+        } catch (MessagingException me) { }
+
+        return 0;
     }
 
     public boolean isReply() {
@@ -589,7 +623,7 @@ public class ParsedMessage {
         if (ctype.startsWith(Mime.CT_MULTIPART_PREFIX))
             return;
 
-        MimeHandler handler = MimeHandler.getMimeHandler(ctype);
+        MimeHandler handler = MimeHandlerManager.getMimeHandler(ctype, mpi.getFilename());
         assert(handler != null);
 
         Mime.repairTransferEncoding(mpi.getMimePart());

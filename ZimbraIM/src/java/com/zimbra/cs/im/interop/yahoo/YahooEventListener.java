@@ -35,11 +35,19 @@ public interface YahooEventListener {
     
     public void loggedOn(YahooSession session);
     
+    /**
+     * Received the "You have logged in from another location" message
+     * from the remote service -- session will be disconnected soon
+     */
+    public void connectedFromOtherLocation(YahooSession session);
+    
     public void sessionClosed(YahooSession session);
     
     public void receivedBuddyList(YahooSession session);
     
     public void buddyStatusChanged(YahooSession session, YahooBuddy buddy);
+    
+    public void receivedTypingStatus(YahooSession session, String fromId, boolean isTyping, YahooBuddy buddyOrNull);
     
     public void receivedMessage(YahooSession session, YahooMessage msg);
     

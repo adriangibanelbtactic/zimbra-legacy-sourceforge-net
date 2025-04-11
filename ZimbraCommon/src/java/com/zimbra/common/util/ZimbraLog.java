@@ -25,14 +25,15 @@
 package com.zimbra.common.util;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.Map.Entry;
 
-import org.apache.log4j.NDC;
 import org.apache.log4j.PropertyConfigurator;
 
 
@@ -45,7 +46,7 @@ public class ZimbraLog {
     /**
      * "ip" key for context. IP of request
      */
-    public static final String C_IP = "ip";
+    private static final String C_IP = "ip";
     
     /**
      * "id" key for context. Id of the target account
@@ -84,13 +85,18 @@ public class ZimbraLog {
     /**
      * "ua" key for context.  The name of the client application. 
      */
-    public static final String C_USER_AGENT = "ua";
+    private static final String C_USER_AGENT = "ua";
     
     /**
      * "msgid" key for context.  The Message-ID header of the message being
      * operated on.
      */
     private static final String C_MSG_ID = "msgid";
+
+    /**
+     * "item" key for context.
+     */
+    private static final String C_ITEM = "item";
     
     /**
      * "ds" key for context.  The name of the Data Source being operated on.
@@ -181,6 +187,11 @@ public class ZimbraLog {
      * the "zimbra.sqltrace" logger. For tracing SQL statements sent to the database
      */
     public static final Log sqltrace = LogFactory.getLog("zimbra.sqltrace");
+    
+    /**
+     * the "zimbra.dbconn" logger. For tracing database connections
+     */
+    public static final Log dbconn = LogFactory.getLog("zimbra.dbconn");
 
     /**
      * the "zimbra.perf" logger. For logging performance statistics
@@ -273,6 +284,11 @@ public class ZimbraLog {
     public static final Log rmgmt = LogFactory.getLog("zimbra.rmgmt");
     
     /**
+     * the "zimbra.webclient" logger. Logs ZimbraWebClient servlet and jsp operations.
+     */
+    public static final Log webclient = LogFactory.getLog("zimbra.webclient");
+    
+    /**
      * Keeps track of the account associated with the current thread, for
      * per-user logging settings. 
      */
@@ -290,15 +306,27 @@ public class ZimbraLog {
     private static void addAccountForThread(String accountName) {
         getAccountNamesForThread().add(accountName);
     }
-    
-    public static String getContext() {
-        return NDC.peek();
-    }
 
+    private static final ThreadLocal<Map<String, String>> sContextMap = new ThreadLocal<Map<String, String>>();
+    private static final ThreadLocal<String> sContextString = new ThreadLocal<String>();
+    
+    private static final Set<String> CONTEXT_KEY_ORDER = new LinkedHashSet<String>();
+    
+    static {
+        CONTEXT_KEY_ORDER.add(C_NAME);
+        CONTEXT_KEY_ORDER.add(C_ANAME);
+        CONTEXT_KEY_ORDER.add(C_MID);
+        CONTEXT_KEY_ORDER.add(C_IP);
+    }
+    
+    static String getContextString() {
+        return sContextString.get();
+    }
+    
     /**
-     * adds key/value to context. Doesn't check to see if already in context.
-     * @param key
-     * @param value
+     * Adds a key/value pair to the current thread's logging context.  If
+     * <tt>key</tt> is null, does nothing.  If <tt>value</tt> is null,
+     * removes the context entry.
      */
     public static void addToContext(String key, String value) {
         if (key == null)
@@ -306,87 +334,158 @@ public class ZimbraLog {
         if (key.equals(C_NAME) || key.equals(C_ANAME)) {
             addAccountForThread(value);
         }
-        String ndc = NDC.pop();
-        if (checkContext(ndc, key))
-        	NDC.push(key+"="+value+";"+ndc);
-        else
-            NDC.push(ndc);
+
+        Map<String, String> contextMap = sContextMap.get();
+        boolean contextChanged = false;
+
+        if (StringUtil.isNullOrEmpty(value)) {
+            // Remove
+            if (contextMap != null) {
+                String oldValue = contextMap.remove(key);
+                if (oldValue != null) {
+                    contextChanged = true;
+                }
+            }
+        } else {
+            // Add
+            if (contextMap == null) {
+                contextMap = new HashMap<String, String>();
+                sContextMap.set(contextMap);
+            }
+            String oldValue = contextMap.put(key, value);
+            if (!StringUtil.equal(oldValue, value)) {
+                contextChanged = true;
+            }
+        }
+        if (contextChanged) {
+            updateContextString();
+        }
+    }
+
+    /**
+     * Updates the context string with the latest
+     * data in {@link #sContextMap}.
+     */
+    private static void updateContextString() {
+        Map<String, String> contextMap = sContextMap.get();
+        if (contextMap == null || contextMap.size() == 0) {
+            sContextString.set(null);
+            return;
+        }
+
+        StringBuffer sb = new StringBuffer();
+
+        // Append ordered keys first
+        for (String key : CONTEXT_KEY_ORDER) {
+            String value = contextMap.get(key);
+            if (value != null) {
+                encodeArg(sb, key, value);
+            }
+        }
+
+        // Append the rest
+        for (String key : contextMap.keySet()) {
+            if (!CONTEXT_KEY_ORDER.contains(key)) {
+                String value = contextMap.get(key);
+                if (key != null && value != null) {
+                    encodeArg(sb, key, value);
+                }
+            }
+        }
+        
+        sContextString.set(sb.toString());
     }
     
     /**
-     * push key/value to end of context.
-     * @param key
-     * @param value
+     * Adds a <tt>MailItem</tt> id to the current thread's
+     * logging context.
      */
-    public static void pushbackContext(String key, String value) {
-        if (key == null) return;
-        String ndc = NDC.pop();
-        String ctxt = key + "=" + value + ";";
-        if (!ndc.endsWith(ctxt)) {
-        	ndc += ctxt;
-        }
-        NDC.push(ndc);
+    public static void addItemToContext(int itemId) {
+    	addToContext(C_ITEM, Integer.toString(itemId));
     }
-    
-    public static void pushbackItemId(int itemId) {
-    	pushbackContext("item", Integer.toString(itemId));
+
+    /**
+     * Removes a key/value pair from the current thread's logging context.
+     */
+    public static void removeFromContext(String key) {
+        if (key != null) {
+            addToContext(key, null);
+        }
     }
     
     /**
-     * pop key/value from end of context.
-     * @param key
-     * @param value
+     * Removes a <tt>MailItem</tt> id from the current thread's
+     * logging context.
      */
-    public static void popbackContext(String key, String value) {
-        if (key == null) return;
-        String ndc = NDC.pop();
-        String ctxt = key + "=" + value + ";";
-        if (ndc.endsWith(ctxt)) {
-        	ndc = ndc.substring(0, ndc.length() - ctxt.length());
-        }
-        NDC.push(ndc);
+    public static void removeItemFromContext(int itemId) {
+    	removeFromContext(C_ITEM);
     }
     
-    public static void popbackItemId(int itemId) {
-    	popbackContext("item", Integer.toString(itemId));
-    }
-    
+    /**
+     * Adds account name to the current thread's logging context.
+     */
     public static void addAccountNameToContext(String accountName) {
         ZimbraLog.addToContext(C_NAME, accountName);
     }
     
+    /**
+     * Adds ip to the current thread's logging context.
+     */
     public static void addIpToContext(String ipAddress) {
         ZimbraLog.addToContext(C_IP, ipAddress);
     }  
     
+    /**
+     * Adds connection id to the current thread's logging context.
+     */
     public static void addConnectionIdToContext(String connectionId) {
         ZimbraLog.addToContext(C_CONNECTIONID, connectionId);
     }
     
+    /**
+     * Adds mailbox id to the current thread's logging context.
+     */
     public static void addMboxToContext(int mboxId) {
         addToContext(C_MID, Integer.toString(mboxId));
     }
     
+    /**
+     * Adds message id to the current thread's logging context.
+     */
     public static void addMsgIdToContext(String messageId) {
         addToContext(C_MSG_ID, messageId);
     }
     
+    /**
+     * Adds data source name to the current thread's logging context.
+     */
     public static void addDataSourceNameToContext(String dataSourceName) {
         ZimbraLog.addToContext(C_DATA_SOURCE_NAME, dataSourceName);
     }
     
+    /**
+     * Adds port to the current thread's logging context.
+     */
     public static void addPortToContext(int port) {
         ZimbraLog.addToContext(C_PORT, Integer.toString(port));
     }
     
-    private static boolean checkContext(String context, String key) {
-        if (context == null || key == null)
-            return false;
-        return (!context.startsWith(key + "=") && context.indexOf(";" + key + "=") == -1);
+    /**
+     * Adds user agent to the current thread's logging context.
+     */
+    public static void addUserAgentToContext(String ua) {
+        ZimbraLog.addToContext(C_USER_AGENT, ua);
     }
-
+    
+    /**
+     * Clears the current thread's logging context.
+     *
+     */
     public static void clearContext() {
-        NDC.clear();
+        Map<String, String> contextMap = sContextMap.get();
+        if (contextMap != null) {
+            contextMap.clear();
+        }
         getAccountNamesForThread().clear();
     }
 

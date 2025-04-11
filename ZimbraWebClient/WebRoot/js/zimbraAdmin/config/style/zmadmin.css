@@ -110,7 +110,7 @@ P, TD, DIV, SPAN, SELECT, INPUT, TEXTAREA, BUTTON {
 
 /* other UI pieces */
 
-.currentAppLabel .Text {
+.currentAppLabel td {
 	font-size: 13px;
 	line-height:18px;
 	font-weight: bold;
@@ -669,8 +669,12 @@ P, TD, DIV, SPAN, SELECT, INPUT, TEXTAREA, BUTTON {
 	margin-left: 2px ;	
 }
 
-.ZToolbarButtonBorder {
+.ZToolbarButtonBorder,  .ZMenuItemBorder {
 	border: 2px solid transparent; 	
+#IFDEF MSIE
+	border: 1px solid transparent; 
+	border-color:@AppC+20@;	
+#ENDIF
 }
 
 .ZaSearchOptionViewSubHeader {
@@ -688,4 +692,33 @@ P, TD, DIV, SPAN, SELECT, INPUT, TEXTAREA, BUTTON {
 	font-size:12px;
 }
 
+/* Set the height of the advanced search button arbitrary */
+div.ZaAdvancedSearchButton table {
+	height: 24px ;	
+#IFDEF MSIE
+	height: 22px ;
+#ENDIF
+}
 
+.ZaSearchResultCountLabel {
+	#IFDEF MSIE
+		margin-top: 5px ;
+	#ENDIF
+}
+
+
+/* Search builder outer container */
+.ZaXMbxSearchBuilder {
+	height: 225px;		/* ??? SIZE */
+	width: 100%;
+	overflow: hidden;
+}
+
+.ZaXMBxPickerGrid {
+	@ToolbarContainer@
+	@InsetBg@ @OutsetBorder@
+}
+
+.ZaXMBxAccountsListGrouper {
+	width:280px;
+}

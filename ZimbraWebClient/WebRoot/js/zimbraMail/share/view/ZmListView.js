@@ -32,7 +32,7 @@ ZmListView = function(parent, className, posStyle, view, type, controller, heade
 	this.type = type;
 	this._controller = controller;
 	this.setDropTarget(dropTgt);
-	this._viewPrefix = ["V", "_", this.view, "_"].join("");
+	this._viewPrefix = ["V_", this.view, "_"].join("");
 
 	// create listeners for changes to the list model, folder tree, and tag list
 	this._listChangeListener = new AjxListener(this, this._changeListener);
@@ -68,7 +68,8 @@ ZmListView.FIELD_CLASS[ZmItem.F_FLAG]		= "Flag";
 ZmListView.FIELD_CLASS[ZmItem.F_TAG]		= "Tag";
 ZmListView.FIELD_CLASS[ZmItem.F_ATTACHMENT]	= "Attach";
 
-ZmListView.ITEM_FLAG_CLICKED = DwtListView._LAST_REASON + 1;
+ZmListView.ITEM_FLAG_CLICKED 				= DwtListView._LAST_REASON + 1;
+ZmListView.DEFAULT_REPLENISH_THRESHOLD		= 0;
 
 ZmListView.prototype.getController =
 function() {
@@ -85,17 +86,22 @@ function(list, sortField) {
 		subList = list;
 	}
 	DwtListView.prototype.set.call(this, subList, sortField);
-}
+};
 
 ZmListView.prototype.setUI = 
 function(defaultColumnSort) {
 	DwtListView.prototype.setUI.call(this, defaultColumnSort);
 	this._resetColWidth();	// reset column width in case scrollbar is set
-}
+};
 
 ZmListView.prototype.getLimit = 
 function() {
 	return this._appCtxt.get(ZmSetting.PAGE_SIZE);
+};
+
+ZmListView.prototype.getReplenishThreshold =
+function() {
+	return ZmListView.DEFAULT_REPLENISH_THRESHOLD;
 };
 
 ZmListView.prototype._changeListener =
@@ -129,7 +135,7 @@ function(ev) {
         this._controller._app._checkReplenishListView = this;
 		this._controller._resetToolbarOperations();		
 	}
-}
+};
 
 ZmListView.prototype._checkReplenish =
 function() {
@@ -199,8 +205,9 @@ function(item) {
 // Note that images typically get IDs in _getCellContents().
 ZmListView.prototype._getCellId =
 function(item, field) {
-	return (field == ZmItem.F_DATE) ? this._getFieldId(item, field) :
-									  DwtListView.prototype._getCellId.apply(this, arguments);
+	return (field == ZmItem.F_DATE)
+		? this._getFieldId(item, field)
+		: DwtListView.prototype._getCellId.apply(this, arguments);
 };
 
 ZmListView.prototype._getCellClass =
@@ -210,7 +217,9 @@ function(item, field, params) {
 
 ZmListView.prototype._getCellContents =
 function(htmlArr, idx, item, field, colIdx, params) {
-	if (field == ZmItem.F_TYPE) {
+	if (field == ZmItem.F_SELECTION) {
+		idx = this._getImageHtml(htmlArr, idx, "TaskCheckbox", this._getFieldId(item, field));
+	} else if (field == ZmItem.F_TYPE) {
 		idx = this._getImageHtml(htmlArr, idx, ZmItem.ICON[item.type], this._getFieldId(item, field));
 	} else if (field == ZmItem.F_FLAG) {
 		idx = this._getImageHtml(htmlArr, idx, item.isFlagged ? "FlagRed" : null, this._getFieldId(item, field));
@@ -256,12 +265,14 @@ function(item, field, imageInfo) {
  *     551 			- item ID
  *     _   			- separator
  *     0   			- first participant
+ *
+ * TODO: see if it's faster to create a RegExp once and reuse it
  */
 ZmListView.prototype._parseId =
 function(id) {
-	var m = id.match(/^V_([A-Z]+)_([a-z]*)((DWT)?-?\d+)_?(\d*)$/);
+	var m = id.match(/^V_([A-Z]+)_([a-z]*)_([a-zA-Z0-9:\-]+)_?(\d*)$/);
 	if (m) {
-		return {view:m[1], field:m[2], item:m[3], participant:m[5]};
+		return {view:m[1], field:m[2], item:m[3], participant:m[4]};
 	} else {
 		return null;
 	}
@@ -289,6 +300,181 @@ function(ev, div) {
 	return true;
 };
 
+ZmListView.prototype._mouseOutAction =
+function(ev, div) {
+	DwtListView.prototype._mouseOutAction.call(this, ev, div);
+
+	var id = ev.target.id || div.id;
+	if (!id) return true;
+
+	var type = Dwt.getAttr(div, "_type");
+	if (type && type == DwtListView.TYPE_LIST_ITEM) {
+		var m = this._parseId(id);
+		if (m && m.field) {
+			if (m.field == ZmItem.F_SELECTION) {
+				ev.target.className = (this.getSelectedItems().contains(div))
+					? "ImgTaskCheckboxCompleted"
+					: "ImgTaskCheckbox";
+			} else if (m.field == ZmItem.F_FLAG) {
+				var item = this.getItemFromElement(div);
+				if (!item.isFlagged)
+					ev.target.className = "ImgBlank_16";
+			}
+		}
+	}
+
+	return true;
+};
+
+ZmListView.prototype._doubleClickAction =
+function(ev, div) {
+	var id = ev.target.id ? ev.target.id : div.id;
+	if (!id) return true;
+
+	var m = this._parseId(id);
+	return (!(m && (m.field == ZmItem.F_FLAG)));
+};
+
+ZmListView.prototype._itemClicked =
+function(clickedEl, ev) {
+	if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX) &&
+		ev.button == DwtMouseEvent.LEFT)
+	{
+		if (!ev.shiftKey && !ev.ctrlKey) {
+			// get the field being clicked
+			var id = (ev.target.id && ev.target.id.indexOf("AjxImg") == -1)
+				? ev.target.id : clickedEl.id;
+
+			// TODO - optimize by not calling parseId so much
+			var m = id ? this._parseId(id) : null;
+			if (m && m.field == ZmItem.F_SELECTION) {
+				var bContained = this._selectedItems.contains(clickedEl);
+				this.setMultiSelection(clickedEl, bContained);
+				return;	// do not call base class if "selection" field was clicked
+			}
+		} else if (ev.shiftKey) {
+			// uncheck all selected items first
+			this._checkSelectedItems(false);
+
+			// run base class first so we get the finalized list of selected items
+			DwtListView.prototype._itemClicked.call(this, clickedEl, ev);
+
+			// recheck new list of selected items
+			this._checkSelectedItems(true);
+
+			return;
+		}
+	}
+
+	DwtListView.prototype._itemClicked.call(this, clickedEl, ev);
+};
+
+ZmListView.prototype._columnClicked =
+function(clickedCol, ev) {
+	DwtListView.prototype._columnClicked.call(this, clickedCol, ev);
+
+	if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		var list = this.getList();
+		var size = list ? list.size() : null;
+		if (size > 0) {
+			var item = this._headerList[Dwt.getAttr(clickedCol, "_itemIndex")];
+			if (item && item._id.indexOf(ZmItem.F_SELECTION) != -1) {
+				var hdrId = DwtListView.HEADERITEM_ICON + item._id;
+				var hdrDiv = document.getElementById(hdrId);
+				if (hdrDiv) {
+					if (hdrDiv.className == "ImgTaskCheckboxCompleted") {
+						this.deselectAll();
+						hdrDiv.className = "ImgTaskCheckbox";
+					} else {
+						hdrDiv.className = "ImgTaskCheckboxCompleted";
+						this.setSelectedItems(this._list.getArray());
+					}
+				}
+			}
+			this._controller._resetToolbarOperations();
+		}
+	}
+};
+
+ZmListView.prototype.handleKeyAction =
+function(actionCode, ev) {
+	var rv = DwtListView.prototype.handleKeyAction.call(this, actionCode, ev);
+
+	if (actionCode == DwtKeyMap.SELECT_ALL) {
+		this._controller._resetToolbarOperations();
+	}
+
+	return rv;
+};
+
+ZmListView.prototype.setMultiSelection =
+function(clickedEl, bContained) {
+	// call base class
+	DwtListView.prototype.setMultiSelection.call(this, clickedEl, bContained);
+
+	this.setSelectionCbox(clickedEl, bContained);
+	this.setSelectionHdrCbox(this.getSelection().length == this.getList().size());
+
+	// reset toolbar operations LAST
+	this._controller._resetToolbarOperations();
+};
+
+ZmListView.prototype.setSelectionCbox =
+function(obj, bContained) {
+	if (!obj) { return; }
+
+	var item = obj.tagName
+		? AjxCore.objectWithId(Dwt.getAttr(obj, "_itemIndex")) : obj;
+	var selFieldId = item ? this._getFieldId(item, ZmItem.F_SELECTION) : null;
+	var selField = selFieldId ? document.getElementById(selFieldId) : null;
+	if (selField) {
+		selField.className = bContained
+			? "ImgTaskCheckbox"
+			: "ImgTaskCheckboxCompleted";
+	}
+};
+
+ZmListView.prototype.setSelectionHdrCbox =
+function(check) {
+	var idx = this.getColIndexForId(ZmItem.F_SELECTION);
+	var col = this._headerList ? this._headerList[idx] : null;
+	var hdrId = col ? (DwtListView.HEADERITEM_ICON + col._id) : null;
+	var hdrDiv = hdrId ? document.getElementById(hdrId) : null;
+	if (hdrDiv) {
+		hdrDiv.className = check
+			? "ImgTaskCheckboxCompleted"
+			: "ImgTaskCheckbox";
+	}
+};
+
+ZmListView.prototype.setSelectedItems =
+function(selectedArray) {
+	DwtListView.prototype.setSelectedItems.call(this, selectedArray);
+
+	if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		this._checkSelectedItems(true);
+	}
+};
+
+ZmListView.prototype.deselectAll =
+function() {
+	if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		this._checkSelectedItems(false);
+	}
+
+	DwtListView.prototype.deselectAll.call(this);
+};
+
+ZmListView.prototype._checkSelectedItems =
+function(check) {
+	var sel = this.getSelection();
+	for (var i = 0; i < sel.length; i++) {
+		this.setSelectionCbox(sel[i], !check);
+	}
+
+	this.setSelectionHdrCbox(sel.length == this.getList().size());
+};
+
 ZmListView.prototype._getHeaderToolTip =
 function(field, itemIdx) {
 	var tooltip = null;
@@ -299,25 +485,25 @@ function(field, itemIdx) {
 	} else if (field == ZmItem.F_ATTACHMENT) {
 		tooltip = ZmMsg.attachment;
 	} else if (field == ZmItem.F_SUBJECT) {
-		if (this._headerList[itemIdx]._sortable) {
-			tooltip = ZmMsg.sortBySubject;
-		}
+		tooltip = (this._headerList[itemIdx]._sortable)
+			? ZmMsg.sortBySubject : ZmMsg.subject;
 	} else if (field == ZmItem.F_DATE) {
-		if (this._headerList[itemIdx]._sortable) {
-			tooltip = ZmMsg.sortByReceived;
-		}
+		tooltip = (this._headerList[itemIdx]._sortable)
+			? ZmMsg.sortByReceived : ZmMsg.date;
 	} else if (field == ZmItem.F_FROM) {
-		if (this._headerList[itemIdx]._sortable) {
-			tooltip = ZmMsg.sortByFrom;
-		}
+		tooltip = (this._headerList[itemIdx]._sortable)
+			? ZmMsg.sortByFrom : ZmMsg.from;
 	}
 	return tooltip;
 };
 
 ZmListView.prototype._getToolTip =
 function(field, item, ev, div, match) {
-	var tooltip = null;
-	if (field == ZmItem.F_FLAG) {
+	var tooltip;
+	if (field == ZmItem.F_SELECTION) {
+		if (ev.target.className != "ImgTaskCheckboxCompleted")
+			ev.target.className = "ImgTaskCheckboxCompleted";
+	} else if (field == ZmItem.F_FLAG) {
 		if (!item.isFlagged) {
 			ev.target.className = "ImgFlagRedDis";
 		}
@@ -388,40 +574,6 @@ function(date, prefix) {
 	return dateStr.join("");
 };
 
-ZmListView.prototype._mouseOutAction = 
-function(ev, div) {
-	DwtListView.prototype._mouseOutAction.call(this, ev, div);
-
-	var id = ev.target.id || div.id;
-	if (!id) return true;
-
-	var type = Dwt.getAttr(div, "_type");
-	if (type && type == DwtListView.TYPE_LIST_ITEM) {
-		var m = this._parseId(id);
-		if (m && m.field) {
-			var item = this.getItemFromElement(div);
-			if (m.field == ZmItem.F_FLAG) {
-				if (!item.isFlagged)
-					ev.target.className = "ImgBlank_16";
-			}
-		}
-	}
-
-	return true;
-}
-
-ZmListView.prototype._doubleClickAction =
-function(ev, div) {
-	var id = ev.target.id ? ev.target.id : div.id;
-	if (!id) return true;
-
-	var m = this._parseId(id);
-	if (m && (m.field == ZmItem.F_FLAG)) {
-		return false;
-	}
-	return true;
-}
-
 /*
 * Add a few properties to the list event for the listener to pick up.
 */
@@ -473,26 +625,18 @@ function(id, field) {
 ZmListView.prototype._sortColumn = 
 function(columnItem, bSortAsc) { 
 	// change the sort preference for this view in the settings
-	var sortBy = null;
+	var sortBy;
 	switch (columnItem._sortable) {
-		case ZmItem.F_FROM:
-			sortBy = bSortAsc ? ZmSearch.NAME_ASC : ZmSearch.NAME_DESC; 
-			break;
-			
-		case ZmItem.F_SUBJECT:
-			sortBy = bSortAsc ? ZmSearch.SUBJ_ASC : ZmSearch.SUBJ_DESC; 
-			break;
-			
-		case ZmItem.F_DATE:
-			sortBy = bSortAsc ? ZmSearch.DATE_ASC : ZmSearch.DATE_DESC; 
-			break;
+		case ZmItem.F_FROM:		sortBy = bSortAsc ? ZmSearch.NAME_ASC : ZmSearch.NAME_DESC; break;
+		case ZmItem.F_SUBJECT:	sortBy = bSortAsc ? ZmSearch.SUBJ_ASC : ZmSearch.SUBJ_DESC;	break;
+		case ZmItem.F_DATE:		sortBy = bSortAsc ? ZmSearch.DATE_ASC : ZmSearch.DATE_DESC;	break;
 	}
 
 	if (sortBy) {
 		this._sortByString = sortBy;
 		this._appCtxt.set(ZmSetting.SORTING_PREF, sortBy, this.view);
 	}
-}
+};
 
 ZmListView.prototype._setNextSelection = 
 function() {
@@ -502,4 +646,4 @@ function() {
 	var item = this._list.get(this._firstSelIndex) || this._list.getLast();
 	if (item)
 		this.setSelection(item, false);
-}
+};

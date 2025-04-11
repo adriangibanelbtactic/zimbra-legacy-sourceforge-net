@@ -34,7 +34,7 @@
 ZaGlobalConfigViewController = function(appCtxt, container, app) {
 	ZaXFormViewController.call(this, appCtxt, container, app,"ZaGlobalConfigViewController");
 	this._UICreated = false;
-	this._helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/managing_global_settings/global_settings.htm";			
+	this._helpURL = location.pathname + "adminhelp/html/WebHelp/managing_global_settings/global_settings.htm";			
 	this.objType = ZaEvent.S_GLOBALCONFIG;
 	this.tabConstructor = GlobalConfigXFormView;					
 }
@@ -136,7 +136,15 @@ function () {
 		this._errorDialog.setMessage(ZaMsg.ERROR_INVALID_VALUE + ": " + ZaMsg.NAD_GalMaxResults + " ! ", null, DwtMessageDialog.CRITICAL_STYLE, null);
 		this._errorDialog.popup();		
 		return false;
-	}		
+	}	
+	
+	if (tmpObj.attrs[ZaGlobalConfig.A_zimbraDataSourceNumThreads] &&
+	 	 !AjxUtil.isPositiveInt(tmpObj.attrs[ZaGlobalConfig.A_zimbraDataSourceNumThreads])) {
+			//show error msg
+		this._errorDialog.setMessage(ZaMsg.ERROR_INVALID_VALUE + ": " + ZaMsg.NAD_zimbraDataSourceNumThreads + " ! ", null, DwtMessageDialog.CRITICAL_STYLE, null);
+		this._errorDialog.popup();		
+		return false;
+	}	
 	
 	// update zimbraMtaRestriction
 	var restrictions = [];

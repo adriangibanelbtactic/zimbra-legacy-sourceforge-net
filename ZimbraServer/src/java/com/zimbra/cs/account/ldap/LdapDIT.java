@@ -7,29 +7,147 @@ import javax.naming.directory.Attributes;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.EmailUtil;
+import com.zimbra.cs.account.Account;
+import com.zimbra.cs.account.Alias;
+import com.zimbra.cs.account.Cos;
+import com.zimbra.cs.account.Config;
+import com.zimbra.cs.account.DataSource;
+import com.zimbra.cs.account.DistributionList;
+import com.zimbra.cs.account.Domain;
+import com.zimbra.cs.account.Entry;
+import com.zimbra.cs.account.Identity;
+import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.account.Server;
+import com.zimbra.cs.account.Zimlet;
+import com.zimbra.cs.util.Zimbra;
 
 public class LdapDIT {
+    /*
+     * This is our default ldap DIT.  All DNs/RDNs location is hardcoded to avoid 
+     * mis-configuration.  
+     * 
+     * To customize the DIT to a different layout, set the zimbra_class_provisioning
+     * localconfig key to com.zimbra.cs.account.ldap.custom.CustomLdapProvisioning, 
+     * which will use the CustomLdapDIT class that can be customized by a set of
+     * localconfig keys.
+     * 
+     */
     
-    protected String ACCOUNT_REL_BASE;
-    protected String ACCOUNT_RDN_ATTR;
-    protected String ADMIN_BASE;
-    protected String CONFIG_BASE;     
-    protected String COS_BASE; 
-    protected String SERVER_BASE;
-    protected String ZIMLET_BASE;
+    /*
+     * the provisioning instance that uses thie DIT
+     */
+    protected Provisioning mProv;
     
-    public LdapDIT() {
+    /*
+     * Vatiable Naming Conventions:
+     * 
+     *              RDN : {attr-name}={attr-value}
+     *               DN : List of comma (,) seperated RDNs
+     *          DEFAULT : Means the variable has a hardcoded value, which can be referred to 
+     *                    from subclasses, but cannot be changed.  If a subclass need to use 
+     *                    different values it has to define it's own variables.
+     * 
+     *         BASE_RDN : A relative RDN under that entries of the same kind reside.
+     * DEFAULT_BASE_RDN : A hardcoded BASE_RDN that cannot be changed in subclasses.
+     *  NAMING_RDN_ATTR : The attribute for the left-most RDN of an entry. each entry type must have a NAMING_RDN_ATTR.
+     *          BASE_DN : An absolute DN under that a left-most RDN resides.
+     */
+    
+    /*
+     * Defaults tht can be used in subclasses but cannot be changed in subclasses.
+     * If a subclass need to use different values it has to define it's own variables.
+     */
+    protected final String DEFAULT_CONFIG_BASE_DN        = "cn=zimbra";
+    
+    protected final String DEFAULT_BASE_RDN_ADMIN        = "cn=admins";
+    protected final String DEFAULT_BASE_RDN_ACCOUNT      = "ou=people";
+    protected final String DEFAULT_BASE_RDN_COS          = "cn=cos";
+    protected final String DEFAULT_BASE_RDN_MIME         = "cn=mime";
+    protected final String DEFAULT_BASE_RDN_SERVER       = "cn=servers";
+    protected final String DEFAULT_BASE_RDN_ZIMLET       = "cn=zimlets";
+    
+    protected final String DEFAULT_NAMING_RDN_ATTR_USER      = "uid";
+    protected final String DEFAULT_NAMING_RDN_ATTR_COS           = "cn";
+    protected final String DEFAULT_NAMING_RDN_ATTR_GLOBALCONFIG  = "cn";
+    protected final String DEFAULT_NAMING_RDN_ATTR_MIME          = "cn";
+    protected final String DEFAULT_NAMING_RDN_ATTR_SERVER        = "cn";
+    protected final String DEFAULT_NAMING_RDN_ATTR_ZIMLET        = "cn";
+    
+    /*
+     * Variables that has to be set in the init method
+     */
+    protected String BASE_DN_CONFIG_BRANCH;
+    protected String BASE_RDN_ACCOUNT;
+    
+    protected String BASE_DN_ADMIN;
+    protected String BASE_DN_ACCOUNT;
+    protected String BASE_DN_COS; 
+    protected String BASE_DN_MIME;
+    protected String BASE_DN_SERVER;
+    protected String BASE_DN_ZIMLET;
+     
+    protected String NAMING_RDN_ATTR_USER;
+    protected String NAMING_RDN_ATTR_COS;
+    protected String NAMING_RDN_ATTR_GLOBALCONFIG;
+    protected String NAMING_RDN_ATTR_MIME;
+    protected String NAMING_RDN_ATTR_SERVER;
+    protected String NAMING_RDN_ATTR_ZIMLET;
+
+    protected String DN_GLOBALCONFIG;
+
+
+    public LdapDIT(LdapProvisioning prov) {
+        // our Provisioning instance
+        mProv = prov;  
+        
         init();
+        verify();
     }
     
     protected void init() {
-        ACCOUNT_REL_BASE = "ou=people";
-        ACCOUNT_RDN_ATTR = "uid";
-        ADMIN_BASE = "cn=admins,cn=zimbra";
-        CONFIG_BASE = "cn=config,cn=zimbra";     
-        COS_BASE = "cn=cos,cn=zimbra"; 
-        SERVER_BASE = "cn=servers,cn=zimbra";
-        ZIMLET_BASE = "cn=zimlets,cn=zimbra";
+        BASE_DN_CONFIG_BRANCH = DEFAULT_CONFIG_BASE_DN;
+
+        BASE_RDN_ACCOUNT  = DEFAULT_BASE_RDN_ACCOUNT;
+
+        NAMING_RDN_ATTR_USER      = DEFAULT_NAMING_RDN_ATTR_USER;
+        NAMING_RDN_ATTR_COS           = DEFAULT_NAMING_RDN_ATTR_COS;
+        NAMING_RDN_ATTR_GLOBALCONFIG  = DEFAULT_NAMING_RDN_ATTR_GLOBALCONFIG;
+        NAMING_RDN_ATTR_MIME          = DEFAULT_NAMING_RDN_ATTR_MIME;
+        NAMING_RDN_ATTR_SERVER        = DEFAULT_NAMING_RDN_ATTR_SERVER;
+        NAMING_RDN_ATTR_ZIMLET        = DEFAULT_NAMING_RDN_ATTR_ZIMLET;
+        
+        DN_GLOBALCONFIG      = NAMING_RDN_ATTR_GLOBALCONFIG + "=config" + "," + BASE_DN_CONFIG_BRANCH; 
+       
+        BASE_DN_ADMIN        = DEFAULT_BASE_RDN_ADMIN       + "," + BASE_DN_CONFIG_BRANCH;
+        BASE_DN_COS          = DEFAULT_BASE_RDN_COS         + "," + BASE_DN_CONFIG_BRANCH; 
+        BASE_DN_MIME         = DEFAULT_BASE_RDN_MIME        + "," + DN_GLOBALCONFIG;
+        BASE_DN_SERVER       = DEFAULT_BASE_RDN_SERVER      + "," + BASE_DN_CONFIG_BRANCH;
+        BASE_DN_ZIMLET       = DEFAULT_BASE_RDN_ZIMLET      + "," + BASE_DN_CONFIG_BRANCH;
+    }
+    
+    private final void verify() {
+        if (BASE_DN_CONFIG_BRANCH == null ||
+            BASE_RDN_ACCOUNT == null ||
+            NAMING_RDN_ATTR_USER == null ||
+            NAMING_RDN_ATTR_COS == null ||
+            NAMING_RDN_ATTR_GLOBALCONFIG == null ||
+            NAMING_RDN_ATTR_MIME == null ||
+            NAMING_RDN_ATTR_SERVER == null ||
+            NAMING_RDN_ATTR_ZIMLET == null ||
+            BASE_DN_ADMIN == null ||
+            BASE_DN_COS == null ||
+            BASE_DN_MIME == null ||
+            BASE_DN_SERVER == null ||
+            BASE_DN_ZIMLET == null ||
+            DN_GLOBALCONFIG == null)
+            Zimbra.halt("Unable to initialize LDAP DIT");
+    }
+    
+    /*
+     * config branch
+     */
+    public String configBranchBaseDn() {
+        return BASE_DN_CONFIG_BRANCH;
     }
     
     /*
@@ -37,31 +155,78 @@ public class LdapDIT {
      *   account
      * ===========
      */
+    public String accountNamingRdnAttr() {
+        return NAMING_RDN_ATTR_USER;
+    }
 
-    // TODO deprecate and fix all call points that still use it
-    public String emailToDN(String localPart, String domain) {
-        return ACCOUNT_RDN_ATTR + "=" + LdapUtil.escapeRDNValue(localPart) + "," + domainToAccountBaseDN(domain);
+    private String emailToDN(String localPart, String domain) throws ServiceException {
+        return NAMING_RDN_ATTR_USER + "=" + LdapUtil.escapeRDNValue(localPart) + "," + domainToAccountBaseDN(domain);
     }
     
-    // TODO deprecate and fix all call points that still use it
-    public String emailToDN(String email) {
+    private String emailToDN(String email) throws ServiceException {
         String[] parts = EmailUtil.getLocalPartAndDomain(email);
         return emailToDN(parts[0], parts[1]);
     }
     
-    public String accountDN(String baseDn, String rdnAttr, Attributes attrs, String domain) throws ServiceException, NamingException {
-        if (baseDn == null)
-            baseDn = domainToAccountBaseDN(domain);
-        
-        if (rdnAttr == null)
-            rdnAttr = ACCOUNT_RDN_ATTR;
-        
-        String rdnValue = LdapUtil.getAttrString(attrs, rdnAttr);
-        
-        if (rdnValue == null)
-            throw ServiceException.FAILURE("missing rdn attribute" + rdnAttr, null);
+    public String accountDNCreate(String baseDn, Attributes attrs, String localPart, String domain) throws ServiceException, NamingException {
+        // sanity check, the default DIT does not support a supplied base
+        if (baseDn != null)
+            throw ServiceException.INVALID_REQUEST("base dn is not supported in DIT impl " + getClass().getCanonicalName(), null);
 
-        return rdnAttr  + "=" + LdapUtil.escapeRDNValue(rdnValue) + "," + baseDn;
+        return emailToDN(localPart, domain);
+    }
+    
+    public String accountDNRename(String oldDn, String newLocalPart, String newDomain) throws ServiceException, NamingException {
+        return emailToDN(newLocalPart, newDomain);
+    }
+    
+    /*
+     * Given a dn like "uid=foo,ou=people,dc=widgets,dc=com", return the string "foo@widgets.com".
+     * 
+     * Param attrs is not used in this implementation of DIT
+     */
+    public String dnToEmail(String dn, Attributes attrs) throws ServiceException, NamingException {
+        String [] parts = dn.split(",");
+        StringBuffer domain = new StringBuffer(dn.length());
+        
+        String namingAttr = accountNamingRdnAttr() + "=";
+        String namingAttrValue = null;
+        
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].startsWith("dc=")) {
+                if (domain.length() > 0)
+                    domain.append(".");
+                domain.append(LdapUtil.unescapeRDNValue(parts[i].substring(3)));
+            } else if (i==0 && parts[i].startsWith(namingAttr)) {
+                namingAttrValue = LdapUtil.unescapeRDNValue(parts[i].substring(namingAttr.length()));
+            }
+        }
+        if (namingAttrValue == null)
+            throw ServiceException.FAILURE("unable to map dn [" + dn + "] to email", null);
+        if (domain.length() == 0)
+            return namingAttrValue;
+        return new StringBuffer(namingAttrValue).append('@').append(domain).toString();
+    }
+    
+    /*
+     * returns the search filter for get all accounts in a domain
+     * 
+     * if includeObjectClass is true, the filter will include objectclass,
+     * if includeObjectClass is false, the filter will notinclude objectclass
+     * 
+     * false should be passed for searches that already specifies a flag, so 
+     * the objectclass will be automatically computed by getObjectClassQuery 
+     * in searchObjects, otherwise it will result in an extra & with the object 
+     * class (see LdapProvisioning.searchObjects), which will degrade perf. 
+     * 
+     * domain parameter is not used in default DIT because the search base is 
+     * restricted to the domain dn. 
+     */
+    public String filterAccountsByDomain(Domain domain, boolean includeObjectClass) {
+        if (includeObjectClass)
+            return "(objectclass=zimbraAccount)";
+        else
+            return "";
     }
     
    
@@ -71,33 +236,37 @@ public class LdapDIT {
      * =================
      */
     public String adminBaseDN() {
-        return ADMIN_BASE;
+        return BASE_DN_ADMIN;
     }
     
     public String adminNameToDN(String name) {
-        return ACCOUNT_RDN_ATTR + "=" + LdapUtil.escapeRDNValue(name) + ","+ADMIN_BASE;
+        return NAMING_RDN_ATTR_USER + "=" + LdapUtil.escapeRDNValue(name) + "," + BASE_DN_ADMIN;
     }
-    
+  
     
     /*
      * ==========
      *   alias
      * ==========
      */
-    public String aliasDN(String entryDn, String aliasLocalPart, String aliasDomain) {
+    public String aliasDN(String targetDn, String targetDomain, String aliasLocalPart, String aliasDomain) throws ServiceException {
         return emailToDN(aliasLocalPart, aliasDomain);
     }
     
-    
-    /*
-     * ==========
-     *   config
-     * ==========
-     */
-    public String configDN() {
-        return CONFIG_BASE;
+    public String aliasDNRename(String targetNewDn, String targetNewDomain, String newAliasEmail) throws ServiceException {
+        return emailToDN(newAliasEmail);
     }
-    
+   
+    /* =================
+     * calendar resource
+     * =================
+     */
+    public String filterCalendarResourcesByDomain(Domain domain, boolean includeObjectClass) {
+        if (includeObjectClass)
+            return "(objectclass=zimbraCalendarResource)";
+        else
+            return "";
+    }
     
     /*
      * =======
@@ -105,11 +274,11 @@ public class LdapDIT {
      * =======
      */
     public String cosBaseDN() {
-        return COS_BASE;
+        return BASE_DN_COS;
     }
     
     public String cosNametoDN(String name) {
-        return "cn=" + LdapUtil.escapeRDNValue(name) + ","+COS_BASE;
+        return NAMING_RDN_ATTR_COS + "=" + LdapUtil.escapeRDNValue(name) + "," + BASE_DN_COS;
     }
     
     /*
@@ -117,26 +286,83 @@ public class LdapDIT {
      *   distribution list 
      * =====================
      */
+    public String distributionListDNCreate(String baseDn, Attributes attrs, String localPart, String domain) throws ServiceException, NamingException {
+        // sanity check, the default DIT does not support a supplied base
+        if (baseDn != null)
+            throw ServiceException.INVALID_REQUEST("base dn is not supported in DIT impl " + getClass().getCanonicalName(), null);
+
+        return emailToDN(localPart, domain);
+    }
     
-    
+    public String distributionListDNRename(String oldDn, String newLocalPart, String newDomain) throws ServiceException, NamingException {
+        return emailToDN(newLocalPart, newDomain);
+    }
+
+    public String filterDistributionListsByDomain(Domain domain, boolean includeObjectClass) {
+        if (includeObjectClass)
+            return "(objectclass=zimbraDistributionList)";
+        else
+            return "";
+    }
+
     /*
      * ==========
      *   domain
      * ==========
      */
-    // TODO deprecate and fix all call points that still use it
-    public String domainToAccountBaseDN(String domain) {
-        return ACCOUNT_REL_BASE +","+LdapUtil.domainToDN(domain);
+    /**
+     * Given a domain like foo.com, return an array of dns that work their way up the tree:
+     *    [0] = dc=foo,dc=com
+     *    [1] = dc=com
+     * 
+     * @return the array of DNs
+     */
+    public String[] domainToDNs(String[] parts) {
+        return domainToDNsInternal(parts, null);
     }
-
-    // TODO deprecate and fix all call points that still use it
-    public String domainToAccountBaseDN(LdapDomain domain) {
-        return ACCOUNT_REL_BASE +","+domain.getDN();
+    
+    protected String[] domainToDNsInternal(String[] parts, String base) {
+        String dns[] = new String[parts.length];
+        for (int i=parts.length-1; i >= 0; i--) {
+            dns[i] = LdapUtil.domainToDN(parts, i);
+            if (base != null)
+                dns[i] = dns[i] + "," + base;
+        }
+        return dns;
     }
-
-    // TODO deprecate and fix all call points that still use it
-    public String domainDNToAccountBaseDN(String domainDN) {
-        return ACCOUNT_REL_BASE +","+domainDN;
+    
+    
+    // account base search dn
+    public String domainToAccountSearchDN(String domain) throws ServiceException {
+        return domainDNToAccountBaseDN(LdapUtil.domainToDN(domain));
+    }
+    
+    // account base search dn
+    public String domainDNToAccountSearchDN(String domainDN) throws ServiceException {
+        return domainDNToAccountBaseDN(domainDN);
+    }
+    
+    // only used internally 
+    private String domainToAccountBaseDN(String domain) throws ServiceException {
+        return domainDNToAccountBaseDN(LdapUtil.domainToDN(domain));
+    }
+    
+    // account base dn for create/delete domain
+    public String domainDNToAccountBaseDN(String domainDN) throws ServiceException {
+        if (BASE_RDN_ACCOUNT.length()==0)
+            return domainDN;
+        else
+            return BASE_RDN_ACCOUNT + "," + domainDN;
+    }
+    
+    
+    /*
+     * ==============
+     *   globalconfig
+     * ==============
+     */
+    public String configDN() {
+        return DN_GLOBALCONFIG;
     }
 
    
@@ -145,9 +371,15 @@ public class LdapDIT {
      *   mime
      * ========
      */
+    /*
     public String mimeConfigToDN(String name) {
         name = LdapUtil.escapeRDNValue(name);
-        return "cn=" + name + ",cn=mime," + CONFIG_BASE;
+        return NAMING_RDN_ATTR_MIME + "=" + name + "," + BASE_DN_MIME;
+    }
+    */
+    
+    public String mimeBaseDN() {
+        return BASE_DN_MIME;
     }
     
     
@@ -157,11 +389,11 @@ public class LdapDIT {
      * ==========
      */
     public String serverBaseDN() {
-        return SERVER_BASE;
+        return BASE_DN_SERVER;
     }
     
     public String serverNametoDN(String name) {
-        return "cn=" + LdapUtil.escapeRDNValue(name) + ","+SERVER_BASE;
+        return NAMING_RDN_ATTR_SERVER + "=" + LdapUtil.escapeRDNValue(name) + "," + BASE_DN_SERVER;
     }
     
     
@@ -171,11 +403,13 @@ public class LdapDIT {
      * ==========
      */    
     public String zimletNameToDN(String name) {
-        return "cn=" + LdapUtil.escapeRDNValue(name) + ","+ZIMLET_BASE;
+        return NAMING_RDN_ATTR_ZIMLET + "=" + LdapUtil.escapeRDNValue(name) + "," + BASE_DN_ZIMLET;
     }
     
     
-    
+    /*
+     * ========================================================================================
+     */
     protected SpecialAttrs handleSpecialAttrs(Map<String, Object> attrs) throws ServiceException {
         SpecialAttrs specialAttrs = new SpecialAttrs();
         if (attrs != null) {
@@ -187,6 +421,29 @@ public class LdapDIT {
 
         }
         return specialAttrs;
+    }
+    
+    public String getNamingRdnAttr(Entry entry) throws ServiceException {
+        if (entry instanceof Account ||
+            entry instanceof DistributionList ||
+            entry instanceof Alias)
+            return NAMING_RDN_ATTR_USER;
+        else if (entry instanceof Cos)
+            return NAMING_RDN_ATTR_COS;
+        else if (entry instanceof Config) 
+            return NAMING_RDN_ATTR_GLOBALCONFIG;
+        else if (entry instanceof DataSource)
+            return Provisioning.A_zimbraDataSourceName;
+        else if (entry instanceof Domain)   
+            return Provisioning.A_dc;
+        else if (entry instanceof Identity)
+            return Provisioning.A_zimbraPrefIdentityName;   
+        else if (entry instanceof Server)
+            return NAMING_RDN_ATTR_SERVER;
+        else if (entry instanceof Zimlet)
+            return NAMING_RDN_ATTR_ZIMLET;
+        else
+            throw ServiceException.FAILURE("entry type " + entry.getClass().getCanonicalName() + " is not supported by getNamingRdnAttr", null);
     }
 
 }

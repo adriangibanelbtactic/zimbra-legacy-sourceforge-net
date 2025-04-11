@@ -56,9 +56,12 @@ function (entry) {
 	this._containedObject = {attrs:{}};
 	this._containedObject.cos = entry.cos;
 	this._containedObject[ZaServer.A_showVolumes] = entry[ZaServer.A_showVolumes];
-	this._containedObject[ZaItem.A_zimbraId] = entry[ZaItem.A_zimbraId];
+	
+	
 	this._containedObject[ZaServer.A_ServiceHostname] = entry[ZaServer.A_ServiceHostname];
 	this._containedObject.name = entry.name;
+	this._containedObject.type = entry.type ;
+	if(entry.id) this._containedObject.id = entry.id;
 	//this._containedObject = AjxUtil.createProxy(entry,3);
 
 	this._containedObject[ZaServer.A_Volumes] = [];
@@ -67,7 +70,6 @@ function (entry) {
 			this._containedObject.attrs[a] = entry.attrs[a];
 		}
 	}
-
 
 	if(entry[ZaServer.A_Volumes]) {
 		for(var a in entry[ZaServer.A_Volumes]) {
@@ -428,6 +430,10 @@ ZaServerXFormView.myXFormModifier = function(xFormObject) {
 							},
 							{ ref: ZaServer.A_LmtpBindAddress, type:_INPUT_, 
 							  label:ZaMsg.NAD_LmtpBindAddress, cssClass:"admin_xform_name_input",
+							  onChange:ZaServerXFormView.onFormFieldChanged
+							},
+							{ ref: ZaServer.A_zimbraDataSourceNumThreads, type:_INPUT_, 
+							  label:ZaMsg.NAD_zimbraDataSourceNumThreads, cssClass:"admin_xform_name_input",
 							  onChange:ZaServerXFormView.onFormFieldChanged
 							},
 							{ ref: ZaServer.A_notes, type:_TEXTAREA_, 

@@ -167,6 +167,7 @@ public class ZMessageComposeBean {
     private Map<String,Boolean> mCheckedAttachmentNames = new HashMap<String, Boolean>();
     private List<ZMimePartBean> mOriginalAttachments;
     private List<FileItem> mFileItems = new ArrayList<FileItem>();
+    private String mUploadedAttachmentId;
 
     public ZMessageComposeBean(PageContext pageContext) {
         mMessageAttachments = new ArrayList<MessageAttachment>();
@@ -284,6 +285,9 @@ public class ZMessageComposeBean {
 
     public Map<String,Boolean> getCheckedAttachmentNames() { return mCheckedAttachmentNames; }
     public void setCheckedAttachmentName(String name) { mCheckedAttachmentNames.put(name,  true); }
+
+    public String getUploadedAttachment() { return mUploadedAttachmentId; }
+    public void setUploadedAttachment(String id) { mUploadedAttachmentId = id; }
 
     public List<FileItem> getFileItems() { return mFileItems; }
     public void addFileItem(FileItem item) { mFileItems.add(item); }
@@ -485,6 +489,17 @@ public class ZMessageComposeBean {
                         mCc= null;
                     }
 
+                } else if (mTo == null || mTo.equals("") &&
+                    (action == Action.INVITE_ACCEPT || action == Action.INVITE_DECLINE || action == Action.INVITE_TENTATIVE)) {
+                    ZInvite inv = msg.getInvite();
+                    if (inv != null) {
+                        ZComponent appt = inv.getComponent();
+                        if (appt != null) {
+                            ZOrganizer org = appt.getOrganizer();
+                            if (org != null)
+                                setTo(org.getEmailAddress().getFullAddressQuoted());
+                        }
+                    }
                 }
                 setInReplyTo(msg.getMessageIdHeader()); // original message-id header
                 setReplyType("r");
@@ -585,8 +600,10 @@ public class ZMessageComposeBean {
         setFrom(identity.getFromEmailAddress().getFullAddress());
 
         if (action == Action.RESEND || action == Action.DRAFT) {
-            if (msg != null)
-                setContent(msg.getBody().getContent());
+            if (msg != null) {
+                ZMimePartBean body = msg.getBody();
+                setContent(body == null ? "" : body.getContent());
+            }
             return;
         }
 
@@ -930,7 +947,8 @@ public class ZMessageComposeBean {
         } else if (identity.getForwardIncludeBody()) {
             content.append(CRLF).append(CRLF).append(LocaleSupport.getLocalizedMessage(pc, "ZM_forwardedMessage")).append(CRLF);
             content.append(getQuotedHeaders(msg, pc)).append(CRLF);
-            content.append(msg.getBody().getContent());
+            ZMimePartBean body = msg.getBody();
+            content.append(body == null ? "" : body.getContent());
             content.append(CRLF);
             addAttachments(msg, true);
         } else if (identity.getForwardIncludeBodyWithPrefx()) {
@@ -947,7 +965,8 @@ public class ZMessageComposeBean {
         } else if (identity.getReplyIncludeBody()) {
             content.append(CRLF).append(CRLF).append(LocaleSupport.getLocalizedMessage(pc, "ZM_originalMessage")).append(CRLF);
             content.append(getQuotedHeaders(msg, pc)).append(CRLF);
-            content.append(msg.getBody().getContent());
+            ZMimePartBean body = msg.getBody();
+            content.append(body == null ? "" : body.getContent());
             content.append(CRLF);
             addAttachments(msg, false);
         } else if (identity.getReplyIncludeBodyWithPrefx()) {
@@ -974,9 +993,11 @@ public class ZMessageComposeBean {
     }
 
     private String getQuotedBody(ZMessageBean msg, ZIdentity identity) {
+        if (msg == null) return "";
         String prefixChar = identity.getForwardReplyPrefixChar();
         prefixChar = (prefixChar == null) ? "> " : prefixChar + " ";
-        return BeanUtils.prefixContent(msg.getBody().getContent(), prefixChar);
+        ZMimePartBean body = msg.getBody();
+        return body == null ? "" : BeanUtils.prefixContent(body.getContent(), prefixChar);
     }
 
     private ZIdentity computeIdentity(ZMessageBean msg, List<ZIdentity> identities) {
@@ -1557,7 +1578,7 @@ da body
         }
 
 
-
+        String attachmentUploadId = null;
         if (getHasFileItems()) {
             Part[] parts = new Part[mFileItems.size()];
             int i=0;
@@ -1565,13 +1586,22 @@ da body
                 parts[i++] = new FilePart(item.getFieldName(), new UploadPartSource(item), item.getContentType(), "utf-8");
             }
             try {
-                m.setAttachmentUploadId(mailbox.uploadAttachments(parts, 1000*60)); //TODO get timeout from config
+                attachmentUploadId = mailbox.uploadAttachments(parts, 1000 * 60);  //TODO get timeout from config
             } finally {
                 for (FileItem item : mFileItems) {
                     try { item.delete(); } catch (Exception e) { /* TODO: need logging infra */ }
                 }
             }
         }
+
+        if (mUploadedAttachmentId != null) {
+            if (attachmentUploadId != null) {
+                attachmentUploadId += "," + mUploadedAttachmentId;
+            } else {
+                attachmentUploadId = mUploadedAttachmentId;
+            }
+        }
+        m.setAttachmentUploadId(attachmentUploadId);
         return m;
     }
 

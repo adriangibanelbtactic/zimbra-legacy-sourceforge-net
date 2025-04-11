@@ -240,7 +240,7 @@ $(CORE_DEST_DIR)/conf: $(WEBAPP_DIR)/service.war
 	cp $(PACKAGE_CONF_DIR)/Conf/swatchrc $@/swatchrc.in
 	cp $(PACKAGE_CONF_DIR)/Conf/logswatchrc $@/logswatchrc
 	cp $(SERVICE_DIR)/build/dist/conf/localconfig.xml $@
-	cp $(SERVICE_DIR)/build/dist/conf/log4j.properties $@
+	cp $(SERVICE_DIR)/build/dist/conf/log4j.properties $@/log4j.properties.in
 	cp $(PACKAGE_CONF_DIR)/Conf/zmssl.cnf.in $@
 	cp $(SERVICE_DIR)/conf/amavisd.conf.in $@
 	cp $(SERVICE_DIR)/conf/dspam.conf $@
@@ -249,6 +249,7 @@ $(CORE_DEST_DIR)/conf: $(WEBAPP_DIR)/service.war
 	cp $(SERVICE_DIR)/conf/freshclam.conf.in $@
 	cp $(SERVICE_DIR)/conf/postfix_header_checks.in $@
 	cp $(SERVICE_DIR)/conf/perdition.conf.in $@
+	cp $(SERVICE_DIR)/conf/nginx.conf.in $@
 	cp $(SERVICE_DIR)/conf/salocal.cf $@/salocal.cf.in
 	cp $(SERVICE_DIR)/conf/zmmta.cf-$(MAILBOXD_SERVER) $@/zmmta.cf
 	cp $(SERVICE_DIR)/conf/timezones.ics $@
@@ -303,6 +304,7 @@ $(CORE_DEST_DIR)/bin:
 	cp $(ZIMBRA_BIN_DIR)/zmcontrol $@
 	cp $(ZIMBRA_BIN_DIR)/zmloggerctl $@
 	cp $(ZIMBRA_BIN_DIR)/zmstorectl $@
+	cp $(ZIMBRA_BIN_DIR)/zmproxyctl $@
 	cp $(ZIMBRA_BIN_DIR)/zmmtactl $@
 	cp $(ZIMBRA_BIN_DIR)/zmspellctl $@
 	cp $(ZIMBRA_BIN_DIR)/zmapachectl $@

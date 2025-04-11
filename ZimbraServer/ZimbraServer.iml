@@ -316,7 +316,6 @@
         <SOURCES />
       </library>
     </orderEntry>
-    <orderEntry type="library" name="tomcat" level="project" />
     <orderEntry type="module" module-name="ZimbraIM" />
     <orderEntry type="module-library">
       <library>
@@ -345,6 +344,25 @@
         <SOURCES />
       </library>
     </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../ZimbraCommon/jars/jfreechart-1.0.1.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../ZimbraCommon/jars/custom_rhino.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="library" name="Jetty 6.1.4" level="application_server_libraries" />
     <orderEntryProperties />
   </component>
 </module>

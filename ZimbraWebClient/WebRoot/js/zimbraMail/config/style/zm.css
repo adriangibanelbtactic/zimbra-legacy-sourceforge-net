@@ -1,4 +1,3 @@
-
 /*
  * ***** BEGIN LICENSE BLOCK *****
  * Version: ZPL 1.2
@@ -213,7 +212,13 @@
 .ZmSearchToolbar {
 	padding-left:5px;
 	margin-top:1px;
+	width:100%;
 }
+
+.ZmSearchToolbar .ZToolbarTable {
+	width: 100%;
+}
+
 .ZmSearchToolbar .MessageControl0 {
 	padding-right:5px;
 }
@@ -223,13 +228,6 @@
 }
 
 
-/* MESSED UP STUFF TO GET THE SEARCH TOOLBAR TO LINE UP */
-/*
-.ZmSearchToolbar TABLE {
-	height:20px;
-	width:100%;
-}
-*/
 .ZmSearchToolbar .DwtCompositeTable TD {
 	padding-top:3px;
 }
@@ -455,7 +453,7 @@ td.DDSepInvisible div {
 	@Label@		/* ??? bold?*/
 	vertical-align: top;
 	text-align: right;
-	padding: 3 0 3 0;
+	padding: 3px 0px 3px 0px;
 }
 
 .ZmMailMsgView .LabelColValue {
@@ -702,9 +700,12 @@ td.DDSepInvisible div {
 .AlphabetBarCell {
 	text-align:center;
 	@ActiveCursor@
-	width:30px;
-	min-width:30px;
 	border-right-width: 1px;
+	
+#IFDEF GECKO
+
+	width:30px;
+#ENDIF
 }
 
 .AlphabetBarDisabled {
@@ -1777,6 +1778,7 @@ HTML>BODY .appt-selected .appt_allday_body
 
 .ZmChatWidget .ZToolbarTable td { vertical-align: middle; }
 
+.ZmChatWidget .ZToolbarTable .ZButton { min-width: 0; }
 .ZmChatWidget .ZToolbarTable .ZButton .ZLeftIcon div { margin-left: 2px; margin-right: 2px; }
 .ZmChatWidget .ZToolbarTable .ZButton .ZWidgetTitle { padding: 0; }
 
@@ -1813,6 +1815,15 @@ HTML>BODY .appt-selected .appt_allday_body
 .ZmChatWindow-selected .DwtToolBar {
 	@ListItemContainer-selected@
 	height:24px;
+}
+
+.ZmImSubscribeAuthView {
+  @WindowContainer@
+  padding: 10px;
+  width: 250px;
+  /* must be initially hidden or it will flash when the animation starts */
+  left: -10000px;
+  top: -10000px;
 }
 
 /* ??? REMOVE
@@ -1858,10 +1869,13 @@ HTML>BODY .appt-selected .appt_allday_body
 
 .ZmChatWindowChatEntry .from { font-weight: bold; margin-bottom: 5px; }
 .ZmChatWindowChatEntry .time { float: right; color: #888; }
-.ZmChatWindowChatEntry .body { padding-left: 15px; margin-right: 4.2em; }
+.ZmChatWindowChatEntry .body { padding-left: 15px; margin-right: 4.2em; color: black;}
 
 .ZmChatWindowChatEntryMe .from { color: #00c; }
 .ZmChatWindowChatEntryThem .from { color: #c00; }
+
+.ZmRosterItem-typing .DwtTreeItem .DwtTreeItem-Text { color: #1a1; }
+.ZmRosterItem-typing .ZWidgetTitle { color: #070; }
 
 /* chat with Zimbra Assistant */
 
@@ -1920,7 +1934,7 @@ HTML>BODY .appt-selected .appt_allday_body
 .ZmChatTabs-TabBar .ZmChatTabs-Tab .ZWidgetTitle { width: auto; padding: 0; }
 .ZmChatTabs-TabBar .ZmChatTabs-Tab .ZWidgetTable .ZLeftIcon div { margin-left: 0; }
 .ZmChatTabs-TabBar .ZmChatTabs-Tab .ZWidgetTable div { margin: 0; }
-.ZmChatTabs-TabBar .ZmChatTabs-Tab .ZButton { height: auto; }
+.ZmChatTabs-TabBar .ZmChatTabs-Tab .ZButton { min-width: 0; height: auto; }
 
 .ZmChatTabs-TabBar .ZmChatTabs-Tab-Active {
   @ToolbarContainer@
@@ -1934,7 +1948,36 @@ HTML>BODY .appt-selected .appt_allday_body
   -moz-border-radius-bottomright: 2px;
 }
 
+.ZmChatGwIcon {
+  width: 44px;
+  height: 44px;
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  padding: 1px;
+}
 
+/* FIXME: these are temporary until Owen adds them as proper icons */
+.ImgYahooBig { background-image: url("/zimbra/public/tmp/yahoo.png"); }
+.ImgMsnBig { background-image: url("/zimbra/public/tmp/msn.png"); }
+.ImgAolBig { background-image: url("/zimbra/public/tmp/aol.png"); }
+
+.ZmChatGwIcon-offline { 
+ opacity: 0.3;
+
+#IFDEF MSIE
+      
+	filter: alpha(opacity=30); 
+#ENDIF 
+}
+.ZmChatGwIcon-hover {
+   opacity: 0.8; 
+  border: 1px solid #aaa; padding: 0;
+  background-color: #fff;
+#IFDEF MSIE  
+   filter: alpha(opacity=80);
+#ENDIF
+}
 
 /*
  *	App chooser
@@ -2042,6 +2085,77 @@ HTML>BODY .appt-selected .appt_allday_body
  * Preferences
  */
 
+.ZmPreferencesPage {
+	padding: 0.5em 2em;
+}
+
+/* table that holds the 'restore defaults' button */
+.ZOptionsDefaultsTable {
+	margin-bottom: 0.5em;
+}
+
+/* Table for a section of prefs (head + body) */
+.ZOptionsSectionTable {
+	margin-bottom:1.5em;
+}
+
+/* header row for a section -- color/etc comes from graphics */
+.ZOptionsHeaderRow {}
+
+.ZOptionsHeaderL, 
+.ZOptionsHeaderR { }
+.ZOptionsHeader {
+ 	@FontSize-bigger@
+ 	color:white;
+}
+.ZOptionsHeader {
+	width:100%;
+}
+
+/* container for body of a prefs section */
+.ZOptionsSectionMain {
+	@ChromeBg@
+	padding:1em;
+}
+.ZOptionsLabel, 
+.ZOptionsLabelTop, 
+.ZOptionsLabelNarrow,
+.ZOptionsTableLabel {
+	width: 150px;
+	font-weight: bold;
+	white-space: nowrap;
+	text-align: right;
+	vertical-align: middle;
+	line-height:20px;
+}
+
+.ZOptionsSectionTable LABEL {
+	white-space:nowrap;
+}
+
+.ZOptionsLabelTop {
+	vertical-align:top;
+	line-height:20px;
+}
+
+.ZOptionsLabelNarrow {
+	width:auto;
+}
+
+.ZOptionsTableLabel {
+	@PageHeaderBg@
+}
+
+.ZOptionsInfo {
+	@Text-disabled@		/* TODO: Text-hint ? */
+}	
+
+/* REVISIT: Why do disabled inputs have a fixed height of 20px? */
+.ZOptionsField INPUT[disabled],
+.ZOptionsTableRow INPUT[disabled] {
+	height: auto;
+}
+
 /* Container for the set of preference pages (including tabs) */
 .ZmPrefView {
 	@PageBg@
@@ -2081,11 +2195,15 @@ HTML>BODY .appt-selected .appt_allday_body
 /* label for pereferences */
 .prefLabel {
 	@Label@
-	text-align:right;
 	width: 300px;		/* ??? SIZE */
+	text-align:right;
+	vertical-align: top;
+	padding-top: 2px;
 }
 .prefContent {
 	width: 420px;		/* ??? SIZE */
+	vertical-align: top;
+	white-space: nowrap;
 }
 
 /* button sizing */
@@ -2188,6 +2306,10 @@ HTML>BODY .appt-selected .appt_allday_body
 	-moz-border-bottom-colors: #746e61 #bab09a;
 	-moz-border-right-colors: #746e61 #bab09a;
 #ENDIF
+}
+
+.ZmRadioButtonGroupHoriz .ZmRadioButtonGroupCell {
+  padding-right: 1em;
 }
 
 /*
@@ -2787,6 +2909,8 @@ HTML>BODY .appt-selected .appt_allday_body
 .ZmTooltipLabel {
 	text-align:right;
 	padding-right:5px;
+	white-space: nowrap;
+	font-weight: bold;
 }
 
 .ZmVoiceTreeHeader {
@@ -2795,6 +2919,8 @@ HTML>BODY .appt-selected .appt_allday_body
 
 /* tabs for buddy list/folders in the overview bar */
 /* FIXME: look broken */
+
+/* <REMOVE -- IS THIS NEEDED?>
 
 .ZmBuddyFolderTabBar {
 }
@@ -2810,6 +2936,8 @@ HTML>BODY .appt-selected .appt_allday_body
 .BuddyFolderTab-active {
   @AppTabContainer-selected@
 }
+
+</REMOVE> */
 
 .ZmVoiceListView .Row,
 .ZmVoiceListView .Row-selected,
@@ -2911,7 +3039,11 @@ HTML>BODY .appt-selected .appt_allday_body
  ***************/
 
 
-.ZAppTabBorder							{	@ZWidgetBg@		@NormalOutsetBorder@	@AppTab-lighter@	@AppTabRoundCorners@	margin-right:10px;	}
+.ZAppTabBorder							{	@ZWidgetBg@		@NormalOutsetBorder@	@AppTab-lighter@	@AppTabRoundCorners@	margin-right:10px;
+ #IFDEF MSIE
+  padding-right:3px; margin-right: 12px;
+ #ENDIF
+}
 .ZHover		.ZAppTabBorder				{	@ZWidgetBg@								@FullOpacity@		@AppTabRoundCorners@	}
 .ZDisabled	.ZAppTabBorder				{	@ZWidgetBg@ 	@DisabledBorder@		@FullOpacity@		@AppTabRoundCorners@	}
 .ZFocused	.ZAppTabBorder				{	@ZWidgetBg@		@NormalOutsetBorder@	@FullOpacity@		@AppTabRoundCorners@	}
@@ -2928,7 +3060,7 @@ HTML>BODY .appt-selected .appt_allday_body
 .ZToast {
   position: absolute;
   top: -10000; left: -10000;
-  margin-top: 115px;
+  margin-top: 10px;
   overflow: visible;
 }
 .ZToastBG {
@@ -2967,4 +3099,61 @@ HTML>BODY .appt-selected .appt_allday_body
 .ZToastCrit .ZToastBG {
   background-color: pink;
   border: solid 3px red;
+}
+
+/*briefcase app*/
+
+.ZmBriefcaseView {
+background-color: #ffffff;
+}
+
+.ZmBriefcaseItem,.ZmBriefcaseItemSelected {
+background-color:transparent;
+background-repeat:no-repeat;
+cursor:pointer;
+float:left;
+height:120px;
+margin:8px;
+vertical-align:middle;
+width:100px;
+}
+
+.ZmBriefcaseItem .ZmThumbnailItem,.ZmBriefcaseItemSelected .ZmThumbnailItem{
+background-color:transparent;
+border:2px solid #CCCCCC;
+font-size:1px;
+height:100px;
+line-height:100px;
+text-align:center;
+width:96px;
+}
+
+.ZmBriefcaseItem .ZmThumbnailName,.ZmBriefcaseItemSelected .ZmThumbnailName{
+display:block;
+@FontSize-smaller@
+@FontFamily-html@
+margin:3px 0pt 0pt 0px;
+text-align:center;
+height: 14px;
+overflow: hidden;
+}
+
+.ZmBriefcaseItemSelected{
+color:#FFFFFF;
+}
+
+.ZmBriefcaseItemSelected .ZmThumbnailItem{
+border-color: #316AC5;
+}
+
+.ZmBriefcaseItemSelected .ZmThumbnailName span {
+background:#316AC5 none repeat scroll 0%;
+color:#FFFFFF;
+}
+.ZmBriefcaseItemSelected .ZmThumbnailName span a {
+color:#FFFFFF;
+}
+
+.ZmThumbnailIcon{
+margin:26px 24px;
 }

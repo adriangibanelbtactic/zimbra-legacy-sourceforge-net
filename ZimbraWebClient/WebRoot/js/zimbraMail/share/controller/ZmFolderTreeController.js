@@ -46,6 +46,8 @@ ZmFolderTreeController = function(appCtxt, type, dropTgt) {
 	this._listeners[ZmOperation.RENAME_FOLDER] = new AjxListener(this, this._renameListener);
 	this._listeners[ZmOperation.SHARE_FOLDER] = new AjxListener(this, this._shareAddrBookListener);
 	this._listeners[ZmOperation.MOUNT_FOLDER] = new AjxListener(this, this._mountAddrBookListener);
+	
+	this._listeners[ZmOperation.EMPTY_FOLDER] = new AjxListener(this,this._emptyListener);
 };
 
 ZmFolderTreeController.prototype = new ZmTreeController;
@@ -67,7 +69,7 @@ function(params) {
 	for (var id in ZmFolder.HIDE_ID) {
 		omit[id] = true;		
 	}
-    var dataTree = this.getDataTree();
+    var dataTree = this.getDataTree(params.account);
     for (var name in ZmFolder.HIDE_NAME) {
 		var folder = dataTree.getByName(name);
 		if (folder) {
@@ -75,7 +77,7 @@ function(params) {
 		}
 	}
 	params.omit = omit;
-	ZmTreeController.prototype.show.call(this, params);
+	return ZmTreeController.prototype.show.call(this, params);
 };
 
 /**
@@ -86,48 +88,52 @@ function(params) {
 */
 ZmFolderTreeController.prototype.resetOperations = 
 function(parent, type, id) {
-	var deleteText = ZmMsg.del;
+	
+	var emptyText = ZmMsg.emptyFolder; //ZmMsg.empty + (ZmFolder.MSG_KEY[id]?" "+ZmFolder.MSG_KEY[id] : "");
 	var folder = this._appCtxt.getById(id);
+	var hasContent = ((folder.numTotal > 0) || (folder.children && (folder.children.size() > 0)));
 
 	// user folder or Folders header
-	if (id == ZmOrganizer.ID_ROOT || ((!folder.isSystem()) && !folder.isSyncIssuesFolder()))
-	{
+	var nId = ZmOrganizer.normalizeId(id, this.type);
+	if (nId == ZmOrganizer.ID_ROOT || ((!folder.isSystem()) && !folder.isSyncIssuesFolder()))	{
 		parent.enableAll(true);
 		parent.enable(ZmOperation.SYNC, folder.isFeed());
 		parent.enable([ZmOperation.SHARE_FOLDER, ZmOperation.MOUNT_FOLDER], !folder.link);
+		parent.enable(ZmOperation.EMPTY_FOLDER, hasContent);
 
 		if (folder.isRemote() && folder.isReadOnly()) {
 			if (folder.parent && folder.parent.isRemote()) {
 				parent.enableAll(false);
 			} else {
-				parent.enable([ZmOperation.NEW_FOLDER, ZmOperation.MARK_ALL_READ], false);
+				parent.enable([ZmOperation.NEW_FOLDER, ZmOperation.MARK_ALL_READ, ZmOperation.EMPTY_FOLDER], false);
 			}
 		}
-	}
-	// system folder
-	else
-	{
+	} else {	// system folder
 		parent.enableAll(false);
 		// can't create folders under Drafts or Junk
-		if (id == ZmFolder.ID_INBOX || id == ZmFolder.ID_SENT || id == ZmFolder.ID_TRASH)
+		if (nId == ZmFolder.ID_INBOX || nId == ZmFolder.ID_SENT || nId == ZmFolder.ID_TRASH) {
 			parent.enable(ZmOperation.NEW_FOLDER, true);
-		// "Delete" for Junk and Trash is "Empty"
-		if (id == ZmFolder.ID_SPAM || id == ZmFolder.ID_TRASH) {
-			deleteText = (id == ZmFolder.ID_SPAM) ? ZmMsg.emptyJunk : ZmMsg.emptyTrash;
-			parent.enable(ZmOperation.DELETE, true);
+		}
+		// "Empty" for Junk and Trash
+		if (nId == ZmFolder.ID_SPAM || nId == ZmFolder.ID_TRASH) {
+			emptyText = (id == ZmFolder.ID_SPAM) ? ZmMsg.emptyJunk : ZmMsg.emptyTrash;
+			parent.enable(ZmOperation.EMPTY_FOLDER, hasContent);
 		}
 		// only allow Inbox and Sent system folders to be share-able for now
-		if (!folder.link && (id == ZmFolder.ID_INBOX || id == ZmFolder.ID_SENT))
+		if (!folder.link && (nId == ZmFolder.ID_INBOX || nId == ZmFolder.ID_SENT)) {
 			parent.enable([ZmOperation.SHARE_FOLDER, ZmOperation.MOUNT_FOLDER, ZmOperation.EDIT_PROPS], true);
+		}
 	}
 
 	parent.enable(ZmOperation.EXPAND_ALL, (folder.size() > 0));
-	if (id != ZmOrganizer.ID_ROOT && !folder.isReadOnly())
+	if (nId != ZmOrganizer.ID_ROOT && !folder.isReadOnly()) {
 		parent.enable(ZmOperation.MARK_ALL_READ, (folder.numUnread > 0));
+	}
 
-	var op = parent.getOp(ZmOperation.DELETE);
-	if (op)
-		op.setText(deleteText);
+	var op = parent.getOp(ZmOperation.EMPTY_FOLDER);
+	if (op) {
+		op.setText(emptyText);
+	}
 
     // are there any pop accounts associated to this folder?
     var button = parent.getOp(ZmOperation.SYNC);
@@ -168,6 +174,7 @@ function() {
 	var list = new Array();
 	list.push(ZmOperation.NEW_FOLDER,
 			  ZmOperation.MARK_ALL_READ,
+			  ZmOperation.EMPTY_FOLDER,
 			  ZmOperation.DELETE,
 			  ZmOperation.RENAME_FOLDER,
 			  ZmOperation.MOVE,
@@ -220,7 +227,7 @@ function(folder) {
 		var searchController = this._appCtxt.getSearchController();
 		var searchFor = ZmSearchToolBar.FOR_MAIL_MI;
 		if (folder.isInTrash()) {
-			var app = this._appCtxt.getAppController().getActiveApp();
+			var app = this._appCtxt.getCurrentAppName();
 			// if other apps add Trash to their folder tree, set appropriate type here:
 			if (app == ZmApp.CONTACTS)
 				searchFor = ZmItem.CONTACT;
@@ -285,13 +292,13 @@ function(treeView, parentNode, organizer, idx) {
 ZmFolderTreeController.prototype._deleteListener = 
 function(ev) {
 	var organizer = this._getActionedOrganizer(ev);
-	if (organizer.id == ZmFolder.ID_SPAM || organizer.isInTrash()) {
+	if (organizer.nId == ZmFolder.ID_SPAM || organizer.isInTrash()) {
 		this._pendingActionData = organizer;
 		var ds = this._deleteShield = this._appCtxt.getOkCancelMsgDialog();
 		ds.reset();
 		ds.registerCallback(DwtDialog.OK_BUTTON, this._deleteShieldYesCallback, this, organizer);
 		ds.registerCallback(DwtDialog.CANCEL_BUTTON, this._clearDialog, this, this._deleteShield);
-		var confirm = organizer.type == ZmOrganizer.SEARCH ? ZmMsg.confirmDeleteSavedSearch : ZmMsg.confirmEmptyFolder;
+		var confirm = (organizer.type == ZmOrganizer.SEARCH) ? ZmMsg.confirmDeleteSavedSearch : ZmMsg.confirmEmptyFolder;
 		var msg = AjxMessageFormat.format(confirm, organizer.getName());
 		ds.setMessage(msg, DwtMessageDialog.WARNING_STYLE);
 		ds.popup();
@@ -299,6 +306,29 @@ function(ev) {
 		this._doMove(organizer, this._appCtxt.getById(ZmFolder.ID_TRASH));
 	}
 };
+
+/*
+* Empty's a folder. 
+* It removes all the items in the folder except sub-folders.
+* If the folder is Thrash, it empties even the sub-folders.
+* A warning dialog will be shown before any folder is emptied.
+*
+* @param ev		[DwtUiEvent]	the UI event
+*/
+ZmFolderTreeController.prototype._emptyListener = 
+function(ev) {
+	var organizer = this._getActionedOrganizer(ev);
+	this._pendingActionData = organizer;
+	var ds = this._emptyShield = this._appCtxt.getOkCancelMsgDialog();
+	ds.reset();
+	ds.registerCallback(DwtDialog.OK_BUTTON, this._emptyShieldYesCallback, this, organizer);
+	ds.registerCallback(DwtDialog.CANCEL_BUTTON, this._clearDialog, this, this._emptyShield);
+	var confirm = ZmMsg.confirmEmptyFolder;
+	var msg = AjxMessageFormat.format(confirm, organizer.getName());
+	ds.setMessage(msg, DwtMessageDialog.WARNING_STYLE);
+	ds.popup();	
+};
+
 
 /*
 * Don't allow dragging of system folders.

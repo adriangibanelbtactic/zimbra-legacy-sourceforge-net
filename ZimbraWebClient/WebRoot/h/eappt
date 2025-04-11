@@ -81,7 +81,7 @@
                 <td align=left class=TbBt>
                     <table cellspacing=0 cellpadding=0 class='Tb'>
                         <tr>
-                            <app:button name="actionSave" src="common/Save.gif" tooltip="save" text="save"/>
+                            <app:button id="OPSAVE" name="actionSave" src="common/Save.gif" tooltip="save" text="save"/>
                             <td><div class='vertSep'></div></td>
                             <c:choose>
                                 <c:when test="${isNewAppt}">
@@ -96,22 +96,23 @@
                             <c:set var="editrecur" value="${(empty appt or not appt.exception) and not compose.useInstance}"/>
                             <td><div class='vertSep'></div></td>
                             <app:button name="actionRepeatEdit" src="calendar/ApptRecur.gif" tooltip="editRecurrence" text="repeat" disabled="${not editrecur}"/>
-                            <td><div class='vertSep'></div></td>
-                            <app:button name="actionContactAdd" src="contacts/ContactsPicker.gif" tooltip="addAttendeesFromContacts" text="addAttendeesFromContacts"/>
-
+                            <c:if test="${mailbox.features.groupcalendarEnabled}">
+                                <td><div class='vertSep'></div></td>
+                                <app:button name="actionContactAdd" src="contacts/ContactsPicker.gif" tooltip="addAttendeesFromContacts" text="addAttendeesFromContacts"/>
+                            </c:if>
 
 
                             <c:if test="${canDelete}">
                                 <td><div class='vertSep'></div></td>
                                 <c:choose>
                                     <c:when test="${hasAttendees}">
-                                        <app:button name="actionApptCancel" src="common/Delete.gif" tooltip="actionApptCancelTT" text="cancel"/>
+                                        <app:button name="actionApptCancel" tooltip="actionApptCancelTT" text="cancel"/>
                                     </c:when>
                                     <c:when test="${isInstance}">
-                                        <app:button name="actionApptDelete" src="common/Delete.gif" tooltip="actionApptDeleteInstTT" text="deleteInst"/>                                        
+                                        <app:button name="actionApptDelete" tooltip="actionApptDeleteInstTT" text="deleteInst"/>
                                     </c:when>
                                     <c:otherwise>
-                                        <app:button name="actionApptDelete" src="common/Delete.gif" tooltip="actionApptDeleteTT" text="delete"/>
+                                        <app:button name="actionApptDelete" tooltip="actionApptDeleteTT" text="delete"/>
                                     </c:otherwise>
                                 </c:choose>
                             </c:if>
@@ -165,7 +166,7 @@
                                         <td class='ZhApptRecurrInfo'>
                                             <app:calendarUrl toggleInstance="true" var="apptUrl"/>
                                             <fmt:message key="apptInstNote"/>
-                                            &nbsp;<a accesskey='x' href="${apptUrl}"><fmt:message key="apptInstEditSeries"/></a>
+                                            &nbsp;<a href="${apptUrl}"><fmt:message key="apptInstEditSeries"/></a>
                                         </td>
                                     </tr>
                                 </table>
@@ -405,16 +406,18 @@
                         </td>
 
                         </tr>
-                        <tr>
-                            <td valign='top' width=1% align=right nowrap> <label for="attField"><fmt:message key="attendees"/>: </label></td>
-                            <td colspan=2 nowrap>
-                                <div class="ZhAC ZhACTo">
-                                    <textarea id="attField" rows="3" style='width:99%' cols="80"
-                                              name="attendees">${fn:escapeXml(compose.attendees)}</textarea>
-                                    <br><div class='ZhACCont' id="attContainer" style='width:99%;'></div>
-                                </div>
-                            </td>
-                        </tr>
+                        <c:if test="${mailbox.features.groupcalendarEnabled}">
+                            <tr>
+                                <td valign='top' width=1% align=right nowrap> <label for="attField"><fmt:message key="attendees"/>: </label></td>
+                                <td colspan=2 nowrap>
+                                    <div class="ZhAC ZhACTo">
+                                        <textarea id="attField" rows="3" style='width:99%' cols="80"
+                                                  name="attendees">${fn:escapeXml(compose.attendees)}</textarea>
+                                        <br><div class='ZhACCont' id="attContainer" style='width:99%;'></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </c:if>
                         <c:set var="firstAttachment" value="${true}"/>
                         <c:if test="${!empty compose.messageAttachments}">
                                 <c:forEach var="ma" items="${compose.messageAttachments}" varStatus="status">
@@ -526,4 +529,12 @@
     <app:autoComplete>
         initAuto("attField","attContainer");
     </app:autoComplete>
+    <SCRIPT TYPE="text/javascript">
+    <!--
+    var zclick = function(id) { var e = document.getElementById(id); if (e) e.click(); }
+    //-->
+   </SCRIPT>
+    <app:keyboard cache="cal.eappt" globals="false" passspecial="true" mailbox="${mailbox}">
+        <zm:bindKey message="editAppointment.Save" func="function() { zclick('SOPSAVE')}"/>
+    </app:keyboard>
 </app:view>

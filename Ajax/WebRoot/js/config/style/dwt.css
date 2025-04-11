@@ -573,7 +573,7 @@
 
 .DwtResizableWindow-inactiveCover { position: absolute; left: 3px; top: 3px; right: 3px; bottom: 3px; }
 .DwtResizableWindow-focused .DwtResizableWindow-inactiveCover { display: none; }
-.DwtResizableWindow-resizing { -moz-user-select: none; user-select: none; /* make sure content is unselectable while resizing */ }
+.DwtResizableWindow-resizing { -moz-user-select: none;  /* make sure content is unselectable while resizing  */ } /*user-select: none; Not required till FF3 release*/
 
 /* DwtResizableWindow, COLORS PART - TODO [Owen]: skin support */
 
@@ -789,6 +789,8 @@
 
 .DwtCalendarDay-selected {
 	@SelectedBg@
+	/* center because dates shiftS left */
+	text-align:center;
 }
 
 .DwtCalendarDay-today {
@@ -1467,7 +1469,7 @@
 .ZWidget, .ZWidget *			{ 	@FixBoxModel@	}
 
 .ZWidgetIcon					{	width:0px;	height:@SmallIconHeight@;}
-.ZDisabled .ZWidgetIcon			{ 	@Icon-disabled@	}
+.ZDisabled .ZWidgetIcon DIV		{ 	@Icon-disabled@	}
 
 .ZWidgetTitle					{ 	width:100%;		}
 .ZDisabled .ZWidgetTitle		{ 	@Text-disabled@	}
@@ -1491,7 +1493,7 @@
 
 
 
-
+.ZHasText 						{	min-width: 60px; 	}
 
 
 /***************
@@ -1544,7 +1546,7 @@
  *
  ***************/
 
-.ZToolbarButton						{	@WidgetHeight@	}
+.ZToolbarButton						{	@WidgetHeight@	@ActiveCursor@}
 
 .ZToolbarButtonBorder				{
   @ZTransparentBorder@
@@ -1889,11 +1891,6 @@
 .ZSelected .ZAccordionHeaderBorder	{	background:@AltC-20@;	@AltOutsetBorder@		}
 
 
-.ZSelected .ZAccordionExpander		{	background:green;	width:16px; height:16px;	}
-.ZAccordionExpander 				{	background:red;		width:16px; height:16px;	}
-		   
-		   
-		   
 
 /***************
  *

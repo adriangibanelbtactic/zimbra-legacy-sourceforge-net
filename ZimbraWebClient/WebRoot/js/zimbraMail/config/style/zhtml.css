@@ -532,10 +532,9 @@ padding: 8px 0px 6px 0px;
 
 .shortcutKeys {
 	text-align:right;
-	padding:6px;
+	padding:6px 0;
 	vertical-align:top;
 	@SeparatorBorder@
-	width:250px;
 	font-weight:bold;
 	@Text-disabled@;
 }
@@ -548,8 +547,7 @@ padding: 8px 0px 6px 0px;
 
 .shortcutKeyCombo {
 	white-space:nowrap;
-	margin-right:5px;
-	margin-left:5px;
+	padding:5px;
 }
 
 .shortcutKey {
@@ -892,6 +890,47 @@ padding: 0 @BoxPaddingSize@ 0 @BoxPaddingSize@;
         border-bottom: 1px solid #777777;
 }
 
+.ZhCallListPrintView {
+    padding:10px;
+}
+
+.ZhCallListPrintTable TH {
+    font-weight:bold;
+}
+
+.ZhCallListPrintTable TD,
+.ZhCallListPrintTable TH {
+	padding-left:20;
+	padding-right:20;
+	border-bottom:1px solid;
+    text-align:left;
+}
+
+.ZhZimbraTitle {
+	@FontSize-biggest@
+}
+
+.ZhOptVoice .List TD,
+.ZhOptVoice .List TH {
+    padding-left:20px;
+}
+
+ .ZhOptVoiceCBCell {
+     width:23;
+ }
+
+/* Submit button that's made to look like text in an <a> tag */
+.ZhOptVoiceRemove {
+    padding: 0;
+    margin: 0;
+    border: none;
+    cursor: pointer;
+    @FontSize-normal@
+    @Text@
+    background-color:transparent;
+    text-decoration:underline;
+}
+
 /*
  * Colors, for use in calendar and elsewhere.
  *
@@ -1002,3 +1041,22 @@ padding: 0 @BoxPaddingSize@ 0 @BoxPaddingSize@;
 .ZhACTo {z-index:9050;}
 .ZhACCc {z-index:9040;}
 .ZhACBcc {z-index:9030;}
+
+.ZOptionsHeader {
+    padding:5px;
+     background-color:@HeaderColor@;
+     @FontSize-bigger@
+font-weight:normal;
+}
+
+.ZOptionsTableLabel {
+    width: 15%;
+    font-weight: bold;
+	white-space: nowrap;
+	text-align: right;
+    vertical-align: middle;
+}
+
+.ZOptionsHint {
+    @Text-disabled@;
+}

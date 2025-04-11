@@ -120,16 +120,15 @@ ZaServerMBXStatsPage.prototype.getMbxes = function ( targetServer, offset, sortB
 	soapDoc.getMethod().setAttribute("offset", offset);
 	soapDoc.getMethod().setAttribute("limit", ZaServerMBXStatsPage.MBX_DISPLAY_LIMIT);
 	
-	var getQuotaUsageCmd = new ZmCsfeCommand ();
+	//var getQuotaUsageCmd = new ZmCsfeCommand ();
 	var params = new Object ();
 	params.soapDoc = soapDoc ;
 	params.targetServer = targetServer ;
-	var resp = getQuotaUsageCmd.invoke(params).Body.GetQuotaUsageResponse;
-	/*var resp = ZmCsfeCommand.invoke(soapDoc, null, null, targetServer, true).firstChild; 
-	var more = resp.getAttribute("more");
-	var totalMbxes = resp.getAttribute("searchTotal") ;
-	
-	*/
+	var reqMgrParams = {
+		controller : this._app.getCurrentController(),
+		busyMsg : ZaMsg.BUSY_GET_QUOTA
+	}
+	var resp = ZaRequestMgr.invoke(params, reqMgrParams).Body.GetQuotaUsageResponse;
 	
 	if ((resp.account && resp.account.length > 0) && (resp.searchTotal && resp.searchTotal > 0)){	
 		var more = resp.more ;
@@ -305,12 +304,12 @@ function (curPage, totalPage, hide ){
 					} 
 					
 					//update the help link for the Mbx Stats
-					controller._helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/managing_servers/viewing_mailbox_quotas.htm";
+					controller._helpURL = location.pathname + "adminhelp/html/WebHelp/managing_servers/viewing_mailbox_quotas.htm";
 				}else {
 					toolBar.enable([ZaOperation.PAGE_FORWARD, ZaOperation.PAGE_BACK, ZaOperation.LABEL], false);
 					toolBar.getButton("PageInfo").setText(AjxMessageFormat.format (ZaMsg.MBXStats_PAGEINFO, [1,1]));
 					//change the help link back
-					controller._helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/monitoring/checking_usage_statistics.htm";
+					controller._helpURL = location.pathname + "adminhelp/html/WebHelp/monitoring/checking_usage_statistics.htm";
 				}
 			}
 		}
@@ -351,9 +350,10 @@ function(mbx, now, isDndIcon) {
 	div[DwtListView._SELECTED_STYLE_CLASS] = div[DwtListView._STYLE_CLASS] + "-" + DwtCssStyle.SELECTED;
 	div.className = div[DwtListView._STYLE_CLASS];
 	this.associateItemWithElement(mbx, div, DwtListView.TYPE_LIST_ITEM);
+	div.style.height = "20";
 	
 	var idx = 0;
-	html[idx++] = "<table width='100%' cellspacing='2' cellpadding='0'>";
+	html[idx++] = "<table width='100%'  height='20' cellspacing='2' cellpadding='0'>";
 
 	html[idx++] = "<tr>";
 	if(this._headerList) {

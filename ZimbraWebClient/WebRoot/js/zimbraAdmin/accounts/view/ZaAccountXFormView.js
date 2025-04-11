@@ -119,7 +119,7 @@ function(entry) {
 			* We did not find the COS assigned to this account,
 			* this means that the COS was deleted or wasn't assigned, therefore assign default COS to this account
 			**/
-			ZaAccount.setDefaultCos(this._containedObject, this._app.getCosList()) ;
+			ZaAccount.setDefaultCos(this._containedObject, this._app.getCosList(), this._app) ;
 			if(!this._containedObject.cos) {
 				//default COS was not found - just assign the first COS
 				var hashMap = this._app.getCosList().getIdHash();
@@ -681,7 +681,7 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 						elementChanged: function(elementValue,instanceValue, event) {
 							this.getForm().parent.setDirty(true);
 							if(elementValue=="TRUE") {
-								ZaAccount.setDefaultCos(this.getInstance(), this.getForm().parent._app.getCosList());	
+								ZaAccount.setDefaultCos(this.getInstance(), this.getForm().parent._app.getCosList(), this.getForm().parent._app);	
 							}
 							this.getForm().itemChanged(this, elementValue, event);
 						}
@@ -972,6 +972,16 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 								resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
 								msgName:ZaMsg.NAD_zimbraFeatureNotebookEnabled,
 								checkBoxLabel:ZaMsg.NAD_zimbraFeatureNotebookEnabled,  
+								trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},
+							{ref:ZaAccount.A_zimbraFeatureBriefcasesEnabled, type:_SUPER_CHECKBOX_, 
+								resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+								msgName:ZaMsg.NAD_zimbraFeatureBriefcasesEnabled,
+								checkBoxLabel:ZaMsg.NAD_zimbraFeatureBriefcasesEnabled,  
+								trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},								
+							{ref:ZaAccount.A_zimbraFeatureOptionsEnabled, type:_SUPER_CHECKBOX_, 
+								resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+								msgName:ZaMsg.NAD_zimbraFeatureOptionsEnabled,
+								checkBoxLabel:ZaMsg.NAD_zimbraFeatureOptionsEnabled,  
 								trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged}
 						]
 					},	
@@ -1004,6 +1014,8 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 							{ref:ZaAccount.A_zimbraFeatureHtmlComposeEnabled, type:_SUPER_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraFeatureHtmlComposeEnabled,checkBoxLabel:ZaMsg.NAD_zimbraFeatureHtmlComposeEnabled, trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},							
 							{ref:ZaAccount.A_zimbraFeatureOutOfOfficeReplyEnabled, type:_SUPER_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraFeatureOutOfOfficeReplyEnabled,checkBoxLabel:ZaMsg.NAD_zimbraFeatureOutOfOfficeReplyEnabled, trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},
 							{ref:ZaAccount.A_zimbraFeatureNewMailNotificationEnabled, type:_SUPER_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraFeatureNewMailNotificationEnabled,checkBoxLabel:ZaMsg.NAD_zimbraFeatureNewMailNotificationEnabled, trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},
+							{ref:ZaAccount.A_zimbraFeatureMailPollingIntervalPreferenceEnabled, type:_SUPER_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraFeatureMailPollingIntervalPreferenceEnabled,checkBoxLabel:ZaMsg.NAD_zimbraFeatureMailPollingIntervalPreferenceEnabled, trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},
+							{ref:ZaAccount.A_zimbraFeatureShortcutAliasesEnabled, type:_SUPER_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_zimbraFeatureShortcutAliasesEnabled,checkBoxLabel:ZaMsg.NAD_zimbraFeatureShortcutAliasesEnabled, trueValue:"TRUE", falseValue:"FALSE", onChange:ZaTabView.onFormFieldChanged},
 							{ref:ZaAccount.A_zimbraFeatureIdentitiesEnabled,
 								type:_SUPER_CHECKBOX_, 
 								resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
@@ -1050,7 +1062,14 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 									labelLocation:_LEFT_, 
 									resetToSuperLabel:ZaMsg.NAD_ResetToCOS,  
 									onChange:ZaTabView.onFormFieldChanged
-								}
+								},
+								{ref:ZaAccount.A_zimbraPrefWarnOnExit, type:_SUPER_CHECKBOX_, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS,checkBoxLabel:ZaMsg.NAD_zimbraPrefWarnOnExit,
+									trueValue:"TRUE", falseValue:"FALSE",onChange:ZaTabView.onFormFieldChanged},
+								{ref:ZaAccount.A_zimbraPrefShowSelectionCheckbox, type:_SUPER_CHECKBOX_, 
+									labelWrap: true,
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, checkBoxLabel:ZaMsg.NAD_zimbraPrefShowSelectionCheckbox,
+									trueValue:"TRUE", falseValue:"FALSE",onChange:ZaTabView.onFormFieldChanged}
 							]
 						},	
 						{type:_GROUP_, cssClass:"ZmSelectedHeaderBg", colSpan: "*", id:"account_form_prefs_mail_header",
@@ -1060,7 +1079,6 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 							cssStyle:"padding-top:5px; padding-bottom:5px"
 						},
 						{type:_ZA_PLAIN_GROUPER_, id:"account_prefs_mail_general",colSizes:["275px","425px"],numCols:2,
-
 							items :[
 								{ref:ZaAccount.A_zimbraPrefMessageViewHtmlPreferred, 
 									type:_SUPER_CHECKBOX_,  colSpan:2,
@@ -1176,7 +1194,7 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 							label:ZaMsg.NAD_MailOptionsComposing,
 							items :[
 								{ref:ZaAccount.A_zimbraPrefComposeInNewWindow, 
-									colSpan:2,
+									//colSpan:2,
 									type:_SUPER_CHECKBOX_, 
 									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
 									msgName:ZaMsg.NAD_zimbraPrefComposeInNewWindow,
@@ -1190,8 +1208,30 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 									msgName:ZaMsg.NAD_zimbraPrefComposeFormat,
 									label:ZaMsg.NAD_zimbraPrefComposeFormat, 
 									onChange:ZaTabView.onFormFieldChanged},
+								,
+								{ref:ZaAccount.A_zimbraPrefHtmlEditorDefaultFontSize, 
+									//colSpan:2,
+									type:_SUPER_SELECT1_, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									msgName:ZaMsg.NAD_zimbraPrefHtmlEditorDefaultFontSize,
+									label:ZaMsg.NAD_zimbraPrefHtmlEditorDefaultFontSize, 
+									onChange:ZaTabView.onFormFieldChanged},
+								{ref:ZaAccount.A_zimbraPrefHtmlEditorDefaultFontFamily, 
+									//colSpan:2,
+									type:_SUPER_SELECT1_, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									msgName:ZaMsg.NAD_zimbraPrefHtmlEditorDefaultFontFamily,
+									label:ZaMsg.NAD_zimbraPrefHtmlEditorDefaultFontFamily, 
+									onChange:ZaTabView.onFormFieldChanged},
+								{ref:ZaAccount.A_zimbraPrefHtmlEditorDefaultFontColor, 
+									type:_SUPER_DWT_COLORPICKER_, height: "25px",
+									msgName:ZaMsg.NAD_zimbraPrefHtmlEditorDefaultFontColor,
+									label:ZaMsg.NAD_zimbraPrefHtmlEditorDefaultFontColor,
+									labelLocation:_LEFT_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									onChange:ZaTabView.onFormFieldChanged
+								},
 								{ref:ZaAccount.A_zimbraPrefForwardReplyInOriginalFormat, 
-									colSpan:2,								
+									//colSpan:2,								
 									type:_SUPER_CHECKBOX_, 
 									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
 									msgName:ZaMsg.NAD_zimbraPrefForwardReplyInOriginalFormat,
@@ -1202,14 +1242,23 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 									type:_ZA_CHECKBOX_, msgName:ZaMsg.NAD_prefMailSignatureEnabled,
 									label:ZaMsg.NAD_prefMailSignatureEnabled,  
 									trueValue:"TRUE", falseValue:"FALSE",
-									onChange:ZaTabView.onFormFieldChanged},								
+									onChange:ZaTabView.onFormFieldChanged},	
 								{ref:ZaAccount.A_zimbraPrefMailSignatureStyle, 
-									colSpan:2,								
+									//colSpan:2,								
 									type:_SUPER_CHECKBOX_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
 									msgName:ZaMsg.NAD_zimbraPrefMailSignatureStyle,
 									checkBoxLabel:ZaMsg.NAD_zimbraPrefMailSignatureStyle, 
 									onChange:ZaTabView.onFormFieldChanged,
 									trueValue:"internet", falseValue:"outlook"},
+								{ref:ZaAccount.A_zimbraMailSignatureMaxLength, 
+									//colSpan:2,	
+									type:_SUPER_TEXTFIELD_, 						
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									labelLocation:_LEFT_, 
+									msgName:ZaMsg.NAD_zimbraMailSignatureMaxLength,
+									txtBoxLabel:ZaMsg.NAD_zimbraMailSignatureMaxLength, 
+									onChange:ZaTabView.onFormFieldChanged,
+									textFieldCssClass:"admin_xform_number_input"},
 								{ref:ZaAccount.A_prefMailSignature, type:_TEXTAREA_, 
 									msgName:ZaMsg.NAD_prefMailSignature,
 									label:ZaMsg.NAD_prefMailSignature, labelLocation:_LEFT_, 
@@ -1464,7 +1513,27 @@ ZaAccountXFormView.myXFormModifier = function(xFormObject) {
 									onChange:ZaTabView.onFormFieldChanged, 
 									resetToSuperLabel:ZaMsg.NAD_ResetToCOS
 								},
-								{ref:ZaAccount.A_zimbraContactMaxNumEntries, type:_SUPER_TEXTFIELD_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_ContactMaxNumEntries,txtBoxLabel:ZaMsg.NAD_ContactMaxNumEntries+":", labelLocation:_LEFT_, textFieldCssClass:"admin_xform_number_input", onChange:ZaTabView.onFormFieldChanged}
+								{ref:ZaAccount.A_zimbraContactMaxNumEntries, type:_SUPER_TEXTFIELD_, resetToSuperLabel:ZaMsg.NAD_ResetToCOS, msgName:ZaMsg.NAD_ContactMaxNumEntries,txtBoxLabel:ZaMsg.NAD_ContactMaxNumEntries+":", labelLocation:_LEFT_, textFieldCssClass:"admin_xform_number_input", onChange:ZaTabView.onFormFieldChanged},
+								{ref:ZaAccount.A_zimbraQuotaWarnPercent, type:_SUPER_TEXTFIELD_, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									txtBoxLabel:ZaMsg.NAD_QuotaWarnPercent, msgName:ZaMsg.NAD_QuotaWarnPercent,labelLocation:_LEFT_, 
+									textFieldCssClass:"admin_xform_number_input", 
+									onChange:ZaTabView.onFormFieldChanged, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS
+								},
+								{ref:ZaAccount.A_zimbraQuotaWarnInterval, type:_SUPER_LIFETIME_, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									txtBoxLabel:ZaMsg.NAD_QuotaWarnInterval, msgName:ZaMsg.NAD_QuotaWarnInterval,labelLocation:_LEFT_, 
+									onChange:ZaTabView.onFormFieldChanged, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS
+								},
+								{ref:ZaAccount.A_zimbraQuotaWarnMessage, type:_SUPER_TEXTAREA_, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS, 
+									txtBoxLabel:ZaMsg.NAD_QuotaWarnMessage, msgName:ZaMsg.NAD_QuotaWarnMessage,
+									labelCssStyle:"vertical-align:top", textAreaWidth:"30em",
+									onChange:ZaTabView.onFormFieldChanged, 
+									resetToSuperLabel:ZaMsg.NAD_ResetToCOS
+								}
 							]
 						},
 

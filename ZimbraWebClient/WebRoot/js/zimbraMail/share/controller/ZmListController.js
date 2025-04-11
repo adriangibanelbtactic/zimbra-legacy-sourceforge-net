@@ -147,22 +147,6 @@ function(actionCode) {
 	DBG.println(AjxDebug.DBG3, "ZmListController.handleKeyAction");
 	var listView = this._listView[this._currentView];
 
-	// check for action code with argument, eg MoveToFolder3
-	var origActionCode = actionCode;
-	var shortcut = ZmShortcut.parseAction(this._appCtxt, "Global", actionCode);
-	if (shortcut) {
-		actionCode = shortcut.baseAction;
-	}
-
-	var app = ZmApp.ACTION_CODES_R[actionCode];
-	if (app) {
-		var op = ZmApp.ACTION_CODES[actionCode];
-		if (op) {
-			this._appCtxt.getApp(app).handleOp(op);
-			return true;
-		}
-	}
-
 	switch (actionCode) {
 
 		case DwtKeyMap.DBLCLICK:
@@ -185,28 +169,6 @@ function(actionCode) {
 			var button = ntb ? ntb.getButton(ZmOperation.PAGE_BACK) : null;
 			if (button && button.getEnabled()) {
 				this._paginate(this._currentView, false);
-			}
-			break;
-
-		case ZmKeyMap.NEW: {
-			// find default "New" action code for current app
-			var app = this._appCtxt.getAppController().getActiveApp();
-			var newActionCode = ZmApp.NEW_ACTION_CODE[app];
-			if (newActionCode) {
-				var op = ZmApp.ACTION_CODES[newActionCode];
-				if (op) {
-					this._appCtxt.getApp(app).handleOp(op);
-					return true;
-				}
-			}
-			break;
-		}
-
-		case ZmKeyMap.NEW_FOLDER:
-		case ZmKeyMap.NEW_TAG:
-			var op = ZmApp.ACTION_CODES[actionCode];
-			if (op) {
-				this._newListener(null, op);
 			}
 			break;
 
@@ -240,22 +202,8 @@ function(actionCode) {
 			}
 			break;
 
-		case ZmKeyMap.GOTO_TAG:
-			var tag = this._appCtxt.getById(shortcut.arg);
-			if (tag) {
-				this._appCtxt.getSearchController().search({query: 'tag:"' + tag.name + '"'});
-			}
-			break;
-
-		case ZmKeyMap.SAVED_SEARCH:
-			var searchFolder = this._appCtxt.getById(shortcut.arg);
-			if (searchFolder) {
-				this._appCtxt.getSearchController().redoSearch(searchFolder.search);
-			}
-			break;
-
 		default:
-			return ZmController.prototype.handleKeyAction.call(this, origActionCode);
+			return ZmController.prototype.handleKeyAction.call(this, actionCode);
 	}
 	return true;
 };
@@ -303,6 +251,7 @@ function(view) {
 ZmListController.prototype._initialize =
 function(view) {
 	this._initializeToolBar(view);
+	this._initializeActionMenu();
 	this._initializeListView(view);
 	this._initializeTabGroup(view);
 };
@@ -342,7 +291,7 @@ function() {
 // toolbar: buttons and listeners
 ZmListController.prototype._initializeToolBar =
 function(view) {
-	if (this._toolbar[view]) return;
+	if (this._toolbar[view]) { return; }
 
 	var buttons = this._getToolBarOps();
 	if (!buttons) return;
@@ -382,7 +331,7 @@ function(view) {
 // list view and its listeners
 ZmListController.prototype._initializeListView =
 function(view) {
-	if (this._listView[view]) return;
+	if (this._listView[view]) { return; }
 
 	this._listView[view] = this._createNewView(view);
 	this._listView[view].addSelectionListener(new AjxListener(this, this._listSelectionListener));
@@ -392,6 +341,8 @@ function(view) {
 // action menu: menu items and listeners
 ZmListController.prototype._initializeActionMenu =
 function() {
+	if (this._actionMenu) { return; }
+
 	var menuItems = this._getActionMenuOps();
 	if (!menuItems) return;
 	this._actionMenu = new ZmActionMenu({parent:this._shell, menuItems:menuItems});
@@ -440,44 +391,50 @@ function(view, elements, isAppView, clear, pushOnly, isTransient) {
 	if (!this._appViews[view]) {
 		// view management callbacks
 		var callbacks = {};
-
-		callbacks[ZmAppViewMgr.CB_PRE_HIDE] =
-			this._preHideCallback ? new AjxCallback(this, this._preHideCallback) : null;
-		callbacks[ZmAppViewMgr.CB_POST_HIDE] =
-			this._postHideCallback ? new AjxCallback(this, this._postHideCallback) : null;
-		callbacks[ZmAppViewMgr.CB_PRE_SHOW] =
-			this._preShowCallback ? new AjxCallback(this, this._preShowCallback) : null;
-		callbacks[ZmAppViewMgr.CB_POST_SHOW] =
-			this._postShowCallback ? new AjxCallback(this, this._postShowCallback) : null;
+		callbacks[ZmAppViewMgr.CB_PRE_HIDE] = this._preHideCallback ? new AjxCallback(this, this._preHideCallback) : null;
+		callbacks[ZmAppViewMgr.CB_POST_HIDE]= this._postHideCallback ? new AjxCallback(this, this._postHideCallback) : null;
+		callbacks[ZmAppViewMgr.CB_PRE_SHOW]	= this._preShowCallback ? new AjxCallback(this, this._preShowCallback) : null;
+		callbacks[ZmAppViewMgr.CB_POST_SHOW]= this._postShowCallback ? new AjxCallback(this, this._postShowCallback) : null;
 
 		this._app.createView(view, elements, callbacks, isAppView, isTransient);
 		this._appViews[view] = 1;
 	}
 
 	// populate the view
-	if (!pushOnly)
+	if (!pushOnly) {
 		this._setViewContents(view);
+	}
 
 	// push the view
-	 return (clear ? this._app.setView(view) : this._app.pushView(view));
+	return (clear ? this._app.setView(view) : this._app.pushView(view));
 };
 
 // List listeners
 
-// List selection event - handle flagging if a flag icon was clicked, otherwise reset
-// the toolbar based on how many items are selected.
+// List selection event - handle flagging if a flag icon was clicked, otherwise
+// reset the toolbar based on how many items are selected.
 ZmListController.prototype._listSelectionListener =
 function(ev) {
 	if (ev.field == ZmItem.F_FLAG) {
 		this._doFlag([ev.item]);
 	} else {
-		this._resetOperations(this._toolbar[this._currentView], this._listView[this._currentView].getSelectionCount());
+		var lv = this._listView[this._currentView];
+
+		if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+			if (!ev.ctrlKey) {
+				lv.setSelectionHdrCbox(false);
+				lv.setSelectionCbox(ev.item, false);
+			}
+		}
+
+		this._resetOperations(this._toolbar[this._currentView], lv.getSelectionCount());
 	}
 };
 
-// List action event - set the dynamic tag menu, and enable operations in the action menu
-// based on the number of selected items. Note that the menu is not actually popped up
-// here; that's left up to the subclass, which should override this function.
+// List action event - set the dynamic tag menu, and enable operations in the
+// action menu based on the number of selected items. Note that the menu is not
+// actually popped up here; that's left up to the subclass, which should
+// override this function.
 ZmListController.prototype._listActionListener =
 function(ev) {
 	this._actionEv = ev;
@@ -517,27 +474,8 @@ function(ev, op, params) {
 		params = params || {};
 		params.ev = ev;
 		this._appCtxt.getApp(app).handleOp(op, params);
-		return;
-	}
-
-	switch (op) {
-		// new organizers
-		case ZmOperation.NEW_FOLDER: {
-			var dialog = this._appCtxt.getNewFolderDialog();
-			if (!this._newFolderCb) {
-				this._newFolderCb = new AjxCallback(this, this._newFolderCallback);
-			}
-			ZmController.showDialog(dialog, this._newFolderCb);
-			break;
-		}
-		case ZmOperation.NEW_TAG: {
-			var dialog = this._appCtxt.getNewTagDialog();
-			if (!this._newTagCb) {
-				this._newTagCb = new AjxCallback(this, this._newTagCallback);
-			}
-			ZmController.showDialog(dialog, this._newTagCb);
-			break;
-		}
+	} else {
+		ZmController.prototype._newListener.apply(this, arguments);
 	}
 };
 
@@ -608,7 +546,8 @@ ZmListController.prototype._getMoveParams =
 function() {
 	var org = ZmApp.ORGANIZER[this._app._name] || ZmOrganizer.FOLDER;
 	var title = this._getMoveDialogTitle(this._pendingActionData.length);
-	return {data:this._pendingActionData, treeIds:[org], title:title, description:ZmMsg.targetFolder};
+	return {data:this._pendingActionData, treeIds:[org], overviewId:"ZmListController",
+			title:title, description:ZmMsg.targetFolder};
 };
 
 // Switch to selected view.
@@ -788,25 +727,6 @@ function(ev) {
 };
 
 // new organizer callbacks
-
-ZmListController.prototype._newFolderCallback =
-function(parent, name, color, url) {
-	// REVISIT: Do we really want to close the dialog before we
-	//          know if the create succeeds or fails?
-	var dialog = this._appCtxt.getNewFolderDialog();
-	dialog.popdown();
-
-	var oc = this._appCtxt.getOverviewController();
-	oc.getTreeController(ZmOrganizer.FOLDER)._doCreate(parent, name, color, url);
-};
-
-ZmListController.prototype._newTagCallback =
-function(params) {
-	var dialog = this._appCtxt.getNewTagDialog();
-	dialog.popdown();
-	var oc = this._appCtxt.getOverviewController();
-	oc.getTreeController(ZmOrganizer.TAG)._doCreate(params);
-};
 
 // Move stuff to a new folder.
 ZmListController.prototype._moveCallback =
@@ -1000,8 +920,8 @@ function(parent, num) {
 	} else if (num > 1) {
 		// enable only the tag and delete operations
 		parent.enableAll(false);
-		parent.enable([ZmOperation.NEW_MENU, ZmOperation.TAG_MENU, ZmOperation.DELETE, ZmOperation.MOVE], true);
-	}
+		parent.enable([ZmOperation.NEW_MENU, ZmOperation.TAG_MENU, ZmOperation.DELETE, ZmOperation.MOVE, ZmOperation.FORWARD_MENU], true);
+    }
 };
 
 // Resets the available options on the toolbar

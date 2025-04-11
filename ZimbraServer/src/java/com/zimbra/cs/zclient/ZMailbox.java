@@ -35,6 +35,7 @@ import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.common.soap.SoapHttpTransport;
 import com.zimbra.common.soap.SoapTransport;
+import com.zimbra.common.soap.VoiceConstants;
 import com.zimbra.common.soap.ZimbraNamespace;
 import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.EasySSLProtocolSocketFactory;
@@ -85,6 +86,7 @@ import org.apache.commons.httpclient.methods.multipart.ByteArrayPartSource;
 import org.apache.commons.httpclient.methods.multipart.FilePart;
 import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity;
 import org.apache.commons.httpclient.methods.multipart.Part;
+import org.dom4j.QName;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
@@ -99,9 +101,9 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -122,7 +124,7 @@ public class ZMailbox {
     public final static char PATH_SEPARATOR_CHAR = '/';
 
     public enum SearchSortBy {
-        dateDesc, dateAsc, subjDesc, subjAsc, nameDesc, nameAsc;
+        dateDesc, dateAsc, subjDesc, subjAsc, nameDesc, nameAsc, durDesc, durAsc;
 
         public static SearchSortBy fromString(String s) throws ServiceException {
             try {
@@ -264,7 +266,8 @@ public class ZMailbox {
     private ZFilterRules mRules;
     private ZAuthResult mAuthResult;
     private ZContactAutoCompleteCache mAutoCompleteCache;
-
+    private List<ZPhoneAccount> mPhoneAccounts;
+    private Map<String, ZPhoneAccount> mPhoneAccountMap;
     private long mSize;
 
     private List<ZEventHandler> mHandlers = new ArrayList<ZEventHandler>();
@@ -285,6 +288,7 @@ public class ZMailbox {
      */
     public static void changePassword(Options options) throws ServiceException {
         ZMailbox mailbox = new ZMailbox();
+        mailbox.mNotifyPreference = NotifyPreference.fromOptions(options);
         mailbox.initPreAuth(options.getUri(), options.getDebugListener(), options.getTimeout(), options.getRetryCount());
         mailbox.changePassword(options.getAccount(), options.getAccountBy(), options.getPassword(), options.getNewPassword(), options.getVirtualHost());
     }
@@ -2196,7 +2200,16 @@ public class ZMailbox {
     // ------------------------
 
     private synchronized ZSearchResult internalSearch(String convId, ZSearchParams params, boolean nest) throws ServiceException {
-        XMLElement req = new XMLElement(convId == null ? MailConstants.SEARCH_REQUEST : MailConstants.SEARCH_CONV_REQUEST);
+        QName name;
+        if (convId != null) {
+        	name = MailConstants.SEARCH_CONV_REQUEST;
+        } else if (params.getTypes().equals(ZSearchParams.TYPE_VOICE_MAIL) ||
+                   params.getTypes().equals(ZSearchParams.TYPE_CALL)) {
+        	name = VoiceConstants.SEARCH_VOICE_REQUEST;
+        } else {
+        	name = MailConstants.SEARCH_REQUEST;
+        }
+		XMLElement req = new XMLElement(name);
 
         req.addAttribute(MailConstants.A_CONV_ID, convId);
         if (nest) req.addAttribute(MailConstants.A_NEST_MESSAGES, true);
@@ -3207,5 +3220,136 @@ public class ZMailbox {
     	Element content = req.addElement(MailConstants.E_CONTENT);
     	content.addAttribute(MailConstants.A_ATTACHMENT_ID, attachmentId);
     	return new ZImportAppointmentsResult(invoke(req).getElement(MailConstants.E_APPOINTMENT));
+    }
+
+    public synchronized List<ZPhoneAccount> getAllPhoneAccounts() throws ServiceException {
+        if (mPhoneAccounts == null) {
+            mPhoneAccounts = new ArrayList<ZPhoneAccount>();
+            mPhoneAccountMap = new HashMap<String, ZPhoneAccount>(); 
+            XMLElement req = new XMLElement(VoiceConstants.GET_VOICE_INFO_REQUEST);
+            Element response = invoke(req);
+            List<Element> phoneElements = response.listElements(VoiceConstants.E_PHONE);
+            for (Element element : phoneElements) {
+                ZPhoneAccount account = new ZPhoneAccount(element, this);
+                mPhoneAccounts.add(account);
+                mPhoneAccountMap.put(account.getPhone().getName(), account);
+            }
+        }
+        return mPhoneAccounts;
+    }
+
+    public ZPhoneAccount getPhoneAccount(String name) throws ServiceException {
+        getAllPhoneAccounts(); // Make sure they're loaded.
+        return mPhoneAccountMap.get(name);
+    }
+
+    public String uploadVoiceMail(String phone, String id) throws ServiceException {
+        XMLElement req = new XMLElement(VoiceConstants.UPLOAD_VOICE_MAIL_REQUEST);
+        Element actionEl = req.addElement(VoiceConstants.E_VOICEMSG);
+        actionEl.addAttribute(MailConstants.A_ID, id);
+        actionEl.addAttribute(VoiceConstants.A_PHONE, phone);
+        Element response = invoke(req);
+        return response.getElement(VoiceConstants.E_UPLOAD).getAttribute(MailConstants.A_ID);
+    }
+
+    public void loadCallFeatures(ZCallFeatures features) throws ServiceException {
+        XMLElement req = new XMLElement(VoiceConstants.GET_VOICE_FEATURES_REQUEST);
+        Element phoneEl = req.addElement(VoiceConstants.E_PHONE);
+        phoneEl.addAttribute(MailConstants.A_NAME, features.getPhone().getName());
+        Collection<ZCallFeature> featureList = features.getSubscribedFeatures();
+        for (ZCallFeature feature : featureList) {
+            phoneEl.addElement(feature.getName());
+        }
+        Element response = invoke(req);
+
+        phoneEl = response.getElement(VoiceConstants.E_PHONE);
+        for (ZCallFeature feature : featureList) {
+            String name = feature.getName();
+            Element element = phoneEl.getElement(name);
+            feature.fromElement(element);
+        }
+    }
+
+    public void saveCallFeatures(ZCallFeatures newFeatures) throws ServiceException {
+        // Build up the soap request.
+        XMLElement req = new XMLElement(VoiceConstants.MODIFY_VOICE_FEATURES_REQUEST);
+        Element phoneEl = req.addElement(VoiceConstants.E_PHONE);
+        phoneEl.addAttribute(MailConstants.A_NAME, newFeatures.getPhone().getName());
+        Collection<ZCallFeature> list = newFeatures.getAllFeatures();
+        for (ZCallFeature newFeature : list) {
+            Element element = phoneEl.addElement(newFeature.getName());
+            newFeature.toElement(element);
+        }
+        invoke(req);
+
+        // Copy new data into cache.
+        ZPhoneAccount account = getPhoneAccount(newFeatures.getPhone().getName());
+        ZCallFeatures oldFeatures = account.getCallFeatures();
+        for (ZCallFeature newFeature : list) {
+            ZCallFeature oldFeature = oldFeatures.getFeature(newFeature.getName());
+            oldFeature.assignFrom(newFeature);
+        }
+    }
+
+    public ZActionResult trashVoiceMail(String phone, String id) throws ServiceException {
+        return doAction(voiceAction("move", phone, id, VoiceConstants.FID_TRASH));
+    }
+
+    public ZActionResult markVoiceMailHeard(String phone, String id, boolean heard) throws ServiceException {
+        String op = heard ? "read" : "!read";
+        return doAction(voiceAction(op, phone, id, 0));
+    }
+
+    private Element voiceAction(String op, String phone, String id, int folderId) {
+        XMLElement req = new XMLElement(VoiceConstants.VOICE_MSG_ACTION_REQUEST);
+        Element actionEl = req.addElement(MailConstants.E_ACTION);
+        actionEl.addAttribute(MailConstants.A_ID, id);
+        actionEl.addAttribute(MailConstants.A_OPERATION, op);
+        actionEl.addAttribute(VoiceConstants.A_PHONE, phone);
+        if (folderId != 0) {
+            actionEl.addAttribute(MailConstants.A_FOLDER, Integer.toString(folderId) + '-' + phone);
+        }
+        return actionEl;
+    }
+
+    private void updateSigs() {
+        try {
+            if (mGetInfoResult != null)
+                mGetInfoResult.setSignatures(getSignatures());
+        } catch (ServiceException e) {
+            /* ignore */
+        }
+    }
+
+    public synchronized String createSignature(ZSignature signature) throws ServiceException {
+        XMLElement req = new XMLElement(AccountConstants.CREATE_SIGNATURE_REQUEST);
+        signature.toElement(req);
+        String id = invoke(req).getElement(AccountConstants.E_SIGNATURE).getAttribute(AccountConstants.A_ID);
+        updateSigs();
+        return id;
+    }
+
+    public List<ZSignature> getSignatures() throws ServiceException {
+        XMLElement req = new XMLElement(AccountConstants.GET_SIGNATURES_REQUEST);
+        Element resp = invoke(req);
+        List<ZSignature> result = new ArrayList<ZSignature>();
+        for (Element signature : resp.listElements(AccountConstants.E_SIGNATURE)) {
+            result.add(new ZSignature(signature));
+        }
+        return result;
+    }
+
+    public synchronized void deleteSignature(String id) throws ServiceException {
+        XMLElement req = new XMLElement(AccountConstants.DELETE_SIGNATURE_REQUEST);
+        req.addElement(AccountConstants.E_SIGNATURE).addAttribute(AccountConstants.A_ID, id);
+        invoke(req);
+        updateSigs();
+    }
+
+    public synchronized void modifySignature(ZSignature signature) throws ServiceException {
+        XMLElement req = new XMLElement(AccountConstants.MODIFY_SIGNATURE_REQUEST);
+        signature.toElement(req);
+        invoke(req);
+        updateSigs();
     }
 }

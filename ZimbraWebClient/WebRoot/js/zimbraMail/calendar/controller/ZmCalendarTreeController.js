@@ -34,8 +34,10 @@ ZmCalendarTreeController = function(appCtxt, type, dropTgt) {
 	this._listeners[ZmOperation.CHECK_ALL] = new AjxListener(this, this._checkAllListener);
 	this._listeners[ZmOperation.CLEAR_ALL] = new AjxListener(this, this._clearAllListener);
 
-	this._listeners[ZmOperation.SHARE_CALENDAR] = new AjxListener(this, this._shareCalListener);
-	this._listeners[ZmOperation.MOUNT_CALENDAR] = new AjxListener(this, this._mountCalListener);
+	if (appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED)) {
+		this._listeners[ZmOperation.SHARE_CALENDAR] = new AjxListener(this, this._shareCalListener);
+		this._listeners[ZmOperation.MOUNT_CALENDAR] = new AjxListener(this, this._mountCalListener);
+	}
 
 	this._eventMgrs = {};
 }
@@ -65,6 +67,7 @@ function(overviewId) {
 	return calendars;
 };
 
+// XXX: 6/1/07 - each app manages own overview now, do we need this?
 ZmCalendarTreeController.prototype.addSelectionListener =
 function(overviewId, listener) {
 	// Each overview gets its own event manager
@@ -95,7 +98,8 @@ function(actionMenu, type, id) {
 			actionMenu.enable(ZmOperation.SYNC, calendar.isFeed());
 		}
 		actionMenu.enable(ZmOperation.DELETE, id != ZmOrganizer.ID_CALENDAR);
-		if (id == ZmOrganizer.ID_ROOT) {
+		var rootId = ZmOrganizer.getSystemId(this._appCtxt, ZmOrganizer.ID_ROOT);
+		if (id == rootId) {
 			var items = this._getItems(this._actionedOverviewId);
 			var foundChecked = false;
 			var foundUnchecked = false;
@@ -113,15 +117,28 @@ function(actionMenu, type, id) {
 // Returns a list of desired header action menu operations
 ZmCalendarTreeController.prototype._getHeaderActionMenuOps =
 function() {
-	return [ZmOperation.NEW_CALENDAR, ZmOperation.MOUNT_CALENDAR,
-			ZmOperation.CHECK_ALL, ZmOperation.CLEAR_ALL];
+	var ops = [ZmOperation.NEW_CALENDAR];
+	if (this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED)) {
+		ops.push(ZmOperation.MOUNT_CALENDAR);
+	}
+	ops.push(ZmOperation.CHECK_ALL);
+	ops.push(ZmOperation.CLEAR_ALL);
+
+	return ops;
 };
 
 // Returns a list of desired action menu operations
 ZmCalendarTreeController.prototype._getActionMenuOps =
 function() {
-	return [ZmOperation.SHARE_CALENDAR, ZmOperation.DELETE,
-			ZmOperation.EDIT_PROPS, ZmOperation.SYNC];
+	var ops = [];
+	if (this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED)) {
+		ops.push(ZmOperation.SHARE_CALENDAR);
+	}
+	ops.push(ZmOperation.DELETE);
+	ops.push(ZmOperation.EDIT_PROPS);
+	ops.push(ZmOperation.SYNC);
+
+	return ops;
 };
 
 ZmCalendarTreeController.prototype.getTreeStyle =
@@ -244,9 +261,11 @@ ZmCalendarTreeController.prototype._getItems =
 function(overviewId) {
 	var treeView = this.getTreeView(overviewId);
 	if (treeView) {
-		var root = treeView.getTreeItemById(ZmOrganizer.ID_ROOT);
-		if (root)
+		var rootId = ZmOrganizer.getSystemId(this._appCtxt, ZmOrganizer.ID_ROOT);
+		var root = treeView.getTreeItemById(rootId);
+		if (root) {
 			return root.getItems();
+		}
 	}
 	return [];
 };

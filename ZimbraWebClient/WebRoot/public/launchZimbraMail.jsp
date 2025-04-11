@@ -105,7 +105,7 @@
 	if (vers == null) vers = "";
 
 	String ext = (String) request.getAttribute("fileExtension");
-	if (ext == null) ext = "";
+	if (ext == null || inDevMode) ext = "";
 	
 	String offlineMode = (String) request.getParameter("offline");
 	if (offlineMode == null) {
@@ -122,7 +122,8 @@
 	var zJSloading = (new Date()).getTime();
 	appContextPath = "<%=contextPath %>";
 	appCurrentSkin = "<%=skin %>";
-  appExtension   = "<%=ext%>";
+	appExtension   = "<%=ext%>";
+	appDevMode     = <%=inDevMode%>;
 </script>
 
 <jsp:include page="Messages.jsp"/>
@@ -138,7 +139,7 @@
     String allPackages = "AjaxLogin,AjaxZWC,ZimbraLogin,ZimbraZWC,ZimbraCore";
     if (extraPackages != null) {
     	if (extraPackages.equals("dev")) {
-    		extraPackages = "CalendarCore,Calendar,ContactsCore,Contacts,IM,Mail,Mixed,NotebookCore,Notebook,PreferencesCore,Preferences,TasksCore,Tasks,Voicemail,Assistant,Browse,Extras,Share,Zimlet,Portal";
+    		extraPackages = "CalendarCore,Calendar,ContactsCore,Contacts,IM,Mail,Mixed,NotebookCore,Notebook,BriefcaseCore,Briefcase,PreferencesCore,Preferences,TasksCore,Tasks,Voicemail,Assistant,Browse,Extras,Share,Zimlet,Portal";
     	}
     	allPackages += "," + extraPackages;
     }
@@ -197,7 +198,7 @@ AjxEnv.DEFAULT_LOCALE = "<%=request.getLocale()%>";
 		var offlineMode = "<%= (offlineMode != null) ? offlineMode : "" %>";
 		var isDev = "<%= (isDev != null) ? isDev : "" %>";
 
-		ZmZimbraMail.run(document.domain, app, null, offlineMode, isDev);
+		ZmZimbraMail.run({domain:document.domain, app:app, offlineMode:offlineMode, devMode:isDev});
 	}
 
     //	START DOMContentLoaded

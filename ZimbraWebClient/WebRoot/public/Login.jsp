@@ -1,6 +1,43 @@
 <%@ page session="false" language="java" import="javax.naming.*"%>
 <%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
-<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %><%
+<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %><%!
+	private static String protocolMode = null;
+	private static String httpsPort = null;
+	private static String httpPort = null;
+	private static String adminUrl = null;	
+	private static final String DEFAULT_HTTPS_PORT = "443";
+	private static final String DEFAULT_HTTP_PORT = "80";
+	private static final String PROTO_MIXED = "mixed";
+	private static final String PROTO_HTTP = "http";
+	private static final String PROTO_HTTPS = "https";
+	static {
+		try {
+			Context initCtx = new InitialContext();
+			Context envCtx = (Context) initCtx.lookup("java:comp/env");
+			protocolMode = (String) envCtx.lookup("protocolMode");
+			httpsPort = (String) envCtx.lookup("httpsPort");
+			adminUrl = (String) envCtx.lookup("adminUrl");			
+			if (httpsPort != null && httpsPort.equals(DEFAULT_HTTP_PORT)) {
+				httpsPort = "";
+			} else {
+				httpsPort = ":" + httpsPort;
+			}
+			httpPort = (String) envCtx.lookup("httpPort");
+			if (httpPort != null && httpPort.equals(DEFAULT_HTTP_PORT)) {
+				httpPort = "";
+			} else {
+				httpPort = ":" + httpPort;
+			}
+		} catch (NamingException ne) {
+			protocolMode = PROTO_HTTP;
+			httpsPort = DEFAULT_HTTPS_PORT;
+			httpsPort = DEFAULT_HTTP_PORT;
+		}
+		if (adminUrl == null) {
+			adminUrl = "/zimbraAdmin";
+	    }		
+	}
+%><%
 	// Set to expire far in the past.
 	response.setHeader("Expires", "Tue, 24 Jan 2000 17:46:50 GMT");
 
@@ -32,7 +69,7 @@
 				for (int i = 0; i < mAllowedPorts.length; i++) {
 					if (mAllowedPorts[i] == incoming) {
 						String qs = request.getQueryString();
-						String path = "/zimbraAdmin";
+						String path = adminUrl;
 
 						if(qs != null)
 							path = path + "?" + qs;
@@ -42,38 +79,6 @@
 					}
 				}
 			}
-		}
-	}
-%><%!
-	private static String protocolMode = null;
-	private static String httpsPort = null;
-	private static String httpPort = null;
-	private static final String DEFAULT_HTTPS_PORT = "443";
-	private static final String DEFAULT_HTTP_PORT = "80";
-	private static final String PROTO_MIXED = "mixed";
-	private static final String PROTO_HTTP = "http";
-	private static final String PROTO_HTTPS = "https";
-	static {
-		try {
-			Context initCtx = new InitialContext();
-			Context envCtx = (Context) initCtx.lookup("java:comp/env");
-			protocolMode = (String) envCtx.lookup("protocolMode");
-			httpsPort = (String) envCtx.lookup("httpsPort");
-			if (httpsPort != null && httpsPort.equals(DEFAULT_HTTP_PORT)) {
-				httpsPort = "";
-			} else {
-				httpsPort = ":" + httpsPort;
-			}
-			httpPort = (String) envCtx.lookup("httpPort");
-			if (httpPort != null && httpPort.equals(DEFAULT_HTTP_PORT)) {
-				httpPort = "";
-			} else {
-				httpPort = ":" + httpPort;
-			}
-		} catch (NamingException ne) {
-			protocolMode = PROTO_HTTP;
-			httpsPort = DEFAULT_HTTPS_PORT;
-			httpsPort = DEFAULT_HTTP_PORT;
 		}
 	}
 %><%
@@ -132,6 +137,7 @@
 	if (isDev != null) {
 		request.setAttribute("mode", "mjsf");
 		request.setAttribute("gzip", "false");
+		request.setAttribute("fileExtension", "");
 		request.setAttribute("debug", "1");
 		request.setAttribute("packages", "dev");
 	}
@@ -151,7 +157,7 @@
 	if (vers == null) vers = "";
 
 	String ext = (String) request.getAttribute("fileExtension");
-	if (ext == null) ext = "";
+	if (ext == null || inDevMode) ext = "";
 %><!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
 <head>

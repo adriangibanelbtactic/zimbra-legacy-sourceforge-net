@@ -424,6 +424,7 @@ public class MailConstants {
     public static final String E_CAL_XPROP = "xprop";
     public static final String E_CAL_XPARAM = "xparam";
 
+    public static final String A_CAL_INCLUDE_CONTENT = "includeContent";
     public static final String A_NEED_CALENDAR_SENTBY_FIXUP = "needCalendarSentByFixup";
     public static final String A_UID = "uid";
     public static final String A_CAL_ID = "calItemId";
@@ -474,6 +475,8 @@ public class MailConstants {
     public static final String A_CAL_PRIORITY = "priority";
     public static final String A_TASK_PERCENT_COMPLETE = "percentComplete";
     public static final String A_TASK_COMPLETED = "completed";
+    public static final String A_WAIT = "wait";
+    public static final String A_TIMEOUT = "timeout";
 
     public static final String A_CAL_RULE_FREQ = "freq";
     public static final String A_CAL_RULE_COUNT_NUM = "num";
@@ -536,6 +539,13 @@ public class MailConstants {
     public static final String A_DS_IS_RUNNING = "isRunning";
     public static final String A_DS_LEAVE_ON_SERVER = "leaveOnServer";
     public static final String A_DS_POLLING_INTERVAL = "pollingInterval";
+    public static final String A_DS_EMAIL_ADDRESS = "emailAddress";
+    public static final String A_DS_USE_ADDRESS_FOR_FORWARD_REPLY ="useAddressForForwardReply";
+    public static final String A_DS_DEFAULT_SIGNATURE = "defaultSignature";
+    public static final String A_DS_FROM_DISPLAY = "fromDisplay";
+    public static final String A_DS_REPLYTO_ADDRESS = "replyToAddress";
+    public static final String A_DS_REPLYTO_DISPLAY = "replyToDisplay";
+    
 
     // TODO: move to a different service.
     // wiki

@@ -57,7 +57,7 @@ ZaAccountListController = function(appCtxt, container, app) {
 
 ZaAccountListController.prototype = new ZaListViewController();
 ZaAccountListController.prototype.constructor = ZaAccountListController;
-ZaAccountListController.helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/managing_accounts/provisioning_accounts.htm";
+ZaAccountListController.helpURL = location.pathname + "adminhelp/html/WebHelp/managing_accounts/provisioning_accounts.htm";
 ZaController.initToolbarMethods["ZaAccountListController"] = new Array();
 ZaController.initPopupMenuMethods["ZaAccountListController"] = new Array();
 ZaListViewController.changeActionsStateMethods["ZaAccountListController"] = new Array(); 
@@ -74,7 +74,8 @@ ZaAccountListController.prototype.show = function (doPush) {
 			sortAscending:this._currentSortOrder,
 			limit:this.RESULTSPERPAGE,
 			attrs:this.fetchAttrs,
-			callback:callback
+			callback:callback,
+			controller: this
 	}
 	ZaSearch.searchDirectory(searchParams);
 }
@@ -345,7 +346,7 @@ ZaAccountListController.prototype._createUI =
 function (openInNewTab, openInSearchTab) {
 	//create accounts list view
 	// create the menu operations/listeners first	
-	this._contentView = new ZaAccountListView(this._container, this._app);
+	this._contentView = new ZaAccountListView(this._container, this._app, this._defaultType);
 	this._app._controllers[this.getContentViewId ()] = this ;
 	
 	this._newDLListener = new AjxListener(this, ZaAccountListController.prototype._newDistributionListListener);
@@ -563,9 +564,9 @@ function(account) {
 	try {
 		var obj;
 		if(account.type == ZaItem.ACCOUNT || account.type == ZaItem.RESOURCE) {
-			obj = ZaAccount.getViewMailLink(account.id);
+			obj = ZaAccount.getViewMailLink(account.id, this._app);
 		} else if(account.type == ZaItem.ALIAS && account.attrs[ZaAlias.A_AliasTargetId]) {
-			obj = ZaAccount.getViewMailLink(account.attrs[ZaAlias.A_AliasTargetId]);
+			obj = ZaAccount.getViewMailLink(account.attrs[ZaAlias.A_AliasTargetId], this._app);
 		} else {
 			return;
 		}

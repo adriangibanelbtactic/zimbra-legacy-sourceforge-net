@@ -25,28 +25,18 @@
 
 package com.zimbra.cs.account.soap;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.Map.Entry;
-
 import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.AccountConstants;
 import com.zimbra.common.soap.AdminConstants;
 import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.Element.XMLElement;
 import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.soap.SoapFaultException;
 import com.zimbra.common.soap.SoapHttpTransport;
-import com.zimbra.common.soap.Element.XMLElement;
 import com.zimbra.common.soap.SoapTransport.DebugListener;
+import com.zimbra.common.util.AccountLogger;
+import com.zimbra.common.util.Log.Level;
 import com.zimbra.common.util.StringUtil;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.AccountServiceException;
@@ -60,13 +50,26 @@ import com.zimbra.cs.account.EntrySearchFilter;
 import com.zimbra.cs.account.GalContact;
 import com.zimbra.cs.account.Identity;
 import com.zimbra.cs.account.NamedEntry;
+import com.zimbra.cs.account.NamedEntry.Visitor;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Server;
+import com.zimbra.cs.account.Signature;
 import com.zimbra.cs.account.Zimlet;
-import com.zimbra.cs.account.NamedEntry.Visitor;
 import com.zimbra.cs.httpclient.URLUtil;
 import com.zimbra.cs.mime.MimeTypeInfo;
 import com.zimbra.cs.zclient.ZClientException;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 public class SoapProvisioning extends Provisioning {
 
@@ -524,13 +527,79 @@ public class SoapProvisioning extends Provisioning {
     }
 
     public List<QuotaUsage> getQuotaUsage(String server) throws ServiceException {
-            ArrayList<QuotaUsage> result = new ArrayList<QuotaUsage>();
+        ArrayList<QuotaUsage> result = new ArrayList<QuotaUsage>();
         XMLElement req = new XMLElement(AdminConstants.GET_QUOTA_USAGE_REQUEST);
         Element resp = invoke(req, server);
         for (Element a: resp.listElements(AdminConstants.E_ACCOUNT)) {
             result.add(new QuotaUsage(a));
         }
         return result;        
+    }
+    
+    public void addAccountLogger(Account account, String category, String level)
+    throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.ADD_ACCOUNT_LOGGER_REQUEST);
+        
+        Element eId = req.addElement(AdminConstants.E_ID);
+        eId.setText(account.getId());
+        
+        Element eLogger = req.addElement(AdminConstants.E_LOGGER);
+        eLogger.addAttribute(AdminConstants.A_CATEGORY, category);
+        eLogger.addAttribute(AdminConstants.A_LEVEL, level);
+        
+        invoke(req, getServer(account).getName());
+    }
+    
+    public List<AccountLogger> getAccountLoggers(Account account) throws ServiceException {
+        List<AccountLogger> result = new ArrayList<AccountLogger>();
+        XMLElement req = new XMLElement(AdminConstants.GET_ACCOUNT_LOGGERS_REQUEST);
+        Element eId = req.addElement(AdminConstants.E_ID);
+        eId.setText(account.getId());
+        Element resp = invoke(req, getServer(account).getName());
+        
+        for (Element eLogger : resp.listElements(AdminConstants.E_LOGGER)) {
+            String category = eLogger.getAttribute(AdminConstants.A_CATEGORY);
+            Level level = Level.valueOf(eLogger.getAttribute(AdminConstants.A_LEVEL));
+            result.add(new AccountLogger(category, account.getName(), level));
+        }
+        return result;
+    }
+    
+    /**
+     * Returns all account loggers for the given server.  The <tt>Map</tt>'s key is
+     * the account name, and values are all the <tt>AccountLogger</tt> objects for
+     * that account.
+     */
+    public Map<String, List<AccountLogger>> getAllAccountLoggers(String server) throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.GET_ALL_ACCOUNT_LOGGERS_REQUEST);
+        Element resp = invoke(req, server);
+        Map<String, List<AccountLogger>> result = new HashMap<String, List<AccountLogger>>();
+        
+        for (Element eAccountLogger : resp.listElements(AdminConstants.E_ACCOUNT_LOGGER)) {
+            Element eLogger = eAccountLogger.getElement(AdminConstants.E_LOGGER);
+            
+            String accountName = eAccountLogger.getAttribute(AdminConstants.A_NAME);
+            String category = eLogger.getAttribute(AdminConstants.A_CATEGORY);
+            Level level = Level.valueOf(eLogger.getAttribute(AdminConstants.A_LEVEL));
+            
+            if (!result.containsKey(accountName)) {
+                result.put(accountName, new ArrayList<AccountLogger>());
+            }
+            result.get(accountName).add(new AccountLogger(category, accountName, level));
+        }
+        return result;
+    }
+    
+    public void removeAccountLogger(Account account, String category) throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.REMOVE_ACCOUNT_LOGGER_REQUEST);
+        
+        Element eId = req.addElement(AdminConstants.E_ID);
+        eId.setText(account.getId());
+        
+        Element eLogger = req.addElement(AdminConstants.E_LOGGER);
+        eLogger.addAttribute(AdminConstants.A_CATEGORY, category);
+        
+        invoke(req, getServer(account).getName());
     }
 
     public static class MailboxInfo {
@@ -556,6 +625,66 @@ public class SoapProvisioning extends Provisioning {
         return new MailboxInfo(
                 mbox.getAttribute(AdminConstants.A_MAILBOXID),
                 mbox.getAttributeLong(AdminConstants.A_SIZE));
+    }
+    
+    public static enum ReIndexBy {
+        types, ids;
+    }
+    
+    public static class ReIndexInfo {
+        private String mStatus;
+        private Progress mProgress;
+        
+        public String getStatus()     { return mStatus; }
+        public Progress getProgress() { return mProgress; }
+        
+        ReIndexInfo(String status, Progress progress) {
+            mStatus = status;
+            mProgress = progress;
+        }
+        
+        public static class Progress {
+            private long mNumSucceeded;
+            private long mNumFailed;
+            private long mNumRemaining;
+            
+            public long getNumSucceeded() { return mNumSucceeded; }
+            public long getNumFailed()    { return mNumFailed; }
+            public long getNumRemaining() { return mNumRemaining; } 
+            
+            Progress() {}
+
+            Progress(long numSucceeded, long numFailed, long numRemaining) {
+                mNumSucceeded = numSucceeded;
+                mNumFailed = numFailed;
+                mNumRemaining = numRemaining;
+            }
+        }
+    }
+    
+    public ReIndexInfo reIndex(Account acct, String action, ReIndexBy by, String[] values) throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.REINDEX_REQUEST);
+        req.addAttribute(MailConstants.E_ACTION, action);
+        Element mboxReq = req.addElement(AdminConstants.E_MAILBOX);
+        mboxReq.addAttribute(AdminConstants.A_ID, acct.getId());
+        if (by != null) {
+            String vals = StringUtil.join(",", values);
+            if (by == ReIndexBy.types)
+                mboxReq.addAttribute(MailConstants.A_SEARCH_TYPES, vals);
+            else
+                mboxReq.addAttribute(MailConstants.A_IDS, vals);
+        }
+        
+        Server server = getServer(acct);
+        String serviceHost = server.getAttr(A_zimbraServiceHostname);
+        Element resp = invoke(req, serviceHost);
+        ReIndexInfo.Progress progress = null;
+        Element progressElem = resp.getOptionalElement(AdminConstants.E_PROGRESS);
+        if (progressElem != null)
+            progress = new ReIndexInfo.Progress(progressElem.getAttributeLong(AdminConstants.A_NUM_SUCCEEDED),
+                                                progressElem.getAttributeLong(AdminConstants.A_NUM_FAILED),
+                                                progressElem.getAttributeLong(AdminConstants.A_NUM_REMAINING));
+        return new ReIndexInfo(resp.getAttribute(AdminConstants.A_STATUS), progress);
     }
 
     @Override
@@ -624,6 +753,21 @@ public class SoapProvisioning extends Provisioning {
         }
     }
 
+    public Domain getDomainInfo(DomainBy keyType, String key) throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.GET_DOMAIN_INFO_REQUEST);
+        Element a = req.addElement(AdminConstants.E_DOMAIN);
+        a.setText(key);
+        a.addAttribute(AdminConstants.A_BY, keyType.name());
+        try {
+            return new SoapDomain(invoke(req).getElement(AdminConstants.E_DOMAIN));
+        } catch (ServiceException e) {
+            if (e.getCode().equals(AccountServiceException.NO_SUCH_DOMAIN))
+                return null;
+            else
+                throw e;
+        }
+    }
+
     @Override
     public Domain get(DomainBy keyType, String key) throws ServiceException {
         XMLElement req = new XMLElement(AdminConstants.GET_DOMAIN_REQUEST);
@@ -655,7 +799,7 @@ public class SoapProvisioning extends Provisioning {
      * unsuported
      */
     @Override
-    public MimeTypeInfo getMimeType(String name) throws ServiceException {
+    public List<MimeTypeInfo> getMimeTypes(String name) throws ServiceException {
         throw new UnsupportedOperationException();
     }
 
@@ -663,7 +807,7 @@ public class SoapProvisioning extends Provisioning {
      * unsuported
      */
     @Override
-    public MimeTypeInfo getMimeTypeByExtension(String ext)
+    public List<MimeTypeInfo> getMimeTypesByExtension(String ext)
             throws ServiceException {
         throw new UnsupportedOperationException();
     }
@@ -1203,6 +1347,50 @@ public class SoapProvisioning extends Provisioning {
         addAttrElementsMailService(identity, attrs);
         invokeOnTargetAccount(req, account.getId());
     }
+    
+    @Override
+    public Signature createSignature(Account account, String signatureName, Map<String, Object> attrs) throws ServiceException {
+        if (attrs.get(Provisioning.A_zimbraSignatureName) != null)
+            throw ZClientException.CLIENT_ERROR("invalid attr: "+Provisioning.A_zimbraSignatureName, null);
+        
+        XMLElement req = new XMLElement(AccountConstants.CREATE_SIGNATURE_REQUEST);
+        Element signature = req.addElement(AccountConstants.E_SIGNATURE);
+        signature.addAttribute(AccountConstants.A_NAME, signatureName);
+        SoapSignature.toXML(signature, attrs);
+        Element response = invokeOnTargetAccount(req, account.getId()).getElement(AccountConstants.E_SIGNATURE);
+        return new SoapSignature(account, response);
+    }
+    
+    @Override
+    public void modifySignature(Account account, String signatureId, Map<String, Object> attrs) throws ServiceException {
+        if (attrs.get(Provisioning.A_zimbraSignatureId) != null)
+            throw ZClientException.CLIENT_ERROR("invalid attr: "+Provisioning.A_zimbraSignatureId, null);
+        
+        XMLElement req = new XMLElement(AccountConstants.MODIFY_SIGNATURE_REQUEST);
+        Element signature = req.addElement(AccountConstants.E_SIGNATURE);
+        signature.addAttribute(AccountConstants.A_ID, signatureId);
+        SoapSignature.toXML(signature, attrs);
+        invokeOnTargetAccount(req, account.getId());
+    }
+    
+    @Override
+    public void deleteSignature(Account account, String signatureId) throws ServiceException {
+        XMLElement req = new XMLElement(AccountConstants.DELETE_SIGNATURE_REQUEST);
+        Element signature = req.addElement(AccountConstants.E_SIGNATURE);
+        signature.addAttribute(AccountConstants.A_ID, signatureId);
+        invokeOnTargetAccount(req, account.getId());
+    }
+
+    @Override
+    public List<Signature> getAllSignatures(Account account) throws ServiceException {
+        List<Signature> result = new ArrayList<Signature>();
+        XMLElement req = new XMLElement(AccountConstants.GET_SIGNATURES_REQUEST);
+        Element resp = invokeOnTargetAccount(req, account.getId());
+        for (Element signature: resp.listElements(AccountConstants.E_SIGNATURE)) {
+            result.add(new SoapSignature(account, signature));
+        }
+        return result;
+    }
 
     @Override
     public DataSource createDataSource(Account account, DataSource.Type dsType, String dsName, Map<String, Object> attrs) throws ServiceException {
@@ -1285,6 +1473,26 @@ public class SoapProvisioning extends Provisioning {
             for (Identity identity : getAllIdentities(account))
                 if (identity.getId().equalsIgnoreCase(key)) 
                     return identity;
+            return null;            
+        default: 
+            return null;
+            
+        }
+    }
+    
+    @Override
+    public Signature get(Account account, SignatureBy keyType, String key) throws ServiceException {
+        // TOOD: more efficient version and/or caching on account?
+        switch (keyType) {
+        case name:
+            for (Signature signature : getAllSignatures(account))
+                if (signature.getName().equalsIgnoreCase(key)) 
+                    return signature;
+            return null;
+        case id:
+            for (Signature signature : getAllSignatures(account))
+                if (signature.getId().equalsIgnoreCase(key)) 
+                    return signature;
             return null;            
         default: 
             return null;

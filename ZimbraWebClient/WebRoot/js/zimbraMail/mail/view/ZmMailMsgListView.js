@@ -35,8 +35,7 @@ ZmMailMsgListView.prototype.constructor = ZmMailMsgListView;
 
 // Consts
 
-ZmMailMsgListView.MSGLIST_REPLENISH_THRESHOLD 	= 0;
-ZmMailMsgListView.COL_WIDTH_FROM 				= 105;
+ZmMailMsgListView.COL_WIDTH_FROM = 105;
 
 // Public methods
 
@@ -76,22 +75,6 @@ function(defaultColumnSort) {
 			this._colHeaderActionMenu.getItem(recdColIdx).setText(colLabel);
 		}
 	}
-};
-
-ZmMailMsgListView.prototype.getReplenishThreshold = 
-function() {
-	return ZmMailMsgListView.MSGLIST_REPLENISH_THRESHOLD;
-};
-
-ZmMailMsgListView.prototype.set =
-function(list, sortField) {
-	var showFolder = !list || !list.search || !list.search.folderId;
-	var folderColumn = this.getColIndexForId(ZmItem.F_FOLDER);
-	if (this._headerList[folderColumn]._visible != showFolder) {
-		this._headerList[folderColumn]._visible = showFolder;
-		this._relayout();
-	}
-	ZmMailListView.prototype.set.call(this, list, sortField);
 };
 
 ZmMailMsgListView.prototype.markUIAsRead = 
@@ -159,7 +142,6 @@ function(htmlArr, idx, msg, field, colIdx, params) {
 		htmlArr[idx++] = "<center>";
 		idx = this._getImageHtml(htmlArr, idx, msg.getStatusIcon(), this._getFieldId(msg, field));
 		htmlArr[idx++] = "</center>";
-
 	} else if (field == ZmItem.F_FROM || field == ZmItem.F_PARTICIPANT) {
 		if (this._mode == ZmController.TRAD_VIEW && (msg.folderId == ZmFolder.ID_SENT ||
 			msg.folderId == ZmFolder.ID_DRAFTS || msg.folderId == ZmFolder.ID_OUTBOX)) {
@@ -219,7 +201,7 @@ function(htmlArr, idx, msg, field, colIdx, params) {
 			htmlArr[idx++] = AjxStringUtil.htmlEncode(msg.fragment, true);
 		} else {
 			// msg on its own (TV) shows subject and fragment
-			var subj = msg.getSubject() || ZmMsg.noSubject;
+			var subj = msg.subject || ZmMsg.noSubject;
 			htmlArr[idx++] = AjxStringUtil.htmlEncode(subj);
 			if (this._appCtxt.get(ZmSetting.SHOW_FRAGMENTS) && msg.fragment) {
 				htmlArr[idx++] = this._getFragmentSpan(msg);
@@ -321,11 +303,11 @@ function(msg) {
 	var row = this._getElement(msg, ZmItem.F_ITEM_ROW);
 	if (row) {
 		var folder = this._appCtxt.getById(msg.folderId);
-		var className = null;
+		var className;
 		if (msg.isUnread) {
 			className = "Unread";
 		}
-		if ((folder != null) && folder.isInTrash()) {
+		if (folder && folder.isInTrash()) {
 			className = (className ? (className + " ") : "") + "Trash";
 		}
 		if (msg.isSent) {
@@ -344,7 +326,12 @@ function(parent) {
 
 	var hList = [];
 
-	hList.push(new DwtListHeaderItem(ZmItem.F_FLAG, null, "FlagRed", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.flag));
+	if (appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_SELECTION, null, "TaskCheckbox", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.selection));
+	}
+	if (appCtxt.get(ZmSetting.FLAGGING_ENABLED)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_FLAG, null, "FlagRed", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.flag));
+	}
 	if (appCtxt.get(ZmSetting.TAGGING_ENABLED)) {
 		hList.push(new DwtListHeaderItem(ZmItem.F_TAG, null, "MiniTag", ZmListView.COL_WIDTH_ICON, null, null, null, ZmMsg.tag));
 	}

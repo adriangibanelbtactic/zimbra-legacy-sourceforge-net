@@ -236,8 +236,8 @@ function() {
 	var selCnt = this._listView[this._currentView].getSelectionCount();
 	if (selCnt == 1) {
 		// Check if currently displaying selected element in message view
-		var item = this._listView[this._currentView].getSelection()[0];
-		var msg = (item.type == ZmItem.CONV) ? item.getFirstMsg() : item;
+		var msg = this._getSelectedMsg();
+		if (!msg) { return; }
 		if (!msg._loaded) {
 			this._appCtxt.getSearchController().setEnabled(false);
 			this._doGetMsg(msg);
@@ -435,13 +435,20 @@ function(ev) {
 		if (!item) { return; }
 		var div = Dwt.findAncestor(ev.target, "_itemIndex");
 		this._mailListView._itemSelected(div, ev);
+
+		if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+			this._mailListView.setSelectionHdrCbox(false);
+			this._mailListView.setSelectionCbox(ev.item, false);
+		}
+
+		var respCallback = new AjxCallback(this, this._handleResponseListSelectionListener, item);
 		if (item.isDraft) {
 			this._doAction(ev, ZmOperation.DRAFT);
+		} else if (this._appCtxt.get(ZmSetting.OPEN_MAIL_IN_NEW_WIN)) {
+			this._detachListener(null, respCallback);
 		} else if (item.type == ZmItem.CONV) {
-			var respCallback = new AjxCallback(this, this._handleResponseListSelectionListener, item);
 			AjxDispatcher.run("GetConvController").show(this._activeSearch, item, this, respCallback);
 		} else if (item.type == ZmItem.MSG) {
-			var respCallback = new AjxCallback(this, this._handleResponseListSelectionListener, item);
 			AjxDispatcher.run("GetMsgController").show(item, null, respCallback);
 		}
 	} else {
@@ -500,20 +507,18 @@ function(ev) {
 
 ZmDoublePaneController.prototype._showOrigListener = 
 function(ev) {
-	var item = this._listView[this._currentView].getSelection()[0];
-	var msg = (item.type == ZmItem.CONV) ? item.getFirstMsg() : item;
-	if (msg) {
-		var msgFetchUrl = this._appCtxt.getCsfeMsgFetcher() + "id=" + msg.id;
-		// create a new window w/ generated msg based on msg id
-		window.open(msgFetchUrl, "_blank", "menubar=yes,resizable=yes,scrollbars=yes");
-	}
+	var msg = this._getSelectedMsg();
+	if (!msg) { return; }
+
+	var msgFetchUrl = this._appCtxt.getCsfeMsgFetcher() + "id=" + msg.id;
+	// create a new window w/ generated msg based on msg id
+	window.open(msgFetchUrl, "_blank", "menubar=yes,resizable=yes,scrollbars=yes");
 };
 
 ZmDoublePaneController.prototype._filterListener = 
 function(ev) {
-	var item = this._listView[this._currentView].getSelection()[0];
-	var msg = (item.type == ZmItem.CONV) ? item.getFirstMsg() : item;
-	if (!msg) return;
+	var msg = this._getSelectedMsg();
+	if (!msg) { return; }
 	
 	AjxDispatcher.require(["PreferencesCore", "Preferences"]);
 	var rule = new ZmFilterRule();
@@ -523,7 +528,7 @@ function(ev) {
 	if (to)	rule.addCondition(new ZmCondition(ZmFilterRule.C_TO, ZmFilterRule.OP_CONTAINS, to.address));
 	var cc = msg.getAddress(AjxEmailAddress.CC);
 	if (cc)	rule.addCondition(new ZmCondition(ZmFilterRule.C_CC, ZmFilterRule.OP_CONTAINS, cc.address));
-	var subj = msg.getSubject();
+	var subj = msg.subject;
 	if (subj) rule.addCondition(new ZmCondition(ZmFilterRule.C_SUBJECT, ZmFilterRule.OP_IS, subj));
 	rule.addAction(new ZmAction(ZmFilterRule.A_KEEP));
 	var dialog = this._appCtxt.getFilterRuleDialog();

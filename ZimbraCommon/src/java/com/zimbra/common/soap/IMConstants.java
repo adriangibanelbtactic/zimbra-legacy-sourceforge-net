@@ -57,7 +57,7 @@ public class IMConstants {
     public static final String A_AUTHORIZED = "authorized";
     public static final String A_THREAD_ID      = "thread";
     public static final String A_ADDRESS        = "addr";
-    public static final String A_ADD = "addr";
+    public static final String A_ADD            = "add";
     public static final String A_SEQ            = "seq";
     public static final String A_NAME           = "name";
     public static final String A_SUBSCRIPTION   = "subscription";
@@ -71,6 +71,8 @@ public class IMConstants {
     public static final String A_STATUS         = "status";
     public static final String A_STATE          = "state";
     public static final String A_TIME_UNTIL_NEXT_CONNECT = "timeUntilNextConnect";
+    public static final String A_USERNAME       = "username";
+    public static final String A_ERROR          = "error";
 
     public static final String E_MESSAGES       = "messages";
     public static final String E_MESSAGE        = "message";
@@ -91,4 +93,6 @@ public class IMConstants {
     public static final String E_SUBSCRIBED     = "subscribed";
     public static final String E_UNSUBSCRIBED   = "unsubscribed";
     public static final String E_GATEWAY_STATUS = "gwStatus";
+    public static final String E_OTHER_LOCATION = "otherLocation";
+    public static final String E_TYPING         = "typing";
 }

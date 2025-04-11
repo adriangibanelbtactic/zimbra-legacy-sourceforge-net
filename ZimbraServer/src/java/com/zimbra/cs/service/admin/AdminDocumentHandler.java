@@ -53,13 +53,13 @@ public abstract class AdminDocumentHandler extends DocumentHandler {
 
     @Override
     public Object preHandle(Element request, Map<String, Object> context) throws ServiceException { 
-        Session session = getSession(context);
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
+        Session session = getSession(zsc);
         Mailbox.OperationContext octxt = null;
         Mailbox mbox = null;
 
         if (zsc.getAuthToken() != null)
-            octxt = zsc.getOperationContext();
+            octxt = getOperationContext(zsc, context);
         return BlockingOperation.schedule(request.getName(), session, octxt, mbox, Requester.ADMIN, getSchedulerPriority(), 1);   
     }
 
@@ -155,7 +155,7 @@ public abstract class AdminDocumentHandler extends DocumentHandler {
      *  If none already exists, one is created.
      * @return An {@link com.zimbra.cs.session.AdminSession}. */
     @Override
-    public Session getSession(Map<String, Object> context) {
-        return getSession(context, Session.Type.ADMIN);
+    public Session getSession(ZimbraSoapContext zsc) {
+        return getSession(zsc, Session.Type.ADMIN);
     }
 }

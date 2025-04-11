@@ -24,16 +24,14 @@
  */
 
 /**
-* Contact app object
-* @constructor
-* @class
-* Description goes here
-*
-* @author Conrad Damon
-* @param appCtxt			The singleton appCtxt object
-* @param container			the element that contains everything but the banner (aka _composite)
-* @param parentController	Reference to the parent "uber" controller - populated if this is a child window opened by the parent
-*/
+ * Creates and initializes the contacts application.
+ * @constructor
+ * @class
+ * The contacts app manages the creation and display of contacts, which are grouped
+ * into address books.
+ * 
+ * @author Conrad Damon
+ */
 ZmContactsApp = function(appCtxt, container, parentController) {
 
 	ZmApp.call(this, ZmApp.CONTACTS, appCtxt, container, parentController);
@@ -98,13 +96,27 @@ function(settings) {
 
 ZmContactsApp.prototype._registerPrefs =
 function() {
-	var list = [ZmSetting.AUTO_ADD_ADDRESS, ZmSetting.GAL_AUTOCOMPLETE,
+	var sections = {
+		CONTACTS: {
+			title: ZmMsg.addressBook,
+			templateId: "zimbraMail.prefs.templates.Pages#Contacts",
+			priority: 50,
+			precondition: ZmSetting.CONTACTS_ENABLED,
+			prefs: [
+				ZmSetting.AUTO_ADD_ADDRESS,
+				ZmSetting.CONTACTS_PER_PAGE,
+				ZmSetting.CONTACTS_VIEW,
+				ZmSetting.EXPORT,
+				ZmSetting.GAL_AUTOCOMPLETE,
 				ZmSetting.GAL_AUTOCOMPLETE_SESSION,
-				ZmSetting.CONTACTS_VIEW, ZmSetting.CONTACTS_PER_PAGE,
-				ZmSetting.IMPORT, ZmSetting.EXPORT];
+				ZmSetting.IMPORT
+			]
+		}
+	};
+	for (var id in sections) {
+		ZmPref.registerPrefSection(id, sections[id]);
+	}
 
-	ZmPref.setPrefList("ADDR_BOOK_PREFS", list);
-	
 	ZmPref.registerPref("AUTO_ADD_ADDRESS", {
 		displayName:		ZmMsg.autoAddContacts,
 		displayContainer:	ZmPref.TYPE_CHECKBOX
@@ -207,6 +219,7 @@ function() {
 							 hasColor:			true,
 							 defaultColor:		ZmOrganizer.C_GRAY,
 							 orgColor:			orgColor,
+							 treeType:			ZmOrganizer.FOLDER,
 							 views:				["contact"],
 							 folderKey:			"addressBookFolder",
 							 mountKey:			"mountAddrBook",
@@ -322,6 +335,11 @@ function(notify) {
 	}
 };
 
+ZmContactsApp.prototype.refresh =
+function(refresh) {
+	this._handleRefresh();
+};
+
 ZmContactsApp.prototype.handleOp =
 function(op) {
 	switch (op) {
@@ -383,8 +401,9 @@ function(callback) {
 		clc.switchView(clc._getViewType(), true, this._initialized);
 	}
 
-	if (callback)
+	if (callback) {
 		callback.run();
+	}
 
 	this._initialized = true;
 };
@@ -466,19 +485,6 @@ function() {
 		}
 	}
 	return this._galContactList;
-};
-
-// returns array of all addrbooks (incl. shared but excl. root and Trash)
-ZmContactsApp.prototype.getAddrbookList =
-function() {
-	var addrbookList = [];
-	var folders = this._appCtxt.getFolderTree().asList();
-	for (var i = 0; i < folders.length; i++) {
-		if (folders[i].id == ZmFolder.ID_ROOT || folders[i].isInTrash())
-			continue;
-		addrbookList.push(folders[i].createQuery());
-	}
-	return addrbookList;
 };
 
 ZmContactsApp.prototype.createFromVCard =

@@ -72,14 +72,14 @@ function() {
 
 ZmNotebook.prototype.getName = 
 function(showUnread, maxLength, noMarkup) {
-	var name = this.id == ZmOrganizer.ID_ROOT ? ZmMsg.notebooks : this.name;
+	var name = (this.nId == ZmOrganizer.ID_ROOT) ? ZmMsg.notebooks : this.name;
 	return this._markupName(name, showUnread, noMarkup);
 };
 
 ZmNotebook.prototype.getIcon = 
 function() {
-	if (this.id == ZmOrganizer.ID_ROOT) return null;
-	if (this.parent.id == ZmOrganizer.ID_ROOT) {
+	if (this.nId == ZmOrganizer.ID_ROOT) { return null; }
+	if (this.parent.nId == ZmOrganizer.ID_ROOT) {
 		return this.link ? "SharedNotebook" : "Notebook";
 	}
 	return this.link ? "SharedSection" : "Section";
@@ -148,7 +148,4 @@ function(nbA, nbB) {
 	// sort by calendar name
 	var nbAName = nbA.name.toLowerCase();
 	var nbBName = nbB.name.toLowerCase();
-	if (nbAName < nbBName) return -1;
-	if (nbAName > nbBName) return 1;
-	return 0;
-};
+	return	AjxStringUtil.natCompare(nbAName,nbBName);};

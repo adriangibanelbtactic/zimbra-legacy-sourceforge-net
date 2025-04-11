@@ -34,12 +34,15 @@ import com.zimbra.cs.account.EntrySearchFilter;
 import com.zimbra.cs.account.EntrySearchFilter.Multi;
 import com.zimbra.cs.account.EntrySearchFilter.Single;
 import com.zimbra.cs.account.EntrySearchFilter.Visitor;
+import com.zimbra.cs.account.Signature.SignatureContent;
 import com.zimbra.cs.account.Identity;
 import com.zimbra.cs.account.Provisioning;
+import com.zimbra.cs.account.Signature;
 
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.Map.Entry;
 import java.util.Stack;
 
@@ -186,10 +189,10 @@ public class ToXML {
         return visitor.getRootElement();
     }
 
-    public static Element encodeLocale(Element parent, Locale locale) {
+    public static Element encodeLocale(Element parent, Locale locale, Locale inLocale) {
         Element e = parent.addElement(AccountConstants.E_LOCALE);
-        // Always use US English for locale's display name.
-        e.addAttribute(AccountConstants.A_NAME, locale.getDisplayName(Locale.US));
+        // use inLocale for locale's display name.
+        e.addAttribute(AccountConstants.A_NAME, locale.getDisplayName(inLocale));
         e.addAttribute(AccountConstants.A_ID, locale.toString());
         return e;
     }
@@ -199,6 +202,18 @@ public class ToXML {
         e.addAttribute(AccountConstants.A_NAME, identity.getName());
         e.addAttribute(AccountConstants.A_ID, identity.getId());
         addAccountAttrs(e, identity.getAttrs(), AccountConstants.A_NAME);
+        return e;
+    }
+    
+    public static Element encodeSignature(Element parent, Signature signature) {
+        Element e = parent.addElement(AccountConstants.E_SIGNATURE);
+        e.addAttribute(AccountConstants.A_NAME, signature.getName());
+        e.addAttribute(AccountConstants.A_ID, signature.getId());
+        
+        Set<SignatureContent> contents = signature.getContents();
+        for (SignatureContent c : contents) {
+            e.addElement(AccountConstants.E_CONTENT).addAttribute(AccountConstants.A_TYPE, c.getMimeType()).addText(c.getContent());
+        }
         return e;
     }
 

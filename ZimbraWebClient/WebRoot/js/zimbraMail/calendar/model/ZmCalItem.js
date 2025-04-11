@@ -125,10 +125,10 @@ function() {
 
 // Getters
 
+ZmCalItem.prototype.getCompNum			= function() { return this.compNum || "0"; }
 ZmCalItem.prototype.getDuration 		= function() { return this.getEndTime() - this.getStartTime(); } // duration in ms
 ZmCalItem.prototype.getEndTime 			= function() { return this.endDate.getTime(); }; 	// end time in ms
 ZmCalItem.prototype.getFolder			= function() { /* override */ };
-ZmCalItem.prototype.getId 				= function() { return this.id; }; 					// mail item id on appt instance
 ZmCalItem.prototype.getLocation			= function() { /* override */ };
 ZmCalItem.prototype.getName 			= function() { return this.name || ""; };			// name (aka Subject) of appt
 ZmCalItem.prototype.getOrganizer 		= function() { return this.organizer || ""; };
@@ -273,12 +273,6 @@ function() {
 	}
 
 	return !this.isOrganizer() || isLinkAndReadOnly;
-};
-
-ZmCalItem.prototype.isShared =
-function() {
-	return (this.id && this.id != -1)
-		? (this.id.indexOf(":") != -1) : false;
 };
 
 ZmCalItem.prototype.resetRepeatWeeklyDays =
@@ -508,7 +502,7 @@ function(mode, callback, errorCallback, ex) {
 ZmCalItem.prototype._handleErrorGetDetails2 =
 function(mode, callback, errorCallback, result) {
 	// Update invId and force a message reload
-	var invite = result._data.GetAppointmentResponse.appt[0].inv[0];
+	var invite = this._getInviteFromError(result);
 	this.invId = [this.id, invite.id].join("-");
 	this.message = null;
 	var ignoreOutOfDate = true;
@@ -975,12 +969,12 @@ function(soapDoc) {
 	if (this.viewMode == ZmCalItem.MODE_EDIT_SERIES || this.viewMode == ZmCalItem.MODE_DELETE_SERIES) {
 		if (this.recurring && this._seriesInvId !== void 0 && this._seriesInvId != null) {
 			soapDoc.setMethodAttribute("id", this._seriesInvId);
-			soapDoc.setMethodAttribute("comp", this.compNum);
+			soapDoc.setMethodAttribute("comp", this.getCompNum());
 		}
 	} else {
 		if (this.invId !== void 0 && this.invId != null && this.invId != -1) {
 			soapDoc.setMethodAttribute("id", this.invId);
-			soapDoc.setMethodAttribute("comp", this.compNum);
+			soapDoc.setMethodAttribute("comp", this.getCompNum());
 		}
 	}
 };
@@ -1027,6 +1021,11 @@ function() {
 
 ZmCalItem.prototype._getSoapForMode =
 function(mode, isException) {
+	// override
+};
+
+ZmCalItem.prototype._getInviteFromError =
+function(result) {
 	// override
 };
 
@@ -1226,7 +1225,7 @@ function(calItemNode, instNode) {
     this.status 		= this._getAttr(calItemNode, instNode, "status");
 	this.ptst 			= this._getAttr(calItemNode, instNode, "ptst");
 	this.invId 			= this._getAttr(calItemNode, instNode, "invId");
-	this.compNum 		= this._getAttr(calItemNode, instNode, "compNum");
+	this.compNum 		= this._getAttr(calItemNode, instNode, "compNum") || "0";
 	this.isException 	= this._getAttr(calItemNode, instNode, "ex");
 	this.allDayEvent 	= this._getAttr(calItemNode, instNode, "allDay") || "0";
 	this.alarm 			= this._getAttr(calItemNode, instNode, "alarm");

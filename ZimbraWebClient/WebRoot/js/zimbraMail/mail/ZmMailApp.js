@@ -22,7 +22,16 @@
  * 
  * ***** END LICENSE BLOCK *****
  */
-
+ 
+/**
+ * Creates and initializes the mail application.
+ * @constructor
+ * @class
+ * The mail app manages and displays mail messages. Messages may be grouped
+ * into conversations. New messages are created through a composer.
+ * 
+ * @author Conrad Damon
+ */
 ZmMailApp = function(appCtxt, container, parentController) {
 
 	ZmApp.call(this, ZmApp.MAIL, appCtxt, container, parentController);
@@ -32,9 +41,11 @@ ZmMailApp = function(appCtxt, container, parentController) {
 ZmEvent.S_CONV				= "CONV";
 ZmEvent.S_MSG				= "MSG";
 ZmEvent.S_ATT				= "ATT";
+ZmEvent.S_FOLDER			= "FOLDER";
 ZmItem.CONV					= ZmEvent.S_CONV;
 ZmItem.MSG					= ZmEvent.S_MSG;
 ZmItem.ATT					= ZmEvent.S_ATT;
+ZmOrganizer.FOLDER			= ZmEvent.S_FOLDER;
 
 // App-related constants
 ZmApp.MAIL					= "Mail";
@@ -76,56 +87,142 @@ function() {
 ZmMailApp.prototype._registerSettings =
 function(settings) {
 	var settings = settings || this._appCtxt.getSettings();
-	settings.registerSetting("CONVERSATIONS_ENABLED",			{name: "zimbraFeatureConversationsEnabled", type: ZmSetting.T_COS, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("DEDUPE_MSG_TO_SELF",				{name: "zimbraPrefDedupeMessagesSentToSelf", type: ZmSetting.T_PREF, defaultValue: ZmSetting.DEDUPE_NONE});
-	settings.registerSetting("FORWARD_INCLUDE_ORIG",			{name: "zimbraPrefForwardIncludeOriginalText", type: ZmSetting.T_PREF, defaultValue: ZmSetting.INCLUDE});
-	settings.registerSetting("GROUP_MAIL_BY",					{type: ZmSetting.T_PREF, defaultValue: ZmSetting.GROUP_BY_MESSAGE});
-	settings.registerSetting("INITIAL_GROUP_MAIL_BY",			{name: "zimbraPrefGroupMailBy", type: ZmSetting.T_PREF, defaultValue: ZmSetting.GROUP_BY_MESSAGE});
-	settings.registerSetting("INITIAL_SEARCH",					{name: "zimbraPrefMailInitialSearch", type: ZmSetting.T_PREF, defaultValue: "in:inbox"});
-	settings.registerSetting("INITIAL_SEARCH_ENABLED",			{name: "zimbraFeatureInitialSearchPreferenceEnabled", type: ZmSetting.T_COS, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("MAIL_ALIASES",					{name: "zimbraMailAlias", type: ZmSetting.T_COS, dataType: ZmSetting.D_LIST});
-	settings.registerSetting("MAIL_FORWARDING_ADDRESS",			{name: "zimbraPrefMailForwardingAddress", type: ZmSetting.T_PREF});
-	settings.registerSetting("MAIL_FORWARDING_ENABLED",			{name: "zimbraFeatureMailForwardingEnabled", type: ZmSetting.T_COS, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("MAIL_LOCAL_DELIVERY_DISABLED",	{name: "zimbraPrefMailLocalDeliveryDisabled", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("NEW_WINDOW_COMPOSE",				{name: "zimbraPrefComposeInNewWindow", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: true});
-	settings.registerSetting("NOTIF_ADDRESS",					{name: "zimbraPrefNewMailNotificationAddress", type: ZmSetting.T_PREF});
-	settings.registerSetting("NOTIF_ENABLED",					{name: "zimbraPrefNewMailNotificationEnabled", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("NOTIF_FEATURE_ENABLED",			{name: "zimbraFeatureNewMailNotificationEnabled", type: ZmSetting.T_COS, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("PAGE_SIZE",						{name: "zimbraPrefMailItemsPerPage", type: ZmSetting.T_PREF, dataType: ZmSetting.D_INT, defaultValue: 25});
-	settings.registerSetting("READING_PANE_ENABLED",			{name: "zimbraPrefReadingPaneEnabled", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: true});
-	settings.registerSetting("REPLY_INCLUDE_ORIG",				{name: "zimbraPrefReplyIncludeOriginalText", type: ZmSetting.T_PREF, defaultValue: ZmSetting.INCLUDE});
-	settings.registerSetting("REPLY_PREFIX",					{name: "zimbraPrefForwardReplyPrefixChar", type: ZmSetting.T_PREF, defaultValue: ">"});
-	settings.registerSetting("REPLY_TO_ADDRESS",				{name: "zimbraPrefReplyToAddress", type: ZmSetting.T_PREF});
-	settings.registerSetting("SAVE_TO_SENT",					{name: "zimbraPrefSaveToSent", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: true});
-	settings.registerSetting("SENT_FOLDER_NAME",				{name: "zimbraPrefSentMailFolder", type: ZmSetting.T_PREF, defaultValue: "sent"});
-	settings.registerSetting("SHOW_BCC",						{type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("SHOW_FRAGMENTS",					{name: "zimbraPrefShowFragments", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("SIGNATURE",						{name: "zimbraPrefMailSignature", type: ZmSetting.T_PREF});
-	settings.registerSetting("SIGNATURE_ENABLED",				{name: "zimbraPrefMailSignatureEnabled", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("SIGNATURE_STYLE",					{name: "zimbraPrefMailSignatureStyle", type: ZmSetting.T_PREF, defaultValue: ZmSetting.SIG_OUTLOOK});
-	settings.registerSetting("VACATION_MSG",					{name: "zimbraPrefOutOfOfficeReply", type: ZmSetting.T_PREF});
-	settings.registerSetting("VACATION_MSG_ENABLED",			{name: "zimbraPrefOutOfOfficeReplyEnabled", type: ZmSetting.T_PREF, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
-	settings.registerSetting("VACATION_MSG_FEATURE_ENABLED",	{name: "zimbraFeatureOutOfOfficeReplyEnabled", type: ZmSetting.T_COS, dataType: ZmSetting.D_BOOLEAN, defaultValue: false});
+	settings.registerSetting("ALLOW_ANY_FROM_ADDRESS",			{name:"zimbraAllowAnyFromAddress", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("ALLOW_FROM_ADDRESSES",			{name:"zimbraAllowFromAddress", type:ZmSetting.T_COS, dataType:ZmSetting.D_LIST});
+	settings.registerSetting("COMPOSE_SAME_FORMAT",				{name:"zimbraPrefForwardReplyInOriginalFormat", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("CONVERSATIONS_ENABLED",			{name:"zimbraFeatureConversationsEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("DEDUPE_MSG_TO_SELF",				{name:"zimbraPrefDedupeMessagesSentToSelf", type:ZmSetting.T_PREF, defaultValue:ZmSetting.DEDUPE_NONE});
+	settings.registerSetting("DISPLAY_EXTERNAL_IMAGES",			{name:"zimbraPrefDisplayExternalImages", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("FILTERS_ENABLED",					{name:"zimbraFeatureFiltersEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN,	defaultValue:false});
+	settings.registerSetting("FORWARD_INCLUDE_ORIG",			{name:"zimbraPrefForwardIncludeOriginalText", type:ZmSetting.T_PREF, defaultValue:ZmSetting.INCLUDE});
+	settings.registerSetting("FORWARD_MENU_ENABLED",			{type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("GROUP_MAIL_BY",					{type:ZmSetting.T_PREF, defaultValue:ZmSetting.GROUP_BY_MESSAGE});
+	settings.registerSetting("IDENTITIES_ENABLED",				{name:"zimbraFeatureIdentitiesEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("INITIAL_GROUP_MAIL_BY",			{name:"zimbraPrefGroupMailBy", type:ZmSetting.T_PREF, defaultValue:ZmSetting.GROUP_BY_MESSAGE});
+	settings.registerSetting("INITIAL_SEARCH",					{name:"zimbraPrefMailInitialSearch", type:ZmSetting.T_PREF, defaultValue:"in:inbox"});
+	settings.registerSetting("INITIAL_SEARCH_ENABLED",			{name:"zimbraFeatureInitialSearchPreferenceEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("MAIL_ALIASES",					{name:"zimbraMailAlias", type:ZmSetting.T_COS, dataType:ZmSetting.D_LIST});
+	settings.registerSetting("MAIL_FORWARDING_ADDRESS",			{name:"zimbraPrefMailForwardingAddress", type:ZmSetting.T_PREF});
+	settings.registerSetting("MAIL_FORWARDING_ENABLED",			{name:"zimbraFeatureMailForwardingEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("MAIL_FROM_ADDRESS",				{name:"zimbraPrefFromAddress", type:ZmSetting.T_PREF, dataType:ZmSetting.D_LIST });
+	settings.registerSetting("MAIL_LOCAL_DELIVERY_DISABLED",	{name:"zimbraPrefMailLocalDeliveryDisabled", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("NEW_WINDOW_COMPOSE",				{name:"zimbraPrefComposeInNewWindow", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("NOTIF_ADDRESS",					{name:"zimbraPrefNewMailNotificationAddress", type:ZmSetting.T_PREF});
+	settings.registerSetting("NOTIF_ENABLED",					{name:"zimbraPrefNewMailNotificationEnabled", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("NOTIF_FEATURE_ENABLED",			{name:"zimbraFeatureNewMailNotificationEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("OPEN_MAIL_IN_NEW_WIN",			{name:"zimbraPrefOpenMailInNewWindow", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("PAGE_SIZE",						{name:"zimbraPrefMailItemsPerPage", type:ZmSetting.T_PREF, dataType:ZmSetting.D_INT, defaultValue:25});
+	settings.registerSetting("READING_PANE_ENABLED",			{name:"zimbraPrefReadingPaneEnabled", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("REPLY_INCLUDE_ORIG",				{name:"zimbraPrefReplyIncludeOriginalText", type:ZmSetting.T_PREF, defaultValue:ZmSetting.INCLUDE});
+	settings.registerSetting("REPLY_MENU_ENABLED",				{type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("REPLY_PREFIX",					{name:"zimbraPrefForwardReplyPrefixChar", type:ZmSetting.T_PREF, defaultValue:">"});
+	settings.registerSetting("REPLY_TO_ADDRESS",				{name:"zimbraPrefReplyToAddress", type:ZmSetting.T_PREF, dataType:ZmSetting.D_LIST });
+	settings.registerSetting("REPLY_TO_ENABLED",				{name:"zimbraPrefReplyToEnabled", type:ZmSetting.T_PREF /*, dataType:ZmSetting.D_LIST*/ }); // TODO:Is this a list or single?
+	settings.registerSetting("SAVE_DRAFT_ENABLED",				{type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("SAVE_TO_SENT",					{name:"zimbraPrefSaveToSent", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("SENT_FOLDER_NAME",				{name:"zimbraPrefSentMailFolder", type:ZmSetting.T_PREF, defaultValue:"sent"});
+	settings.registerSetting("SHOW_BCC",						{type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("SHOW_FRAGMENTS",					{name:"zimbraPrefShowFragments", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("SIGNATURE",						{name:"zimbraPrefMailSignature", type:ZmSetting.T_PREF});
+	settings.registerSetting("SIGNATURE_ENABLED",				{name:"zimbraPrefMailSignatureEnabled", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("SIGNATURE_STYLE",					{name:"zimbraPrefMailSignatureStyle", type:ZmSetting.T_PREF, defaultValue:ZmSetting.SIG_OUTLOOK});
+	settings.registerSetting("SPAM_ENABLED",					{type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("USER_FOLDERS_ENABLED",			{type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
+	settings.registerSetting("VACATION_MSG",					{name:"zimbraPrefOutOfOfficeReply", type:ZmSetting.T_PREF});
+	settings.registerSetting("VACATION_MSG_ENABLED",			{name:"zimbraPrefOutOfOfficeReplyEnabled", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
+	settings.registerSetting("VACATION_MSG_FEATURE_ENABLED",	{name:"zimbraFeatureOutOfOfficeReplyEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
 
 	ZmMailApp._setGroupByMaps();
 };
 
 ZmMailApp.prototype._registerPrefs =
 function() {
-	var list = [ZmSetting.INITIAL_GROUP_MAIL_BY, ZmSetting.PAGE_SIZE, ZmSetting.SHOW_FRAGMENTS,
-				ZmSetting.INITIAL_SEARCH, ZmSetting.POLLING_INTERVAL, ZmSetting.READING_PANE_ENABLED,
-				ZmSetting.SAVE_TO_SENT, ZmSetting.VACATION_MSG_ENABLED, ZmSetting.VACATION_MSG,
-				ZmSetting.NOTIF_ENABLED, ZmSetting.NOTIF_ADDRESS, ZmSetting.MAIL_FORWARDING_ADDRESS,					 
-				ZmSetting.MAIL_LOCAL_DELIVERY_DISABLED, ZmSetting.VIEW_AS_HTML, ZmSetting.DEDUPE_MSG_TO_SELF, 
-				ZmSetting.NEW_WINDOW_COMPOSE];
-				
-	ZmPref.setPrefList("MAIL_PREFS", list);
+	var sections = {
+		MAIL: {
+			title: ZmMsg.mail,
+			templateId: "zimbraMail.prefs.templates.Pages#Mail",
+			priority: 10,
+			prefs: [
+				ZmSetting.DEDUPE_MSG_TO_SELF,
+				ZmSetting.DISPLAY_EXTERNAL_IMAGES,
+				ZmSetting.INITIAL_GROUP_MAIL_BY,
+				ZmSetting.INITIAL_SEARCH,
+				ZmSetting.MAIL_FORWARDING_ADDRESS,
+				ZmSetting.MAIL_LOCAL_DELIVERY_DISABLED,
+				ZmSetting.NOTIF_ADDRESS,
+				ZmSetting.NOTIF_ENABLED,
+				ZmSetting.OPEN_MAIL_IN_NEW_WIN,
+				ZmSetting.PAGE_SIZE,
+				ZmSetting.POLLING_INTERVAL,
+				ZmSetting.READING_PANE_ENABLED,
+				ZmSetting.SHOW_FRAGMENTS,
+				ZmSetting.VACATION_MSG_ENABLED,
+				ZmSetting.VACATION_MSG,
+				ZmSetting.VIEW_AS_HTML
+			]
+		},
+		IDENTITIES: {
+			title: ZmMsg.identities,
+			templateId: "zimbraMail.prefs.templates.Pages#Identities",
+			priority: 59,
+			precondition: ZmSetting.IDENTITIES_ENABLED,
+			prevs: [
+				ZmSetting.IDENTITIES
+			],
+			manageDirty: true,
+			createView: function(parent, appCtxt, section, controller) {
+				return controller.getIdentityController().getListView();
+			}
+		},
+		ACCOUNTS: {
+			title: ZmMsg.popAccounts,
+			templateId: "zimbraMail.prefs.templates.Pages#Accounts",
+			priority: 60,
+			precondition: ZmSetting.POP_ACCOUNTS_ENABLED,
+			prefs: [
+				ZmSetting.ACCOUNTS
+			],
+			manageDirty: true,
+			createView: function(parent, appCtxt, section, controller) {
+				return AjxDispatcher.run("GetPopAccountsController").getListView();
+			}
+		},
+		SIGNATURES: {
+			title: ZmMsg.signatures,
+			templateId: "zimbraMail.prefs.templates.Pages#Signatures",
+			priority: 30,
+			precondition: false,
+			prefs: [] // TODO
+		},
+		FILTERS: {
+			title: ZmMsg.filterRules,
+			templateId: "zimbraMail.prefs.templates.Pages#MailFilters",
+			priority: 70,
+			precondition: ZmSetting.FILTERS_ENABLED,
+			prefs: [
+				ZmSetting.FILTERS
+			],
+			manageChanges: true,
+			createView: function(parent, appCtxt, section, controller) {
+				return controller.getFilterRulesController().getFilterRulesView();
+			}
+		}
+	};
+	for (var id in sections) {
+		ZmPref.registerPrefSection(id, sections[id]);
+	}
 
 	ZmPref.registerPref("DEDUPE_MSG_TO_SELF", {
 		displayName:		ZmMsg.removeDupesToSelf,
-		displayContainer:	ZmPref.TYPE_SELECT,
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
 		displayOptions:		[ZmMsg.dedupeNone, ZmMsg.dedupeSecondCopy, ZmMsg.dedupeAll],
 		options:			[ZmSetting.DEDUPE_NONE, ZmSetting.DEDUPE_SECOND, ZmSetting.DEDUPE_ALL]
+	});
+
+	ZmPref.registerPref("DISPLAY_EXTERNAL_IMAGES", {
+		displayName:		ZmMsg.showExternalImages,
+		displayContainer:	ZmPref.TYPE_CHECKBOX
 	});
 
 	ZmPref.registerPref("FORWARD_INCLUDE_ORIG", {
@@ -167,12 +264,6 @@ function() {
 		precondition:		ZmSetting.MAIL_FORWARDING_ENABLED
 	});
 	
-	ZmPref.registerPref("NEW_WINDOW_COMPOSE", {
-		displayName:		ZmMsg.composeInNewWin,
-		displayContainer:	ZmPref.TYPE_CHECKBOX,
-		displaySeparator: 	true
-	});
-	
 	ZmPref.registerPref("NOTIF_ADDRESS", {
 		displayName:		ZmMsg.mailNotifAddress,
 		displayContainer:	ZmPref.TYPE_INPUT,
@@ -186,6 +277,11 @@ function() {
 		displayName:		ZmMsg.mailNotifEnabled,
 		displayContainer:	ZmPref.TYPE_CHECKBOX,
 		precondition:		ZmSetting.NOTIF_FEATURE_ENABLED
+	});
+	
+	ZmPref.registerPref("OPEN_MAIL_IN_NEW_WIN", {
+		displayName:		ZmMsg.openMailNewWin,
+		displayContainer:	ZmPref.TYPE_CHECKBOX
 	});
 	
 	ZmPref.registerPref("REPLY_INCLUDE_ORIG", {
@@ -209,11 +305,6 @@ function() {
 		displayContainer:	ZmPref.TYPE_INPUT,
 		validationFunction: ZmPref.validateEmail,
 		errorMessage:       ZmMsg.invalidEmail
-	});
-	
-	ZmPref.registerPref("SAVE_TO_SENT", {
-		displayName:		ZmMsg.saveToSent,
-		displayContainer:	ZmPref.TYPE_CHECKBOX
 	});
 	
 	ZmPref.registerPref("SIGNATURE", {
@@ -252,6 +343,7 @@ function() {
 
 ZmMailApp.prototype._registerOperations =
 function() {
+	ZmOperation.registerOp("ADD_FILTER_RULE", {textKey:"newFilter", image:"Plus"}, ZmSetting.FILTERS_ENABLED);
 	ZmOperation.registerOp("ADD_SIGNATURE", {textKey:"addSignature"}/*, ZmSetting.SIGNATURE_ENABLED*/);
 	ZmOperation.registerOp("CHECK_MAIL", {textKey:"checkMail", tooltipKey:"checkMailTooltip"});
 	ZmOperation.registerOp("COMPOSE_OPTIONS", {textKey:"options", image:"Preferences"});
@@ -259,13 +351,15 @@ function() {
 	ZmOperation.registerOp("DELETE_MENU", {tooltipKey:"deleteTooltip", image:"Delete"});
 	ZmOperation.registerOp("DETACH_COMPOSE", {tooltipKey:"detachTooltip", image:"OpenInNewWindow"});
 	ZmOperation.registerOp("DRAFT", null, ZmSetting.SAVE_DRAFT_ENABLED);
+	ZmOperation.registerOp("EDIT_FILTER_RULE", {textKey:"filterEdit", image:"Edit"}, ZmSetting.FILTERS_ENABLED);
 	ZmOperation.registerOp("FORWARD", {textKey:"forward", tooltipKey:"forwardTooltip", image:"Forward"});
 	ZmOperation.registerOp("FORWARD_ATT", {textKey:"forwardAtt", tooltipKey:"forwardAtt", image:"Forward"});
 	ZmOperation.registerOp("FORWARD_INLINE", {textKey:"forwardInline", tooltipKey:"forwardTooltip", image:"Forward"});
-	ZmOperation.registerOp("FORWARD_MENU", {textKey:"forward", tooltipKey:"forwardTooltip", image:"Forward"}, null,
+	//fixed bug:15460 removed reply and forward menu.
+	/*ZmOperation.registerOp("FORWARD_MENU", {textKey:"forward", tooltipKey:"forwardTooltip", image:"Forward"}, null,
 		AjxCallback.simpleClosure(function(parent) {
 			ZmOperation.addDeferredMenu(ZmMailApp.addForwardMenu, parent);
-	}));
+	}));*/
 	ZmOperation.registerOp("IM", {textKey:"newIM", image:"ImStartChat"}, ZmSetting.IM_ENABLED);
 	ZmOperation.registerOp("INC_ATTACHMENT", {textKey:"includeMenuAttachment"});
 	ZmOperation.registerOp("INC_NONE", {textKey:"includeMenuNone"});
@@ -274,17 +368,21 @@ function() {
 	ZmOperation.registerOp("INC_SMART", {textKey:"includeMenuSmart"});
 	ZmOperation.registerOp("MARK_READ", {textKey:"markAsRead", image:"ReadMessage"});
 	ZmOperation.registerOp("MARK_UNREAD", {textKey:"markAsUnread", image:"UnreadMessage"});
+	ZmOperation.registerOp("MOVE_DOWN_FILTER_RULE", {textKey:"filterMoveDown", image:"DownArrow"}, ZmSetting.FILTERS_ENABLED);
+	ZmOperation.registerOp("MOVE_UP_FILTER_RULE", {textKey:"filterMoveUp", image:"UpArrow"}, ZmSetting.FILTERS_ENABLED);
 	ZmOperation.registerOp("NEW_MESSAGE", {textKey:"newEmail", tooltipKey:"newMessageTooltip", image:"NewMessage"});
 	ZmOperation.registerOp("NEW_MESSAGE_WIN", {textKey:"newEmail", tooltipKey:"newMessageTooltip", image:"NewMessage"});
+	ZmOperation.registerOp("REMOVE_FILTER_RULE", {textKey:"filterRemove", image:"Delete"}, ZmSetting.FILTERS_ENABLED);
 	ZmOperation.registerOp("REPLY", {textKey:"reply", tooltipKey:"replyTooltip", image:"Reply"});
 	ZmOperation.registerOp("REPLY_ACCEPT", {textKey:"replyAccept", image:"Check"});
 	ZmOperation.registerOp("REPLY_ALL", {textKey:"replyAll", tooltipKey:"replyAllTooltip", image:"ReplyAll"});
 	ZmOperation.registerOp("REPLY_CANCEL");
 	ZmOperation.registerOp("REPLY_DECLINE", {textKey:"replyDecline", image:"Cancel"});
-	ZmOperation.registerOp("REPLY_MENU", {textKey:"reply", tooltipKey:"replyTooltip", image:"Reply"}, ZmSetting.REPLY_MENU_ENABLED,
+	//fixed bug:15460 removed reply and forward menu.
+	/*ZmOperation.registerOp("REPLY_MENU", {textKey:"reply", tooltipKey:"replyTooltip", image:"Reply"}, ZmSetting.REPLY_MENU_ENABLED,
 		AjxCallback.simpleClosure(function(parent) {
 			ZmOperation.addDeferredMenu(ZmMailApp.addReplyMenu, parent);
-	}));
+	}));*/
 	ZmOperation.registerOp("REPLY_MODIFY");
 	ZmOperation.registerOp("REPLY_NEW_TIME", {textKey:"replyNewTime", image:"NewTime"});
 	ZmOperation.registerOp("REPLY_TENTATIVE", {textKey:"replyTentative", image:"QuestionMark"});
@@ -541,6 +639,18 @@ function(creates, force) {
 	if (!creates["m"] && !creates["c"] && !creates["link"]) { return; }
 	if (!force && !this._noDefer && this._deferNotifications("create", creates)) { return; }
 
+	if (creates["link"]) {
+		var list = creates["link"];
+		for (var i = 0; i < list.length; i++) {
+			var create = list[i];
+
+			if (this._appCtxt.cacheGet(create.id))
+				continue;
+
+			this._handleCreateLink(create, ZmOrganizer.FOLDER);
+		}
+	}
+
 	var convs = {};
 	var msgs = {};
 	var folders = {};
@@ -628,7 +738,7 @@ function(create, type, currList, sortBy, cutoff) {
 		DBG.println(AjxDebug.DBG2, "new " + type + " not of current type");
 		return false;
 	}
-	
+
 	// ignore mail that falls outside our range
 	if (sortBy == ZmSearch.DATE_DESC && (create.d < cutoff)) {
 		DBG.println(AjxDebug.DBG2, "new " + type + " is too old: " + create.d);
@@ -638,12 +748,11 @@ function(create, type, currList, sortBy, cutoff) {
 		DBG.println(AjxDebug.DBG2, "new " + type + " is too new: " + create.d);
 		return false;
 	}
-	
+
 	// ignore stuff we already have
-	if (this._appCtxt.cacheGet(create.id)) {
+	if (this._appCtxt.cacheGet(create.id) || create._wasVirtConv) {
 		return false;
 	}
-	if (create._wasVirtConv) { return false; }
 
 	return true;
 };
@@ -653,6 +762,14 @@ function(notify) {
 	if (this._checkReplenishListView) {
 		this._checkReplenishListView._checkReplenish();
 		this._checkReplenishListView = null;
+	}
+};
+
+ZmMailApp.prototype.refresh =
+function(refresh) {
+	if (!this._appCtxt.inStartup) {
+		var account = this._appCtxt.multiAccounts ? this._appCtxt.getMainAccount() : null;
+		this.resetOverview(this.getOverviewId(account));
 	}
 };
 
@@ -690,22 +807,6 @@ function(callback, checkQS) {
 
 ZmMailApp.prototype._handleLoadLaunch =
 function(callback, checkQS) {
-	var overview = this._appCtxt.getOverviewController().getOverview(ZmZimbraMail._OVERVIEW_ID);
-	overview.addSelectionListener(new AjxListener(this, this._overviewSelectionListener));
-
-	var acctList = this._appCtxt.getSettings().getAccountList();
-
-	for (var i in acctList) {
-		var data = { appName:ZmApp.MAIL };
-		var acct = data.account = acctList[i];
-		if (acct.visible) {
-			var item = overview.addAccordionItem( {title:acct.name, data:data} );
-			acct.itemId = item.id;
-			if (acct.isParent)
-				this.accordionItem = item;
-		}
-	}
-
 	var query;
 	if (checkQS) {
 		if (location && (location.search.match(/\bview=compose\b/))) {
@@ -735,12 +836,97 @@ function(callback, checkQS) {
 ZmMailApp.prototype._handleErrorLaunch =
 function(params, ex) {
 	if (ex.code == ZmCsfeException.MAIL_NO_SUCH_FOLDER ||
-		ex.code == ZmCsfeException.MAIL_NO_SUCH_TAG)
+		ex.code == ZmCsfeException.MAIL_NO_SUCH_TAG ||
+		ex.code == ZmCsfeException.MAIL_QUERY_PARSE_ERROR)
 	{
 		// reset the params so we default to searching the inbox which *will* work
 		var newParams = {query:"in:inbox", callback:params.callback, errorCallback:null, types:params.types};
 		this._appCtxt.getSearchController().search(newParams);
 	}
+};
+
+ZmMailApp.prototype.getOverviewPanelContent =
+function() {
+	if (this._overviewPanelContent) {
+		return this._overviewPanelContent;
+	}
+	
+	if (this._appCtxt.multiAccounts) {
+		// create accordion
+		var accordionId = this.getOverviewPanelContentId();
+		var accordion = this._overviewPanelContent = this._opc.createAccordion({accordionId:accordionId});
+		accordion.addSelectionListener(new AjxListener(this, this._accordionSelectionListener));
+		accordion.addContextListener(new AjxListener(this, this._accordionActionListener));
+		// add an accordion item for each account, and create overview for main account
+		var accts = this._appCtxt.getAccounts();
+		this._overview = {};
+		for (var i in accts) {
+			var data = {appName:ZmApp.MAIL};
+			var acct = data.account = accts[i];
+			if (acct.visible) {
+				var item = accordion.addAccordionItem({title:acct.name, data:data});
+				acct.itemId = item.id;
+				if (acct.isMain) {
+					this._activateAccordionItem(item);
+				}
+			}
+		}
+	} else {
+		this._overviewPanelContent = ZmApp.prototype.getOverviewPanelContent.apply(this, arguments);
+	}
+	return this._overviewPanelContent;
+};
+
+ZmMailApp.prototype.getOverviewId =
+function(account) {
+	account = !this._appCtxt.multiAccounts ? null : account || this.accordionItem.data.account;
+	return this._appCtxt.multiAccounts ?
+		[this.getOverviewPanelContentId(), account.name].join(":") :
+		ZmApp.prototype.getOverviewPanelContentId.apply(this, arguments);
+};
+
+ZmMailApp.prototype._accordionSelectionListener =
+function(ev) {
+	if (!ZmApp.prototype._accordionSelectionListener.apply(this, arguments)) { return; }
+
+	// hide and clear advanced search since it may have overviews for previous account
+	if (this._appCtxt.get(ZmSetting.BROWSE_ENABLED)) {
+		var searchCtlr = this._appCtxt.getSearchController();
+		var bvc = searchCtlr._browseViewController;
+		if (bvc) {
+			bvc.removeAllPickers();
+			bvc.setBrowseViewVisible(false);
+		}
+	}
+	var callback = new AjxCallback(this, this._handleSetActiveAccount, this.accordionItem);
+	this._appCtxt.setActiveAccount(this.accordionItem.data.account, callback);
+};
+
+ZmMailApp.prototype._accordionActionListener =
+function(ev) {
+	var accordionItem = ev.detail;
+	if (accordionItem != this.accordionItem)
+		return false;
+
+	var mouseEv = DwtShell.mouseEvent;
+
+	if (!this._accordionActionMenu) {
+		var menuItems = [ZmOperation.NEW_FOLDER];
+		this._accordionActionMenu = new ZmActionMenu({parent:ev.item, menuItems:menuItems});
+
+		var ftc = this._appCtxt.getOverviewController().getTreeController(ZmOrganizer.FOLDER);
+		var newListener = new AjxListener(ftc, ftc._newListener);
+		this._accordionActionMenu.addSelectionListener(ZmOperation.NEW_FOLDER, newListener);
+	}
+
+	this._accordionActionMenu.popup(0, mouseEv.docX, mouseEv.docY);
+};
+
+ZmMailApp.prototype._handleSetActiveAccount =
+function(accordionItem) {
+	this._appCtxt.getAppController()._setUserInfo();
+	this._activateAccordionItem(accordionItem);
+	this._mailSearch();
 };
 
 ZmMailApp.prototype._mailSearch =
@@ -857,28 +1043,6 @@ function() {
 	return setting ? ZmMailApp.GROUP_MAIL_BY_ITEM[setting] : ZmItem.MSG;
 };
 
-ZmMailApp.prototype._overviewSelectionListener =
-function(ev) {
-	var accordionItem = ev.detail;
-	var data = accordionItem.data;
-	if (data.appName != ZmApp.MAIL) { return };
-
-	this.accordionItem = accordionItem;
-
-DBG.println("---------- MAIL overview selection listener for: " + accordionItem.id);
-	var callback = new AjxCallback(this, this._handleSetActiveAccount);
-	this._appCtxt.setActiveAccount(data.account, callback);
-};
-
-ZmMailApp.prototype._handleSetActiveAccount =
-function(account, ev) {
-DBG.println("-------- TODO: get folder tree for active account and reparent ---------");
-
-	var controller = this._appCtxt.getAppController();
-	var opc = this._appCtxt.getOverviewController();
-	opc.set(ZmZimbraMail._OVERVIEW_ID, controller._getOverviewTrees(ZmApp.MAIL));
-};
-
 /**
 * Adds a "Reply" submenu for replying to sender or all.
 *
@@ -904,3 +1068,4 @@ function(parent) {
 	parent.setMenu(menu);
 	return menu;
 };
+ 

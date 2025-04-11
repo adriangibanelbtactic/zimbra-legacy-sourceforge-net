@@ -70,6 +70,7 @@ import com.zimbra.common.util.ZimbraLog;
 public class IMPersona extends ClassLogger {
     private static final String FN_ADDRESS = "a";
     private static final String FN_PRESENCE = "p";
+    private static final String FN_INTEROP_SERVICE_PREFIX  = "isvc-";
 
     /**
      * @param octxt
@@ -82,6 +83,9 @@ public class IMPersona extends ClassLogger {
                 throws ServiceException {
         IMPersona toRet = null;
         Metadata meta = mbox.getConfig(octxt, "im");
+        
+        HashMap<String /*ServiceName*/, Map<String, String>> interopReg = new HashMap<String/*ServiceName*/, Map<String, String>>();
+        
         if (meta != null) {
             // FIXME: how are config entries getting written w/o an ADDRESS
             // setting?
@@ -91,10 +95,32 @@ public class IMPersona extends ClassLogger {
                 IMPresence presence = IMPresence.decodeMetadata(meta.getMap(FN_PRESENCE));
                 toRet.mMyPresence = presence;
             }
+
+            // iterate through the metadata, looking for entries with "isvc-" keys,
+            // those are interop registration data blobs
+            for (Object o : meta.asMap().entrySet()) {
+                Map.Entry<String, Object> e = (Map.Entry<String, Object>)o;
+                if (e.getKey().startsWith(FN_INTEROP_SERVICE_PREFIX)) {
+                    Map<String, String> svcData = new HashMap<String,String>();
+
+                    // this is a nested metadata -- iterate it, and put all the 
+                    // values into a <String,String> hash
+                    Metadata tmp = (Metadata)e.getValue();
+                    for (Object tmpo: tmp.asMap().entrySet()) {
+                        Map.Entry tmpEntry = (Map.Entry)tmpo;
+                        svcData.put((String)tmpEntry.getKey(), (String)tmpEntry.getValue());
+                    }
+                    
+                    // put the <String,String> hash into interopReg 
+                    String svcName = e.getKey().substring(FN_INTEROP_SERVICE_PREFIX.length());
+                    interopReg.put(svcName, svcData);
+                }
+            }
         }
         if (toRet == null)
             toRet = new IMPersona(addr, mbox);
         toRet.init();
+        toRet.mInteropRegistrationData = interopReg;        
         return toRet;
     }
 
@@ -110,8 +136,9 @@ public class IMPersona extends ClassLogger {
     // I have saved in the DB, and the second is a flag if I am online or
     // offline
     private IMPresence mMyPresence = new IMPresence(Show.ONLINE, (byte) 1, null);
-    private HashSet<String> mSharedGroups = new HashSet<String>();
+//    private HashSet<String> mSharedGroups = new HashSet<String>();
     private ClientSession mXMPPSession;
+    private HashMap<String /*ServiceName*/, Map<String, String>> mInteropRegistrationData;
 
     private IMPersona(IMAddr addr, Mailbox lock) {
         super(ZimbraLog.im);
@@ -217,12 +244,22 @@ public class IMPersona extends ClassLogger {
         return null;
     }
 
+    /** Write this persona's metadata to persistent storage */
     private void flush(OperationContext octxt) throws ServiceException {
         Mailbox mbox = getMailbox();
         assert (getAddr().getAddr().equals(mbox.getAccount().getName()));
         Metadata meta = new Metadata();
         meta.put(FN_ADDRESS, mAddr);
         meta.put(FN_PRESENCE, mMyPresence.encodeAsMetadata());
+        
+        for (Map.Entry<String, Map<String, String>> svc : mInteropRegistrationData.entrySet()) {
+            Metadata interopData = new Metadata();
+            for (Map.Entry<String, String> entry : svc.getValue().entrySet()) {
+                interopData.put(entry.getKey(), entry.getValue());
+            }
+            meta.put(FN_INTEROP_SERVICE_PREFIX+svc.getKey(), interopData);
+        }
+        
         mbox.setConfig(octxt, "im", meta);
     }
 
@@ -375,21 +412,41 @@ public class IMPersona extends ClassLogger {
         return mAddr + "/zcs";
     }
 
-    /**
-     * Finds an existing group
-     * 
-     * @param create
-     *        if TRUE will create the group if one doesn't exist
-     * @param name
-     * @return
-     */
-    private IMGroup getGroup(boolean create, String name) {
-        IMGroup toRet = mGroups.get(name);
-        if (toRet == null && create) {
-            toRet = new IMGroup(name);
-            mGroups.put(name, toRet);
+//    /**
+//     * Finds an existing group
+//     * 
+//     * @param create
+//     *        if TRUE will create the group if one doesn't exist
+//     * @param name
+//     * @return
+//     */
+//    private IMGroup getGroup(boolean create, String name) {
+//        IMGroup toRet = mGroups.get(name);
+//        if (toRet == null && create) {
+//            toRet = new IMGroup(name);
+//            mGroups.put(name, toRet);
+//        }
+//        return toRet;
+//    }
+    
+    Map<String, String> getIMGatewayRegistration(Interop.ServiceName service) {
+        synchronized(getLock()) {
+            return mInteropRegistrationData.get(service.name());
         }
-        return toRet;
+    }
+    
+    void setIMGatewayRegistration(Interop.ServiceName service, Map<String, String> data) throws ServiceException {
+        synchronized(getLock()) {
+            mInteropRegistrationData.put(service.name(), data);
+            flush(null);
+        }
+    }
+    
+    void removeIMGatewayRegistration(Interop.ServiceName service) throws ServiceException {
+        synchronized(getLock()) {
+            mInteropRegistrationData.remove(service.name());
+            flush(null);
+        }
     }
 
     @Override
@@ -450,9 +507,15 @@ public class IMPersona extends ClassLogger {
     }
 
     private void handleMessagePacket(boolean toMe, Message msg) {
-        // is it a gateway notification?
+        // is it a gateway notification?  If so, then stop processing it here
         Element xe = msg.getChildElement("x", "zimbra:interop");
         if (xe != null) {
+            String username = null;
+            Element usernameElt = xe.element("username");
+            if (usernameElt != null) {
+                username = usernameElt.getText();
+            }
+            
             String serviceName = msg.getFrom().toBareJID();
             String[] splits = serviceName.split("\\.");
             if (splits.length > 0)
@@ -465,7 +528,14 @@ public class IMPersona extends ClassLogger {
                 IMGatewayStateNotification not = 
                     new IMGatewayStateNotification(serviceName, state, delay);
                 postIMNotification(not);
-                return;
+                // return; FIXME Tim: leave the text message until the client supports the notifications
+            }
+            Element otherLocation = xe.element("otherLocation");
+            if (otherLocation != null) {
+                IMOtherLocationNotification not = 
+                    new IMOtherLocationNotification(serviceName,username);
+                postIMNotification(not);
+                // return; FIXME Tim: leave the text message until the client supports the notifications
             }
         }
         
@@ -537,13 +607,13 @@ public class IMPersona extends ClassLogger {
                         IMSubscribeNotification notify = new IMSubscribeNotification(
                                     IMAddr.fromJID(pres.getFrom()));
                         postIMNotification(notify);
-                        if (true) { // TODO REMOVETHIS!
-                            // auto-accept for now
-                            reply = new Presence();
-                            reply.setType(Presence.Type.subscribed);
-                            reply.setTo(pres.getFrom());
-                            xmppRoute(reply);
-                        }
+//                        if (false) { // TODO REMOVETHIS!
+//                            // auto-accept for now
+//                            reply = new Presence();
+//                            reply.setType(Presence.Type.subscribed);
+//                            reply.setTo(pres.getFrom());
+//                            xmppRoute(reply);
+//                        }
                     }
                     break;
                     case subscribed: {
@@ -616,24 +686,29 @@ public class IMPersona extends ClassLogger {
                 for (Roster.Item item : roster.getItems()) {
                     IMAddr buddyAddr = IMAddr.fromJID(item.getJID());
                     Roster.Subscription subscript = item.getSubscription();
-                    IMSubscribedNotification not = IMSubscribedNotification
-                                .create(
-                                            buddyAddr,
-                                            item.getName(),
-                                            item.getGroups(),
-                                            (subscript == Roster.Subscription.both || subscript == Roster.Subscription.to),
-                                            item.getAsk());
-                    if (rosterNot != null) {
-                        rosterNot.addEntry(not);
-                    } else {
-                        postIMNotification(not);
-                    }
-                    if (doProbe) {
-                        if (item.getJID().getNode() != null) {
-                            if (!Interop.getInstance().isInteropJid(item.getJID())) {
-                                Presence probe = new Presence(Presence.Type.probe);
-                                probe.setTo(item.getJID());
-                                xmppRoute(probe);
+                    
+                    // do we need to tell the client about FROM subs?  We do need to tell the
+                    // client if the sub is unsubscribed, but not in the case of a roster SET
+                    if (subscript == Roster.Subscription.both || subscript == Roster.Subscription.to) {
+                        IMSubscribedNotification not = IMSubscribedNotification
+                        .create(
+                            buddyAddr,
+                            item.getName(),
+                            item.getGroups(),
+                            (subscript == Roster.Subscription.both || subscript == Roster.Subscription.to),
+                            item.getAsk());
+                        if (rosterNot != null) {
+                            rosterNot.addEntry(not);
+                        } else {
+                            postIMNotification(not);
+                        }
+                        if (doProbe) {
+                            if (item.getJID().getNode() != null) {
+                                if (!Interop.getInstance().isInteropJid(item.getJID())) {
+                                    Presence probe = new Presence(Presence.Type.probe);
+                                    probe.setTo(item.getJID());
+                                    xmppRoute(probe);
+                                }
                             }
                         }
                     }
@@ -683,9 +758,9 @@ public class IMPersona extends ClassLogger {
         }
     }
 
-    public boolean inSharedGroup(String name) {
-        return mSharedGroups.contains(name);
-    }
+//    public boolean inSharedGroup(String name) {
+//        return mSharedGroups.contains(name);
+//    }
 
     public void joinChat(String threadId) throws ServiceException {
         IMChat chat = mChats.get(threadId);
@@ -760,15 +835,15 @@ public class IMPersona extends ClassLogger {
         }
     }
 
-    public void providerGroupAdd(String name) throws ServiceException {
-        if (mSharedGroups.add(name))
-            flush(null);
-    }
-
-    public void providerGroupRemove(String name) throws ServiceException {
-        if (mSharedGroups.remove(name))
-            flush(null);
-    }
+//    public void providerGroupAdd(String name) throws ServiceException {
+//        if (mSharedGroups.add(name))
+//            flush(null);
+//    }
+//
+//    public void providerGroupRemove(String name) throws ServiceException {
+//        if (mSharedGroups.remove(name))
+//            flush(null);
+//    }
 
     private void pushMyPresence() throws ServiceException {
         pushMyPresence(null);
@@ -861,7 +936,7 @@ public class IMPersona extends ClassLogger {
                 mChats.put(threadId, chat);
             }
         }
-        String msg = message.getBody(Lang.DEFAULT).getPlainText();
+        String msg = (message.getBody(Lang.DEFAULT) != null ? message.getBody(Lang.DEFAULT).getPlainText() : null);
         if (msg != null && msg.startsWith("/")) {
             if (msg.startsWith("/add ")) {
                 String username = msg.substring("/add ".length()).trim();

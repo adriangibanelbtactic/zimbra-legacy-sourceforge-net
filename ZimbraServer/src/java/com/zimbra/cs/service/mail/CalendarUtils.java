@@ -30,6 +30,7 @@ import com.zimbra.common.soap.Element;
 import com.zimbra.common.soap.MailConstants;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.ldap.LdapUtil;
+import com.zimbra.cs.mailbox.CalendarItem.ReplyInfo;
 import com.zimbra.cs.mailbox.calendar.Alarm;
 import com.zimbra.cs.mailbox.calendar.ICalTimeZone;
 import com.zimbra.cs.mailbox.calendar.ICalTimeZone.SimpleOnset;
@@ -115,20 +116,19 @@ public class CalendarUtils {
         if (tzMap == null) {
             tzMap = new TimeZoneMap(ICalTimeZone.getAccountTimeZone(account));
         }
-        Invite create = new Invite(ICalTok.PUBLISH.toString(), tzMap);
+        Invite create = new Invite(ICalTok.PUBLISH.toString(), tzMap, false);
 
         CalendarUtils.parseInviteElementCommon(
                 account, itemType, inviteElem, create, recurrenceIdAllowed, recurAllowed);
 
         // DTSTAMP
-        create.setDtStamp(new Date().getTime());
+        if (create.getDTStamp() == 0) { //zdsync
+        	create.setDtStamp(new Date().getTime());
+        }
 
         // UID
         if (uid != null && uid.length() > 0)
             create.setUid(uid);
-
-        // SEQUENCE
-        create.setSeqNo(0);
 
         ZVCalendar iCal = create.newToICalendar();
 
@@ -156,8 +156,7 @@ public class CalendarUtils {
             Account account, byte itemType, Element inviteElem, Invite oldInv,
             List<ZAttendee> attendeesToCancel, boolean recurAllowed)
             throws ServiceException {
-        Invite mod = new Invite(ICalTok.PUBLISH.toString(), oldInv
-                .getTimeZoneMap());
+        Invite mod = new Invite(ICalTok.PUBLISH.toString(), oldInv.getTimeZoneMap(), false);
 
         CalendarUtils.parseInviteElementCommon(
                 account, itemType, inviteElem, mod, oldInv.hasRecurId(), recurAllowed);
@@ -200,7 +199,7 @@ public class CalendarUtils {
         if (tzMap == null) {
             tzMap = new TimeZoneMap(ICalTimeZone.getAccountTimeZone(account));
         }
-        Invite cancel = new Invite(ICalTok.CANCEL.toString(), tzMap);
+        Invite cancel = new Invite(ICalTok.CANCEL.toString(), tzMap, false);
 
         CalendarUtils.parseInviteElementCommon(
                 account, itemType, inviteElem, cancel, recurrenceIdAllowed, recurAllowed);
@@ -213,6 +212,9 @@ public class CalendarUtils {
             cancelInvite(account, null, false, cancel, cancel.getComment(),
                          cancel.getAttendees(), cancel.getRecurId(),
                          false);
+        
+        sanitized.setInviteId(cancel.getMailItemId()); //zdsync
+        sanitized.setDtStamp(cancel.getDTStamp()); //zdsync
 
         ZVCalendar iCal = sanitized.newToICalendar();
 
@@ -634,9 +636,13 @@ public class CalendarUtils {
             boolean recurrenceIdAllowed, boolean recurAllowed)
     throws ServiceException {
 
+    	String invId = element.getAttribute(MailConstants.A_ID, null); //zdsync
+    	
     	Element compElem = element.getOptionalElement(MailConstants.E_INVITE_COMPONENT);
     	if (compElem != null)
     		element = compElem;
+
+    	String dts = element.getAttribute(MailConstants.A_CAL_DATETIME, null); //zdsync
 
     	TimeZoneMap tzMap = newInv.getTimeZoneMap();
         parseTimeZones(element.getParent(), tzMap);
@@ -646,7 +652,7 @@ public class CalendarUtils {
         // UID
         String uid = element.getAttribute(MailConstants.A_UID, null);
         if (uid == null || uid.length() == 0)
-            uid = LdapUtil.generateUUID();
+        		uid = LdapUtil.generateUUID();
         newInv.setUid(uid);
 
         // RECURRENCE-ID
@@ -833,6 +839,10 @@ public class CalendarUtils {
             newInv.setOrganizer(org);
         }
 
+        // Once we have organizer and attendee information, we can tell if this account is the
+        // organizer in this invite or not.
+        newInv.setIsOrganizer(account);
+
         // RECUR
         Element recur = element.getOptionalElement(MailConstants.A_CAL_RECUR);
         if (recur != null) {
@@ -858,6 +868,18 @@ public class CalendarUtils {
             newInv.addXProp(prop);
 
         newInv.validateDuration();
+    	
+        //zdsync: must set this only after recur is processed
+    	if (invId != null) {
+    		newInv.setInviteId(Integer.parseInt(invId));
+    	}
+    	if (dts != null) {
+    		newInv.setDtStamp(Long.parseLong(dts));
+    	}
+    	Element fragment = element.getOptionalElement(MailConstants.E_FRAG);
+    	if (fragment != null) {
+    		newInv.setFragment(fragment.getText());
+    	}
     }
 
     private static List<ZProperty> parseXProps(Element element)
@@ -881,6 +903,29 @@ public class CalendarUtils {
             props.add(xprop);
         }
         return props;
+    }
+
+    public static List<ReplyInfo> parseReplyList(Element element, TimeZoneMap tzMap)
+    throws ServiceException {
+        List<ReplyInfo> list = new ArrayList<ReplyInfo>();
+        for (Iterator<Element> iter = element.elementIterator(MailConstants.E_CAL_REPLY);
+             iter.hasNext(); ) {
+            Element riElem = iter.next();
+            String addr = riElem.getAttribute(MailConstants.A_CAL_ATTENDEE);
+            ZAttendee at = new ZAttendee(addr);
+            String sentBy = riElem.getAttribute(MailConstants.A_CAL_SENTBY, null);
+            if (sentBy != null)
+                at.setSentBy(sentBy);
+            String partStat = riElem.getAttribute(MailConstants.A_CAL_PARTSTAT, null);
+            if (partStat != null)
+                at.setPartStat(partStat);
+            int seq = (int) riElem.getAttributeLong(MailConstants.A_SEQ);
+            long dtStamp = riElem.getAttributeLong(MailConstants.A_DATE);
+            RecurId recurId = RecurId.fromXml(riElem, tzMap);
+            ReplyInfo ri = new ReplyInfo(at, seq, dtStamp, recurId);
+            list.add(ri);
+        }
+        return list;
     }
 
     private static void validateAttr(IcalXmlStrMap map, String attrName,
@@ -959,7 +1004,7 @@ public class CalendarUtils {
             boolean incrementSeq)
     throws ServiceException {
         Invite cancel = new Invite(inv.getItemType(), ICalTok.CANCEL.toString(),
-                                   inv.getTimeZoneMap());
+                                   inv.getTimeZoneMap(), inv.isOrganizer());
 
         // ORGANIZER
         if (inv.hasOrganizer()) {
@@ -1011,7 +1056,7 @@ public class CalendarUtils {
             // Increment only if this account is the organizer.  If this
             // account is a non-organizer attendee, leave the sequence at
             // present value.  (bug 8465)
-            if (acct != null && inv.thisAcctIsOrganizer(acct))
+            if (acct != null && inv.isOrganizer())
                 seq++;
         }
         cancel.setSeqNo(seq);

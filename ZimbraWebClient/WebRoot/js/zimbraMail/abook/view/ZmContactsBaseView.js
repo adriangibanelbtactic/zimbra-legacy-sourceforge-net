@@ -28,9 +28,9 @@ ZmContactsBaseView = function(parent, className, posStyle, view, controller, hea
 	if (arguments.length == 0) return;
 	posStyle = posStyle ? posStyle : Dwt.ABSOLUTE_STYLE;
 	ZmListView.call(this, parent, className, posStyle, view, ZmItem.CONTACT, controller, headerList, dropTgt);
-};
 
-ZmContactsBaseView.CONTACTLIST_REPLENISH_THRESHOLD = 0;
+	this._handleEventType[ZmItem.GROUP] = true;
+};
 
 ZmContactsBaseView.prototype = new ZmListView;
 ZmContactsBaseView.prototype.constructor = ZmContactsBaseView;
@@ -74,11 +74,6 @@ function() {
 	return this._appCtxt.get(ZmSetting.CONTACTS_PER_PAGE);
 };
 
-ZmContactsBaseView.prototype.getReplenishThreshold =
-function() {
-	return ZmContactsBaseView.CONTACTLIST_REPLENISH_THRESHOLD;
-};
-
 ZmContactsBaseView.prototype.getListView =
 function() {
 	return this;
@@ -91,8 +86,10 @@ function() {
 
 ZmContactsBaseView.prototype._changeListener =
 function(ev) {
+	var folderId = this._controller.getFolderId();
+
 	// if we dont have a folder, then assume user did a search of contacts
-	if (this._controller.getFolderId() != null || ev.event != ZmEvent.E_MOVE)
+	if (folderId != null || ev.event != ZmEvent.E_MOVE)
 	{
 		ZmListView.prototype._changeListener.call(this, ev);
 
@@ -103,7 +100,6 @@ function(ev) {
 		else if (ev.event == ZmEvent.E_CREATE)
 		{
 			var newContact = ev._details.items[0];
-			var folderId = this._controller.getFolderId();
 
 			// only add this new contact to the listview if this is a simple
 			// folder search and it belongs!
@@ -115,7 +111,8 @@ function(ev) {
 				if (this instanceof ZmContactCardsView)
 					this._layout();
 
-				// always select newly add contact if its been added to the current page of contacts
+				// always select newly added contact if its been added to the
+				// current page of contacts
 				this.setSelection(newContact);
 			}
 		}
@@ -160,7 +157,7 @@ function() {
 		this.setSelection(item);
 };
 
-
+	
 ZmContactAlphabetBar = function(parent, appCtxt, className) {
 	if (arguments.length == 0) return;
 
@@ -246,11 +243,11 @@ function() {
 		html[idx++] = "' onclick='ZmContactAlphabetBar._alphabetClicked(this";
 		if (i > 0) {
 			html[idx++] = ', "';
-			html[idx++] = alphabet[i];
+			html[idx++] = i == 1 ? "0" : alphabet[i];
 			html[idx++] = '"';
 			if (i+1 < cellCount) {
 				html[idx++] = ', "';
-				html[idx++] = alphabet[i+1];
+				html[idx++] = i == 1 ? "9" : alphabet[i+1];
 				html[idx++] = '"';
 			}
 		}

@@ -40,7 +40,7 @@ ZaDomainListController = function(appCtxt, container, app) {
 
 ZaDomainListController.prototype = new ZaListViewController();
 ZaDomainListController.prototype.constructor = ZaDomainListController;
-ZaDomainListController.helpURL =  "/zimbraAdmin/adminhelp/html/WebHelp/managing_domains/managing_domains.htm";
+ZaDomainListController.helpURL = location.pathname + "adminhelp/html/WebHelp/managing_domains/managing_domains.htm";
 ZaController.initToolbarMethods["ZaDomainListController"] = new Array();
 ZaController.initPopupMenuMethods["ZaDomainListController"] = new Array();
 
@@ -54,7 +54,8 @@ ZaDomainListController.prototype.show = function (doPush) {
 			offset:this.RESULTSPERPAGE*(this._currentPageNum-1),
 			sortAscending:"1",
 			limit:this.RESULTSPERPAGE,
-			callback:callback
+			callback:callback,
+			controller: this
 	}
 	ZaSearch.searchDirectory(searchParams);
 }
@@ -468,7 +469,7 @@ function(ev) {
 					params[ZaDomain.A_OverwriteNotebookACLs] = false;
 */					
 				var callback = new AjxCallback(this, this.initNotebookCallback, params);				
-				ZaDomain.initNotebook(this._newDomainWizard.getObject(),callback) ;
+				ZaDomain.initNotebook(this._newDomainWizard.getObject(),callback, this) ;
 			}			
 			
 

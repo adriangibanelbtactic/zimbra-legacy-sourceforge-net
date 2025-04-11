@@ -82,7 +82,7 @@ function() {
 	ZmOperation.registerOp("MOUNT_NOTEBOOK", {textKey:"mountNotebook", image:"Notebook"}, ZmSetting.SHARING_ENABLED);
 	ZmOperation.registerOp("NEW_NOTEBOOK", {textKey:"newNotebook", image:"NewNotebook"});
 	ZmOperation.registerOp("NEW_PAGE", {textKey:"newPage", tooltipKey:"createNewPage", image:"NewPage"});
-	ZmOperation.registerOp("SEND_PAGE", {textKey:"send", tooltipKey:"sendPageTT", image:"Send"});
+	ZmOperation.registerOp("SEND_PAGE", {textKey:"send", tooltipKey:"sendPageTT", image:"Send"}, ZmSetting.MAIL_ENABLED);
 	ZmOperation.registerOp("SHARE_NOTEBOOK", {textKey:"shareNotebook", image:"Notebook"}, ZmSetting.SHARING_ENABLED);
 };
 
@@ -134,6 +134,7 @@ function() {
 							 treeController:	"ZmNotebookTreeController",
 							 labelKey:			"notebooks",
 							 itemsKey:			"documents",
+							 treeType:			ZmOrganizer.FOLDER,
 							 views:				["wiki"],
 							 folderKey:			"notebookFolder",
 							 mountKey:			"mountNotebook",
@@ -148,7 +149,8 @@ function() {
 	ZmSearchToolBar.addMenuItem(ZmItem.PAGE,
 								{msgKey:		"searchNotebooks",
 								 tooltipKey:	"searchForPages",
-								 icon:			"SearchNotes"
+								 icon:			"SearchNotes",
+								 setting:		ZmSetting.NOTEBOOK_ENABLED								 
 								});
 };
 
@@ -198,7 +200,10 @@ function(ids, force) {
 	var shownPage = notebookController.getPage();
 	var overviewController = this._appCtxt.getOverviewController();
 	var treeController = overviewController.getTreeController(ZmOrganizer.NOTEBOOK);
-	var treeView = treeController.getTreeView(ZmZimbraMail._OVERVIEW_ID);
+	var treeView = treeController.getTreeView(this.getOverviewId());
+	if(!treeView){
+		return;
+	}
 	var cache = this.getNotebookCache();
 					
 	for (var i = 0; i < ids.length; i++) {
@@ -347,6 +352,11 @@ function(modifies, force) {
 	}
 };
 
+ZmNotebookApp.prototype.refresh =
+function(refresh) {
+	this._handleRefresh();
+};
+
 ZmNotebookApp.prototype.handleOp =
 function(op) {
 	switch (op) {
@@ -367,12 +377,12 @@ ZmNotebookApp.prototype._handleLoadNewPage =
 function() {
 	var overviewController = this._appCtxt.getOverviewController();
 	var treeController = overviewController.getTreeController(ZmOrganizer.NOTEBOOK);
-	var treeView = treeController.getTreeView(ZmZimbraMail._OVERVIEW_ID);
+	var treeView = treeController.getTreeView(this.getOverviewId());
 
 	var notebook = treeView ? treeView.getSelected() : null;
 	var page = new ZmPage(this._appCtxt);
 	page.folderId = notebook ? notebook.id : ZmNotebookItem.DEFAULT_FOLDER;
-
+	page.name=this.generateUniqueName(page.folderId);
 	AjxDispatcher.run("GetPageEditController").show(page);
 };
 
@@ -463,4 +473,23 @@ function(parent, name, color) {
 	dialog.popdown();
 	var oc = this._appCtxt.getOverviewController();
 	oc.getTreeController(ZmOrganizer.NOTEBOOK)._doCreate(parent, name, color);
+};
+
+ZmNotebookApp.prototype.generateUniqueName =
+function(folderId) {
+	var cache = this.getNotebookCache();
+	var pages = cache.getPagesInFolder(folderId);
+	var pagenames = "";
+	for (var p in pages) {
+		pagenames+=pages[p].name+",";
+	}
+	//first possible pagename page1,page2...
+	for(var i=1;i<100;i++){
+		if(pagenames.indexOf('page'+i+',')<0)
+		{
+			return 'page'+i;
+		}
+	}
+	
+	return 'Untitled';
 };

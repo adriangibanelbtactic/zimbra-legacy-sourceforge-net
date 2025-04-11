@@ -26,13 +26,19 @@
 ZmFolderPropsDialog = function(appCtxt, parent, className) {
 	className = className || "ZmFolderPropsDialog";
 	var extraButtons;
-	if (appCtxt.get(ZmSetting.SHARING_ENABLED)) {
+	if (appCtxt.get(ZmSetting.SHARING_ENABLED) &&
+		appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED))
+	{
 		extraButtons = [
 			new DwtDialog_ButtonDescriptor(ZmFolderPropsDialog.ADD_SHARE_BUTTON, ZmMsg.addShare, DwtDialog.ALIGN_LEFT)
 		];
 	}
+
 	DwtDialog.call(this, parent, className, ZmMsg.folderProperties, null, extraButtons);
-	if (appCtxt.get(ZmSetting.SHARING_ENABLED)) {
+
+	if (appCtxt.get(ZmSetting.SHARING_ENABLED) &&
+		appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED))
+	{
 		this.registerCallback(ZmFolderPropsDialog.ADD_SHARE_BUTTON, this._handleAddShareButton, this);
 	}
 	this.setButtonListener(DwtDialog.OK_BUTTON, new AjxListener(this, this._handleOkButton));
@@ -67,7 +73,9 @@ function(organizer) {
 	this._organizer = organizer;
 	organizer.addChangeListener(this._folderChangeListener);
 	this._handleFolderChange();
-	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED)) {
+	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED) &&
+		this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED))
+	{
 		this.setButtonVisible(ZmFolderPropsDialog.ADD_SHARE_BUTTON, !organizer.link);
 	}
 	DwtDialog.prototype.popup.call(this);
@@ -236,6 +244,9 @@ function(event) {
 	if (event) {
 		var organizers = event.getDetail("organizers");
 		organizer = organizers ? organizers[0] : null;
+		if(organizer.id != this._organizer.id){
+			return;
+		}
 	} else {
 		organizer = this._organizer;
 	}
@@ -268,7 +279,9 @@ function(event) {
 		this._permEl.innerHTML = ZmShare.getRoleActions(organizer.shares[0].link.perm);
 	}
 
-	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED)) {
+	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED) &&
+		this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED))
+	{
 		this._populateShares(organizer);
 	}
 
@@ -343,7 +356,9 @@ function(row, share) {
 		// public shares have no editable fields, and sent no mail
 		if (share.isPublic() && (action == this._handleEditShare ||
 								 action == this._handleResendShare)) continue;
-		if (share.isGuest() && (action == this._handleResendShare)) continue;
+
+		// Guest share need to have an "resend" options, thus commented.						 
+		//if (share.isGuest() && (action == this._handleResendShare)) continue;
 
 		var link = document.createElement("A");
 		link.href = "#";
@@ -416,7 +431,9 @@ function() {
 	propsGroup.setElement(propsContainer);
 
 	// setup shares group
-	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED)) {
+	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED) &&
+		this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED))
+	{
 		this._sharesGroup = new DwtGrouper(view);
 		this._sharesGroup.setLabel(ZmMsg.folderSharing);
 		this._sharesGroup.setVisible(false);
@@ -426,7 +443,9 @@ function() {
 	// add everything to view and return
 	var element = view.getHtmlElement();
 	element.appendChild(propsGroup.getHtmlElement());
-	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED)) {
+	if (this._appCtxt.get(ZmSetting.SHARING_ENABLED) &&
+		this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED))
+	{
 		element.appendChild(this._sharesGroup.getHtmlElement());
 	}
 

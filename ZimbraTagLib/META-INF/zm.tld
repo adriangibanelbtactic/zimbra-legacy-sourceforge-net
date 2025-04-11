@@ -524,6 +524,130 @@
         </attribute>
 
     </tag>
+        <tag>
+        <description>
+            Iterates over all signatures.
+        </description>
+        <name>forEachSignature</name>
+        <tag-class>com.zimbra.cs.taglib.tag.signature.ForEachSignatureTag</tag-class>
+        <body-content>scriptless</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZSignature</variable-class>
+            <scope>NESTED</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                whether or not to refresh set of signatures.
+            </description>
+            <name>refresh</name>
+            <required>false</required>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Create a signature
+        </description>
+
+        <name>createSiganture</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.signature.CreateSignatureTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.String</variable-class>
+            <scope>AT_BEGIN</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                id of created signature.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>name of siganture to create</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>value of signature</description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Modify a signature
+        </description>
+
+        <name>modifySiganture</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.signature.ModifySignatureTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of signature to modify.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>name of siganture</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>value of signature</description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Delete a signature
+        </description>
+
+        <name>deleteSiganture</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.signature.DeleteSignatureTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of signature to delete.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
 
     <tag>
         <description>
@@ -580,6 +704,15 @@
         </attribute>
         <attribute>
             <description>
+                Folder to start with.
+            </description>
+            <name>parentfolder</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.bean.ZFolderBean</type>
+        </attribute>
+        <attribute>
+            <description>
                 whether or not to top-level folder. default value is true.
             </description>
             <name>skiproot</name>
@@ -622,6 +755,29 @@
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>            
             <type>java.util.Map</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Iterates over all voice accounts
+        </description>
+        <name>forEachPhoneAccount</name>
+        <tag-class>com.zimbra.cs.taglib.tag.voice.ForEachPhoneAccountTag</tag-class>
+        <body-content>scriptless</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZPhoneAccountBean</variable-class>
+            <scope>NESTED</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <type>java.lang.String</type>
         </attribute>
     </tag>
 
@@ -2202,6 +2358,74 @@
         </attribute>
     </tag>
 
+
+    <tag>
+        <description>
+            Retreive the ZUserAgentBean
+        </description>
+
+        <name>getUserAgent</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.GetUserAgentTag</tag-class>
+
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZUserAgentBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported session scoped variable to store the ZUserAgentBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+    </tag>
+
+        <tag>
+        <description>
+            Retreive the Domain info data.
+        </description>
+
+        <name>getDomainInfo</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.GetDomainInfoTag</tag-class>
+
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.account.Domain</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported session scoped variable to store the domain in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>DomainBy value: name, id, virtualHostname</description>
+            <name>by</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>domain value to lookup</description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+    </tag>
+
     <tag>
         <description>
             Require current http request to be a POST. Throws an exception if not.
@@ -3166,6 +3390,27 @@
                 Value of the pref.
              </description>
              <name>value</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+         </attribute>
+     </tag>
+
+    <tag>
+         <description>
+             Redirects the response.
+         </description>
+
+         <name>redirect</name>
+
+         <tag-class>com.zimbra.cs.taglib.tag.RedirectTag</tag-class>
+
+         <body-content>empty</body-content>
+
+         <attribute>
+             <description>
+                 Url to redirect to
+             </description>
+             <name>url</name>
              <required>true</required>
              <rtexprvalue>true</rtexprvalue>
          </attribute>
@@ -4232,20 +4477,6 @@
         </attribute>
     </tag>
 
-
-    <tag>
-        <description>
-            container for bindKey tags
-        </description>
-
-        <name>keyboardBindings</name>
-
-        <tag-class>com.zimbra.cs.taglib.tag.KeyBindingsTag</tag-class>
-
-        <body-content>scriptless</body-content>
-
-    </tag>
-
     <tag>
         <description>
             Bind a key to a particular action.
@@ -4275,11 +4506,401 @@
         </attribute>
         <attribute>
             <description>
+                URL to go to when key is pressed.
+            </description>
+            <name>url</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
                key sequence to bind
             </description>
             <name>key</name>
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+               name of a message property that contains the key sequence to bind
+            </description>
+            <name>message</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+               basename of message property file to use with message attribute.
+            </description>
+            <name>basename</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+               generate shortcut aliases. one of: gototag, tag, gotofolder, folder, search.
+            </description>
+            <name>alias</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Moves voice mail messages to the trash
+        </description>
+
+        <name>trashVoiceMail</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.voice.TrashVoiceMailTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                comma-separated ids of messages to delete.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                Name of phone account
+            </description>
+            <name>phone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+    
+    <tag>
+        <description>
+            Marks voice mail messages as heard or unheard
+        </description>
+
+        <name>markVoiceMailHeard</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.voice.MarkVoiceMailHeardTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                comma-separated ids of messages to mark.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                Name of phone account
+            </description>
+            <name>phone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                true to mark messages heard
+            </description>
+            <name>heard</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.Boolean</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Uploads the body of a voice mail message for use as an email attachment.
+        </description>
+
+        <name>uploadVoiceMail</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.voice.UploadVoiceMailTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.String</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the attachment id in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                comma-separated ids of messages to upload.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                Name of phone account
+            </description>
+            <name>phone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Creates a call features object
+        </description>
+
+        <name>createCallFeatures</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.voice.CreateCallFeaturesTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZCallFeaturesBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Call features
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                Name of phone account
+            </description>
+            <name>phone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Is email notification active.
+            </description>
+            <name>emailnotificationactive</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Email notification address.
+            </description>
+            <name>emailnotificationaddress</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Is call forwarding active.
+            </description>
+            <name>callforwardingactive</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Call forwarding number
+            </description>
+            <name>callforwardingforwardto</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Is selective call forwarding active.
+            </description>
+            <name>selectivecallforwardingactive</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Selective call forwarding "forward to" number
+            </description>
+            <name>selectivecallforwardingforwardto</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Selective call forwarding "forward from" numbers
+            </description>
+            <name>selectivecallforwardingforwardfrom</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.Object</type>
+        </attribute>
+
+
+    </tag>
+
+    <tag>
+        <description>
+            Changes the voice prefs.
+        </description>
+
+        <name>modifyCallFeatures</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.voice.ModifyCallFeaturesTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.Boolean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the variable that says whether anything changed.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                Name of phone account
+            </description>
+            <name>phone</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Is email notification active.
+            </description>
+            <name>emailnotificationactive</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Email notification address.
+            </description>
+            <name>emailnotificationaddress</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Is call forwarding active.
+            </description>
+            <name>callforwardingactive</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Call forwarding number
+            </description>
+            <name>callforwardingforwardto</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Is selective call forwarding active.
+            </description>
+            <name>selectivecallforwardingactive</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Selective call forwarding "forward to" number
+            </description>
+            <name>selectivecallforwardingforwardto</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Selective call forwarding "forward from" numbers
+            </description>
+            <name>selectivecallforwardingforwardfrom</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.Object</type>
         </attribute>
     </tag>
 
@@ -4311,11 +4932,6 @@
     <tag-file>
         <name>nextItemUrl</name>
         <path>/META-INF/tags/nextItemUrl.tag</path>
-    </tag-file>
-
-    <tag-file>
-        <name>keyboard</name>
-        <path>/META-INF/tags/keyboard.tag</path>
     </tag-file>
 
     <function>
@@ -4362,12 +4978,19 @@
     </function>
 
     <function>
+        <name>displayDuration</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String
+            displayDuration(javax.servlet.jsp.PageContext,long)</function-signature>
+    </function>
+
+    <function>
         <name>displayMsgDate</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>java.lang.String
             displayMsgDate(javax.servlet.jsp.PageContext,java.util.Date)</function-signature>
     </function>
- 
+
     <function>
         <name>getTags</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
@@ -4742,6 +5365,19 @@
     </function>
 
     <function>
+        <name>getAdditionalBodies</name>
+        <function-class>com.zimbra.cs.taglib.bean.ZMessageBean</function-class>
+        <function-signature>java.util.List&lt;com.zimbra.cs.taglib.bean.ZMimePartBean&gt; getAdditionalBodies(com.zimbra.cs.taglib.bean.ZMimePartBean,com.zimbra.cs.taglib.bean.ZMessageBean)</function-signature>
+    </function>
+
+
+    <function>
+        <name>getPart</name>
+        <function-class>com.zimbra.cs.taglib.bean.ZMessageBean</function-class>
+        <function-signature>com.zimbra.cs.taglib.bean.ZMimePartBean getPart(com.zimbra.cs.taglib.bean.ZMessageBean,java.lang.String)</function-signature>
+    </function>
+
+    <function>
         <name>actionSet</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean actionSet(java.util.Map,java.lang.String)</function-signature>
@@ -4799,5 +5435,47 @@
         <name>hasShareMountPoint</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>boolean hasShareMountPoint(com.zimbra.cs.taglib.bean.ZMailboxBean,com.zimbra.cs.taglib.bean.ZMessageBean)</function-signature>
+    </function>
+
+    <function>
+        <name>jsEncode</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String jsEncode(java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getVoiceFolderQuery</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getVoiceFolderQuery(com.zimbra.cs.taglib.bean.ZFolderBean)</function-signature>
+    </function>
+
+    <function>
+        <name>getVoiceFolderType</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getVoiceFolderType(com.zimbra.cs.taglib.bean.ZFolderBean)</function-signature>
+    </function>
+
+    <function>
+        <name>getVoiceFolderName</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getVoiceFolderName(javax.servlet.jsp.PageContext,com.zimbra.cs.taglib.bean.ZFolderBean)</function-signature>
+    </function>
+
+    <function>
+        <name>getPhoneFromVoiceQuery</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getPhoneFromVoiceQuery(java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getPhoneDisplay</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getPhoneDisplay(java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getServerName</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getServerName(javax.servlet.jsp.PageContext)</function-signature>
     </function>
 </taglib>

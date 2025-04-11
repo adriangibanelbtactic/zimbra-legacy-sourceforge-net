@@ -25,7 +25,15 @@
 
 package com.zimbra.cs.servlet;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.naming.directory.DirContext;
 import javax.servlet.http.HttpServlet;
@@ -39,6 +47,7 @@ import com.zimbra.common.localconfig.LC;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.cs.util.Config;
 import com.zimbra.cs.util.NetUtil;
+import com.zimbra.znative.IO;
 import com.zimbra.znative.Process;
 import com.zimbra.znative.Util;
 
@@ -79,8 +88,8 @@ public class PrivilegedServlet extends HttpServlet {
                 EasySSLProtocolSocketFactory.init();
 
             System.setProperty("javax.net.ssl.keyStore", LC.mailboxd_keystore.value());
-            System.setProperty("javax.net.ssl.keyStorePassword", "zimbra");
-            System.setProperty("javax.net.ssl.trustStorePassword", "changeit");
+            System.setProperty("javax.net.ssl.keyStorePassword", LC.mailboxd_keystore_password.value());
+            System.setProperty("javax.net.ssl.trustStorePassword", LC.mailboxd_truststore_password.value());
 
             if (Provisioning.getInstance() instanceof LdapProvisioning)
                 checkLDAP();
@@ -163,11 +172,46 @@ public class PrivilegedServlet extends HttpServlet {
                 mInitialized = true;
                 mInitializedCondition.notifyAll();
             }
+
+            /* This should be done after privileges are dropped... */
+            setupOutputRotation();
         } catch (Throwable t) {
             Util.halt("PrivilegedServlet init failed", t);
         }
     }
+
+    private static Timer sOutputRotationTimer = new Timer();
     
+    private static void doOutputRotation() {
+        Date now = new Date();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmm");
+        String suffix = sdf.format(now);
+        String current = LC.mailboxd_output_file.value();
+        String rotateTo = current + "." + suffix;
+        try {
+            new File(current).renameTo(new File(rotateTo));
+            IO.setStdoutStderrTo(current);
+        } catch (IOException ioe) {
+            System.err.println("WARN: rotate stdout stderr failed: " + ioe);
+            ioe.printStackTrace();
+        }
+    }
+    
+    private static void setupOutputRotation() throws FileNotFoundException, SecurityException, IOException {
+        long configMillis = LC.mailboxd_output_rotate_interval.intValue() * 1000;
+        if (configMillis <= 0) {
+            return;
+        }
+        GregorianCalendar now = new GregorianCalendar();
+        long millisSinceEpoch = now.getTimeInMillis(); 
+        long dstOffset = now.get(Calendar.DST_OFFSET);
+        long zoneOffset = now.get(Calendar.ZONE_OFFSET);
+        long millisSinceEpochLocal = millisSinceEpoch + dstOffset + zoneOffset;
+        long firstRotateInMillis = configMillis - (millisSinceEpochLocal % configMillis);
+        TimerTask tt = new TimerTask() { public void run() { doOutputRotation(); } };
+        sOutputRotationTimer.scheduleAtFixedRate(tt, firstRotateInMillis, configMillis);
+    }
+
     private static boolean mInitialized = false;
 
     private static Object mInitializedCondition = new Object(); 

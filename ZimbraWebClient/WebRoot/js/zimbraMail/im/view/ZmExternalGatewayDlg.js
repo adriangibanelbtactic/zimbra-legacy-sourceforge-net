@@ -56,6 +56,8 @@ ZmExternalGatewayDlg.prototype.__initWidgets = function() {
 	this._gwSelect = select;
 	select.addChangeListener(new AjxListener(this, this._updateForRegisteredGw));
 
+	this._tabGroup.addMember(select);
+
 	var input = new DwtInputField({ parent	       : this,
 					type	       : DwtInputField.STRING,
 					size	       : 20,
@@ -65,6 +67,8 @@ ZmExternalGatewayDlg.prototype.__initWidgets = function() {
 	input.reparentHtmlElement(this._baseId + "_screenNameLayout");
 	this._screenNameInput = input;
 
+	this._tabGroup.addMember(input);
+
 	var input = new DwtInputField({ parent	       : this,
 					type	       : DwtInputField.PASSWORD,
 					size	       : 20,
@@ -73,6 +77,12 @@ ZmExternalGatewayDlg.prototype.__initWidgets = function() {
 				      });
 	input.reparentHtmlElement(this._baseId + "_passwordLayout");
 	this._passwordInput = input;
+
+	this._tabGroup.addMember(input);
+};
+
+ZmExternalGatewayDlg.prototype.selectGwType = function(type) {
+	this._gwSelect.setSelectedValue(type);
 };
 
 ZmExternalGatewayDlg.prototype._logoutButtonListener = function() {
@@ -107,27 +117,24 @@ ZmExternalGatewayDlg.prototype._updateForRegisteredGw = function() {
 	if (service) {
 		var gw = AjxDispatcher.run("GetRoster").getGatewayByType(service);
 		if (gw) {
-			var state = gw.getState();
-			if (state) {
-				var nick = null;
-				for (var i in state) {
-					nick = i;
-					state = state[i];
-					break;
-				}
-				state = state.state;
-				if (state && nick && ZmImGateway.LOGIN_FORBIDDEN_STATES[state]) {
-					nick = "";
-					this._screenNameInput.setValue(nick);
-					this._screenNameInput.setEnabled(false);
-					this._passwordInput.setEnabled(false);
-					this.getButton(ZmExternalGatewayDlg.LOGOUT_BUTTON).setEnabled(true);
-					return;
-				}
+			var nick = gw.isOnline();
+			if (nick) {
+				this._screenNameInput.setValue(nick);
+				this._screenNameInput.setEnabled(false);
+				this._passwordInput.setEnabled(false);
+				this.getButton(ZmExternalGatewayDlg.LOGOUT_BUTTON).setEnabled(true);
+				this.getButton(DwtDialog.OK_BUTTON).setEnabled(false);
+				return;
 			}
 		}
 	}
 	this._screenNameInput.setEnabled(true);
 	this._passwordInput.setEnabled(true);
 	this.getButton(ZmExternalGatewayDlg.LOGOUT_BUTTON).setEnabled(false);
+	this.getButton(DwtDialog.OK_BUTTON).setEnabled(true);
+};
+
+ZmExternalGatewayDlg.prototype.popup = function() {
+	DwtDialog.prototype.popup.call(this);
+	this._gwSelect.focus();
 };

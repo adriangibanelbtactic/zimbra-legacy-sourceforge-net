@@ -33,9 +33,6 @@ ZmMixedView.prototype = new ZmListView;
 ZmMixedView.prototype.constructor = ZmMixedView;
 
 // Consts
-
-ZmMixedView.REPLENISH_THRESHOLD 	= 0;
-
 ZmMixedView.COLWIDTH_ICON 			= 19;
 ZmMixedView.COLWIDTH_FROM 			= 145;
 ZmMixedView.COLWIDTH_DATE 			= 60;
@@ -73,24 +70,30 @@ function(list, sortField) {
 
 ZmMixedView.prototype._getHeaderList =
 function(parent) {
-
-	var headerList = [];
-	
-	headerList.push(new DwtListHeaderItem(ZmItem.F_FLAG, null, "FlagRed", ZmMixedView.COLWIDTH_ICON));
-	
 	var shell = (parent instanceof DwtShell) ? parent : parent.shell;
 	var appCtxt = shell.getData(ZmAppCtxt.LABEL); // this._appCtxt not set until parent constructor is called
-	if (appCtxt.get(ZmSetting.TAGGING_ENABLED)) {
-		headerList.push(new DwtListHeaderItem(ZmItem.F_TAG, null, "MiniTag", ZmMixedView.COLWIDTH_ICON));
+
+	var hList = [];
+
+	if (appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_SELECTION, null, "TaskCheckbox", ZmMixedView.COLWIDTH_ICON));
 	}
-	
-	headerList.push(new DwtListHeaderItem(ZmItem.F_TYPE, null, "Globe", ZmMixedView.COLWIDTH_ICON));
-	headerList.push(new DwtListHeaderItem(ZmItem.F_FROM, ZmMsg.from, null, ZmMixedView.COLWIDTH_FROM, null, true));
-	headerList.push(new DwtListHeaderItem(ZmItem.F_ATTACHMENT, null, "Attachment", ZmMixedView.COLWIDTH_ICON));
-	headerList.push(new DwtListHeaderItem(ZmItem.F_SUBJECT, ZmMsg.subject, null, null, null, true));
-	headerList.push(new DwtListHeaderItem(ZmItem.F_DATE, ZmMsg.date, null, ZmMixedView.COLWIDTH_DATE));
-	
-	return headerList;
+
+	if (appCtxt.get(ZmSetting.FLAGGING_ENABLED)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_FLAG, null, "FlagRed", ZmMixedView.COLWIDTH_ICON));
+	}
+
+	if (appCtxt.get(ZmSetting.TAGGING_ENABLED)) {
+		hList.push(new DwtListHeaderItem(ZmItem.F_TAG, null, "MiniTag", ZmMixedView.COLWIDTH_ICON));
+	}
+
+	hList.push(new DwtListHeaderItem(ZmItem.F_TYPE, null, "Globe", ZmMixedView.COLWIDTH_ICON));
+	hList.push(new DwtListHeaderItem(ZmItem.F_FROM, ZmMsg.from, null, ZmMixedView.COLWIDTH_FROM, null, true));
+	hList.push(new DwtListHeaderItem(ZmItem.F_ATTACHMENT, null, "Attachment", ZmMixedView.COLWIDTH_ICON));
+	hList.push(new DwtListHeaderItem(ZmItem.F_SUBJECT, ZmMsg.subject, null, null, null, true));
+	hList.push(new DwtListHeaderItem(ZmItem.F_DATE, ZmMsg.date, null, ZmMixedView.COLWIDTH_DATE));
+
+	return hList;
 };
 
 /**

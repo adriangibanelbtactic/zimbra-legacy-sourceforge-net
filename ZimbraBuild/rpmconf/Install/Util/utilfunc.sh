@@ -200,6 +200,38 @@ checkUser() {
   fi
 }
 
+checkRecentBackup() {
+  isInstalled zimbra-store
+  if [ x$PKGINSTALLED != "x" ]; then
+    if [ -x "bin/checkValidBackup" ]; then
+      echo "Checking for a recent backup"
+      `bin/checkValidBackup > /dev/null 2>&1`
+      if [ $? != 0 ]; then
+        echo "WARNING: Unable to find a system backup started within the last" 
+        echo "24hrs.  It is recommended to perform a full system backup and"
+        echo "copy it to a safe location prior to performing an upgrade."
+        echo ""
+        if [ x$DEFAULTFILE = "x" -o x$CLUSTERUPGRADE = "xyes" ]; then
+          while :; do
+            askYN "Do you wish to continue without a backup?" "N"
+            if [ $response = "no" ]; then
+              askYN "Exit?" "N"
+              if [ $response = "yes" ]; then
+                echo "Exiting."
+                exit 1
+              fi
+            else
+              break
+            fi
+          done
+        else 
+          echo "Automated install detected...continuing."
+        fi
+      fi
+    fi
+  fi
+}
+
 checkRequired() {
 
   if ! cat /etc/hosts | perl -ne 'if (/^\s*127\.0\.0\.1/ && !/^\s*127\.0\.0\.1\s+localhost/) { exit 11; }'; then
@@ -289,37 +321,6 @@ EOF
     exit 1
   fi
 
-  echo "Checking for required space..."
-  # /tmp must have 1GB
-  # /opt/zimbra must have 5GB
-  #!/bin/bash
-  TMPKB=`df -Pk /tmp | tail -1 | awk '{print $4}'`
-  AVAIL=$(($TMPKB / 1048576))
-  if [ $AVAIL -lt  1 ]; then
-    echo "/tmp must have at least 1GB of availble space to install."
-    echo "${AVAIL}GB is not enough space to install ZCS."
-    GOOD=no
-  fi
-  
-  ZIMBRA=`df -Pk /opt/zimbra | tail -1 | awk '{print $4}'`
-  AVAIL=$(($ZIMBRA / 1048576))
-  if [ $AVAIL -lt 5 ]; then
-    echo "/opt/zimbra requires at least 5GB of space to install."
-    echo "${AVAIL}GB is not enough space to install."
-    GOOD=no
-  fi
-  if [ $GOOD = "no" ]; then
-    if [ x"$SKIPSPACECHECK" != "xyes" ]; then
-      echo ""
-      echo "Installation cancelled."
-      echo ""
-      exit 1
-    else 
-      echo ""
-      echo "Installation will contine by request." 
-      echo ""
-    fi
-  fi
 
   # limitation of ext3
   if [ -d "/opt/zimbra/db/data" ]; then
@@ -336,7 +337,48 @@ EOF
       fi
     fi
   fi
+
+  checkRecentBackup
   
+}
+
+
+checkRequiredSpace() {
+  # /tmp must have 100MB
+  # /opt/zimbra must have 5GB
+  echo "Checking required space for zimbra-core"
+  TMPKB=`df -Pk /tmp | tail -1 | awk '{print $4}'`
+  AVAIL=$(($TMPKB / 1024))
+  if [ $AVAIL -lt  100 ]; then
+    echo "/tmp must have at least 100MB of availble space to install."
+    echo "${AVAIL}MB is not enough space to install ZCS."
+    GOOD=no
+  fi
+ 
+  isInstalled zimbra-store
+  isToBeInstalled zimbra-store
+  if [ "x$PKGINSTALLED" != "x" -o "x$PKGTOBEINSTALLED" != "x" ]; then
+    echo "checking space for zimbra-store"
+    ZIMBRA=`df -Pk /opt/zimbra | tail -1 | awk '{print $4}'`
+    AVAIL=$(($ZIMBRA / 1048576))
+    if [ $AVAIL -lt 5 ]; then
+      echo "/opt/zimbra requires at least 5GB of space to install."
+      echo "${AVAIL}GB is not enough space to install."
+      GOOD=no
+    fi
+  fi
+  if [ $GOOD = "no" ]; then
+    if [ x"$SKIPSPACECHECK" != "xyes" ]; then
+      echo ""
+      echo "Installation cancelled."
+      echo ""
+      exit 1
+    else 
+      echo ""
+      echo "Installation will contine by request." 
+      echo ""
+    fi
+  fi
 }
 
 checkExistingInstall() {
@@ -793,6 +835,12 @@ restoreCerts() {
   if [ -f "$SAVEDIR/slapd.crt" ]; then
     cp $SAVEDIR/slapd.crt /opt/zimbra/conf/slapd.crt 
   fi
+  if [ -f "$SAVEDIR/nginx.key" ]; then
+    cp $SAVEDIR/nginx.key /opt/zimbra/conf/nginx.key
+  fi
+  if [ -f "$SAVEDIR/nginx.crt" ]; then
+    cp $SAVEDIR/nginx.crt /opt/zimbra/conf/nginx.crt
+  fi
   mkdir -p /opt/zimbra/conf/ca
   if [ -f "$SAVEDIR/ca.key" ]; then
     cp $SAVEDIR/ca.key /opt/zimbra/conf/ca/ca.key 
@@ -805,7 +853,7 @@ restoreCerts() {
   elif [ -f "/opt/zimbra/jetty/etc/keystore" ]; then
     chown zimbra:zimbra /opt/zimbra/jetty/etc/keystore
   fi
-  chown zimbra:zimbra /opt/zimbra/java/jre/lib/security/cacerts /opt/zimbra/conf/smtpd.key /opt/zimbra/conf/smtpd.crt /opt/zimbra/conf/slapd.crt /opt/zimbra/conf/perdition.pem /opt/zimbra/conf/perdition.key
+  chown zimbra:zimbra /opt/zimbra/java/jre/lib/security/cacerts /opt/zimbra/conf/smtpd.key /opt/zimbra/conf/smtpd.crt /opt/zimbra/conf/slapd.crt /opt/zimbra/conf/perdition.pem /opt/zimbra/conf/perdition.key /opt/zimbra/conf/nginx.key /opt/zimbra/conf/nginx.crt
   chown -R zimbra:zimbra /opt/zimbra/conf/ca
 }
 
@@ -837,6 +885,12 @@ saveExistingConfig() {
   fi
   if [ -f "/opt/zimbra/conf/slapd.crt" ]; then
     cp -f /opt/zimbra/conf/slapd.crt $SAVEDIR
+  fi
+  if [ -f "/opt/zimbra/conf/nginx.key" ]; then
+    cp -f /opt/zimbra/conf/nginx.key $SAVEDIR
+  fi
+  if [ -f "/opt/zimbra/conf/nginx.crt" ]; then
+    cp -f /opt/zimbra/conf/nginx.crt $SAVEDIR
   fi
   if [ -f "/opt/zimbra/conf/ca/ca.key" ]; then
     cp -f /opt/zimbra/conf/ca/ca.key $SAVEDIR
@@ -1129,6 +1183,7 @@ getInstallPackages() {
     fi
 
   done
+  checkRequiredSpace
 
   echo ""
   echo "Installing:"
@@ -1239,6 +1294,17 @@ setupCrontab() {
   cat /tmp/crontab.zimbra.proc >> /tmp/crontab.zimbra
 
   crontab -u zimbra /tmp/crontab.zimbra
+}
+
+isToBeInstalled() {
+  pkg=$1
+  PKGTOBEINSTALLED=""
+  for i in $INSTALL_PACKAGES; do
+    if [ "x$pkg" = "x$i" ]; then
+      PKGTOBEINSTALLED=$i
+      continue
+    fi
+  done
 }
 
 isInstalled () {

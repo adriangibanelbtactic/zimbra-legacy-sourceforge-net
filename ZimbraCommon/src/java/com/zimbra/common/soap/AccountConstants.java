@@ -60,6 +60,8 @@ public class AccountConstants {
     public static final QName MODIFY_PROPERTIES_RESPONSE = QName.get("ModifyPropertiesResponse", NAMESPACE);
     public static final QName GET_ALL_LOCALES_REQUEST = QName.get("GetAllLocalesRequest", NAMESPACE);
     public static final QName GET_ALL_LOCALES_RESPONSE = QName.get("GetAllLocalesResponse", NAMESPACE);
+    public static final QName GET_AVAILABLE_LOCALES_REQUEST = QName.get("GetAvailableLocalesRequest", NAMESPACE);
+    public static final QName GET_AVAILABLE_LOCALES_RESPONSE = QName.get("GetAvailableLocalesResponse", NAMESPACE);
     public static final QName GET_AVAILABLE_SKINS_REQUEST = QName.get("GetAvailableSkinsRequest", NAMESPACE);
     public static final QName GET_AVAILABLE_SKINS_RESPONSE = QName.get("GetAvailableSkinsResponse", NAMESPACE);
 
@@ -72,6 +74,19 @@ public class AccountConstants {
     public static final QName MODIFY_IDENTITY_RESPONSE = QName.get("ModifyIdentityResponse", NAMESPACE);
     public static final QName DELETE_IDENTITY_REQUEST = QName.get("DeleteIdentityRequest", NAMESPACE);
     public static final QName DELETE_IDENTITY_RESPONSE = QName.get("DeleteIdentityResponse", NAMESPACE);
+    
+    // signatures
+    public static final QName CREATE_SIGNATURE_REQUEST = QName.get("CreateSignatureRequest", NAMESPACE);
+    public static final QName CREATE_SIGNATURE_RESPONSE = QName.get("CreateSignatureResponse", NAMESPACE);
+    public static final QName GET_SIGNATURES_REQUEST = QName.get("GetSignaturesRequest", NAMESPACE);
+    public static final QName GET_SIGNATURES_RESPONSE = QName.get("GetSignaturesResponse", NAMESPACE);
+    public static final QName MODIFY_SIGNATURE_REQUEST = QName.get("ModifySignatureRequest", NAMESPACE);
+    public static final QName MODIFY_SIGNATURE_RESPONSE = QName.get("ModifySignatureResponse", NAMESPACE);
+    public static final QName DELETE_SIGNATURE_REQUEST = QName.get("DeleteSignatureRequest", NAMESPACE);
+    public static final QName DELETE_SIGNATURE_RESPONSE = QName.get("DeleteSignatureResponse", NAMESPACE);
+     
+    
+    
     public static final String E_ACTION = "action";
     public static final String E_AUTH_TOKEN = "authToken";
     public static final String E_REFERRAL = "refer";
@@ -88,6 +103,9 @@ public class AccountConstants {
     public static final String E_ATTR = "attr";
     public static final String E_ATTRS = "attrs";
     public static final String E_QUOTA_USED = "used";
+    public static final String E_PREVIOUS_SESSION = "prevSession";
+    public static final String E_LAST_ACCESS = "accessed";
+    public static final String E_RECENT_MSGS = "recent";
     public static final String E_ZIMLET = "zimlet";
     public static final String E_ZIMLETS = "zimlets";
     public static final String E_ZIMLET_CONTEXT = "zimletContext";
@@ -104,12 +122,14 @@ public class AccountConstants {
     public static final String E_SKIN = "skin";
     public static final String E_LICENSE = "license";
     public static final String E_IDENTITIES = "identities";
+    public static final String E_SIGNATURES = "signatures";
     public static final String E_IDENTITY = "identity";
     public static final String E_SIGNATURE = "signature";
     public static final String E_DATA_SOURCES = "dataSources";
     public static final String E_DATA_SOURCE = "dataSource";
     public static final String E_CHILD_ACCOUNTS = "childAccounts";
     public static final String E_CHILD_ACCOUNT = "childAccount";
+    public static final String E_CONTENT = "content";
     public static final String A_N = "n";
     public static final String A_NAME = "name";
     public static final String A_ID = "id";

@@ -11,18 +11,27 @@
     <zm:getMailbox var="mailbox"/>
     <c:set var="clvToolbarCache" scope="request">
         <td><div class='vertSep'></div></td>
+        <c:choose>
+            <c:when test="${context.isFolderSearch and context.folder.isTrash}">
+                <app:button  id="OPDELETE" text="actionDelete" name="actionHardDelete" tooltip="actionTrashTT"/>
+            </c:when>
+            <c:otherwise>
+                <app:button id="OPDELETE" text="actionDelete" name="actionDelete" tooltip="actionTrashTT"/>
+            </c:otherwise>
+        </c:choose>
+        <td><div class='vertSep'></div></td>
         <td nowrap valign=middle>
         <select name="folderId">
             <option value="" selected/><fmt:message key="moveAction"/>
             <option disabled /><fmt:message key="actionOptSep"/>
             <zm:forEachFolder var="folder">
                 <c:if test="${folder.isConversationMoveTarget and !folder.isTrash and !folder.isSpam}">
-                    <option value="m:${folder.id}" />${fn:escapeXml(folder.rootRelativePath)}
+                    <option id="OPFLDR${folder.id}" value="m:${folder.id}" />${fn:escapeXml(folder.rootRelativePath)}
                 </c:if>
             </zm:forEachFolder>
         </select>
         </td>        
-        <app:button name="actionMove" src="common/MoveToFolder.gif" tooltip="actionMoveTT"/>
+        <app:button id="OPMOVE" name="actionMove" text="actionMove" tooltip="actionMoveTT"/>
         <td><div class='vertSep'></div></td>
         <td  nowrap valign=middle>
         <select name="actionOp">
@@ -35,22 +44,15 @@
         </select>
         </td>
         <app:button id="OPGO" name="action" tooltip="actionConvGoTT" text="actionGo"/>
-        <td><div class='vertSep'></div></td>        
-       <c:choose>
-            <c:when test="${context.isFolderSearch and context.folder.isTrash}">
-                <app:button name="actionHardDelete" src="common/Delete.gif" tooltip="actionTrashTT"/>
-            </c:when>
-            <c:otherwise>
-                <app:button name="actionDelete" src="common/Delete.gif" tooltip="actionTrashTT"/>
-            </c:otherwise>
-        </c:choose>
+
         <td><div class='vertSep'></div></td>
         <c:if test="${!context.isFolderSearch or (context.isFolderSearch and !context.folder.isSpam)}">
-            <app:button name="actionSpam" src="mail/SpamFolder.gif" tooltip="actionSpamTT" text="actionSpam"/>
+            <app:button id="OPSPAM" name="actionSpam" tooltip="actionSpamTT" text="actionSpam"/>
         </c:if>
         <c:if test="${context.isFolderSearch and context.folder.isSpam}">
-            <app:button name="actionNotSpam" src="mail/SpamFolder.gif" tooltip="actionNotSpamTT" text="actionNotSpam"/>
+            <app:button id="OPSPAM" name="actionNotSpam" tooltip="actionNotSpamTT" text="actionNotSpam"/>
         </c:if>
+        <%--
           <c:choose>
             <c:when test="${context.isTagSearch and mailbox.features.tagging}">
                 <td><div class='vertSep'></div></td>
@@ -62,7 +64,8 @@
                 <input type="hidden" name="contextFolderId" value="${context.selectedId}">
                 <app:button name="actionMarkFolderRead" src="mail/ReadMessage.gif" text="actionMarkAllRead" tooltip="actionMarkAllRead"/>
             </c:when>
-        </c:choose>      
+        </c:choose>
+              --%>
         <c:if test="${context.isFolderSearch}">
             <input type="hidden" name="contextFolderId" value="${context.selectedId}"/>
             <c:choose>
@@ -90,7 +93,7 @@
                 <tr>
                     <td nowrap>
                         <zm:currentResultUrl var="refreshUrl" value="/h/search" context="${context}" refresh="true" />
-                        <a href="${refreshUrl}" <c:if test="${keys}">accesskey="r"</c:if>><app:img src="arrows/Refresh.gif" altkey="refresh"/><span><fmt:message key="refresh"/></span></a>
+                        <a href="${refreshUrl}" <c:if test="${keys}"></c:if>><app:img src="arrows/Refresh.gif" altkey="refresh"/><span><fmt:message key="refresh"/></span></a>
                     </td>
                     ${requestScope.clvToolbarCache}
                 </tr>

@@ -103,6 +103,10 @@ GlobalConfigXFormView.myXFormModifier = function(xFormObject) {
 	                	          	var query = "(zimbraDomainName=" + n + "*)";
                         	        this.getForm().getController().searchDomains(query);
                             	}
+							},
+							{ref: ZaGlobalConfig.A_zimbraDataSourceNumThreads, type:_INPUT_, 
+							  label: ZaMsg.NAD_zimbraDataSourceNumThreads, width: "5em",
+							  onChange:ZaTabView.onFormFieldChanged
 							}
 						]
 					}
@@ -233,10 +237,10 @@ GlobalConfigXFormView.myXFormModifier = function(xFormObject) {
 								  label: ZaMsg.NAD_MTA_MaxMsgSize, width: "6em",
 								  onChange:ZaTabView.onFormFieldChanged
 		  						},
-								{ ref: ZaGlobalConfig.A_zimbraFileUploadMaxSize, type: _TEXTFIELD_, 
+								/*{ ref: ZaGlobalConfig.A_zimbraFileUploadMaxSize, type: _TEXTFIELD_, 
 								  label: ZaMsg.NAD_MTA_MaxUploadSize, width: "6em",
 								  onChange:ZaTabView.onFormFieldChanged
-	  							},
+	  							},*/
 	  							{ ref: ZaGlobalConfig.A_zimbraSmtpSendAddOriginatingIP, type: _CHECKBOX_,
 									label: ZaMsg.NAD_add_x_orginate_IP, trueValue: "TRUE", falseValue: "FALSE",
 					   	  			onChange: ZaTabView.onFormFieldChanged

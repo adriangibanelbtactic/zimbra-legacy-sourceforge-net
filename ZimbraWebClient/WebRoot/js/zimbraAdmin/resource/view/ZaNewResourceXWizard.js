@@ -55,7 +55,7 @@ ZaNewResourceXWizard = function(parent, app) {
 ZaNewResourceXWizard.prototype = new ZaXWizardDialog;
 ZaNewResourceXWizard.prototype.constructor = ZaNewResourceXWizard;
 ZaXDialog.XFormModifiers["ZaNewResourceXWizard"] = new Array();
-ZaNewResourceXWizard.helpURL = "/zimbraAdmin/adminhelp/html/WebHelp/managing_accounts/managing_resource.htm";
+ZaNewResourceXWizard.helpURL = location.pathname + "adminhelp/html/WebHelp/managing_accounts/managing_resource.htm";
 
 ZaNewResourceXWizard.prototype.handleXFormChange = 
 function () {
@@ -111,6 +111,7 @@ function() {
 		var params = { 	query: ["(|(uid=",this._containedObject[ZaResource.A_name],")(cn=",this._containedObject[ZaResource.A_name],")(sn=",this._containedObject[ZaResource.A_name],")(gn=",this._containedObject[ZaResource.A_name],")(mail=",this._containedObject[ZaResource.A_name],")(zimbraMailDeliveryAddress=",this._containedObject[ZaResource.A_name],"))"].join(""),
 						limit : 2,
 						applyCos: 0,
+						controller: this._app.getCurrentController(),
 						types: [ZaSearch.DLS,ZaSearch.ALIASES,ZaSearch.ACCOUNTS,ZaSearch.RESOURCES]
 					 };
 					

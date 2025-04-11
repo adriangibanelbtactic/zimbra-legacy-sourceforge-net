@@ -887,9 +887,8 @@ public final class ZimbraQuery {
                     if (!(f instanceof Mountpoint))
                         iter.remove();
                     else {
-                        // this was commented out - why?  Uncommented it -tim
                         Mountpoint mpt = (Mountpoint)f;
-                        if (mpt.getAccount() == mbox.getAccount()) {
+                        if (mpt.isLocal()) {
                             iter.remove();
                         }
                     }
@@ -904,18 +903,24 @@ public final class ZimbraQuery {
                         UnionQueryOperation outer = new UnionQueryOperation();
 
                         for (Folder f : allFolders) {
+                            assert((f instanceof Mountpoint) && !((Mountpoint)f).isLocal());
+                            Mountpoint mpt = (Mountpoint)f;
                             DBQueryOperation dbop = new DBQueryOperation();
                             outer.add(dbop);
-                            dbop.addInClause(f, truth);
+//                            dbop.addInClause(f, truth);
+                            dbop.addInRemoteFolderClause(new ItemId(mpt.getOwnerId(), mpt.getRemoteId()), "", truth);                            
                         }
                         return outer;
                     } else {
                         IntersectionQueryOperation outer = new IntersectionQueryOperation();
 
                         for (Folder f : allFolders) {
+                            assert((f instanceof Mountpoint) && !((Mountpoint)f).isLocal());
+                            Mountpoint mpt = (Mountpoint)f;
                             DBQueryOperation dbop = new DBQueryOperation();
                             outer.addQueryOp(dbop);
-                            dbop.addInClause(f, truth);
+                            dbop.addInRemoteFolderClause(new ItemId(mpt.getOwnerId(), mpt.getRemoteId()), "", truth);                            
+//                            dbop.addInClause(f, truth);
                         }
 
                         return outer;
@@ -1555,8 +1560,11 @@ public final class ZimbraQuery {
             
             // okay, quite a bit of hackery here....basically, if they're doing a contact:
             // search AND they haven't manually specified a phrase query (expands to more than one term)
-            // then lets hack their search and make it a * search.  
-            if (qType == ZimbraQueryParser.CONTACT && mTokens.size() <= 1 && text.length() > 0 && text.charAt(text.length()-1)!='*') {
+            // then lets hack their search and make it a * search.
+            // for bug:17232 -- if the search string is ".", don't auto-wildcard it, because . is
+            // supposed to match everything by default.
+            if (qType == ZimbraQueryParser.CONTACT && mTokens.size() <= 1 && text.length() > 0 
+                        && text.charAt(text.length()-1)!='*' && !text.equals(".")) {
                 text = text+'*';
             }
             

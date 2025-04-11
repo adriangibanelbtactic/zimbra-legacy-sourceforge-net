@@ -231,7 +231,7 @@
                                     <c:when test="${showInviteReply}">
                                         <c:set var="keyOffset" value="${3}"/>
                                         <td style='padding: 0 2px 0 2px'>
-                                            <a <c:if test="${not isPart}">accesskey="1" </c:if> href="${composeUrl}&op=accept">
+                                            <a <c:if test="${not isPart}"></c:if> href="${composeUrl}&op=accept">
                                                 <img src="<c:url value="/images/common/Check.gif"/>" alt=""/>
                                                 &nbsp;
                                                 <span><fmt:message key="replyAccept"/></span>
@@ -239,7 +239,7 @@
                                         </td>
                                         <td><div class='vertSep'></div></td>
                                         <td style='padding: 0 2px 0 2px'>
-                                            <a <c:if test="${not isPart}">accesskey="2" </c:if> href="${composeUrl}&op=tentative">
+                                            <a <c:if test="${not isPart}"></c:if> href="${composeUrl}&op=tentative">
                                                 <img src="<c:url value="/images/common/QuestionMark.gif"/>" alt=""/>
                                                 &nbsp;
                                                 <span><fmt:message key="replyTentative"/></span>
@@ -247,7 +247,7 @@
                                         </td>
                                         <td><div class='vertSep'></div></td>
                                         <td style='padding: 0 2px 0 2px'>
-                                            <a <c:if test="${not isPart}">accesskey="3" </c:if> href="${composeUrl}&op=decline">
+                                            <a <c:if test="${not isPart}"></c:if> href="${composeUrl}&op=decline">
                                                 <img src="<c:url value="/images/common/Cancel.gif"/>" alt=""/>
                                                 &nbsp;
                                                 <span><fmt:message key="replyDecline"/></span>
@@ -266,7 +266,7 @@
                             <table cellspacing=4 cellpadding=0 class='Tb'>
                                 <tr>
                                     <td style='padding: 0 2px 0 2px'>
-                                        <a accesskey='9' target="_blank" href="${newWindowUrl}">
+                                        <a target="_blank" href="${newWindowUrl}">
                                             <img src="<c:url value="/images/common/OpenInNewWindow.gif"/>" alt="<fmt:message key="newWindow"/>" title="<fmt:message key="newWindow"/>"/>
                                         </a>
                                     </td>
@@ -283,14 +283,14 @@
         <tr>
             <td class='DisplayImages'>
                 <fmt:message key="externalImages"/>
-                &nbsp;<a accesskey='x' href="${externalImageUrl}">
+                &nbsp;<a href="${externalImageUrl}">
                 <fmt:message key="displayExternalImages"/>
             </a>
             </td>
         </tr>
     </c:if>
     <tr>
-        <td class=MsgBody>
+        <td id="iframeBody" class=MsgBody>
             <c:choose>
                 <c:when test="${body.isTextHtml}">
                     <c:url var="iframeUrl" value="/h/imessage">
@@ -298,9 +298,49 @@
                         <c:param name="part" value="${message.partName}"/>
                         <c:param name="xim" value="${param.xim}"/>
                     </c:url>
-                    <iframe width="100%" height="600px" src="${iframeUrl}" frameborder="0" scrolling="auto">
-
-                    </iframe>
+                    <noscript>
+                        <iframe style="width:100%; height:600px" scrolling="auto" marginWidth="0" marginHeight="0" border="0" frameBorder="0" src="${iframeUrl}"></iframe>
+                    </noscript>
+                    <script type="text/javascript">
+                        (function() {
+                            var isKonqueror = /KHTML/.test(navigator.userAgent);
+                            var isIE = ( /MSIE/.test(navigator.userAgent) && !/(Opera|Gecko|KHTML)/.test(navigator.userAgent) );
+                            var iframe = document.createElement("iframe");
+                            iframe.style.width = "100%";
+                            iframe.style.height = "20px";
+                            iframe.scrolling = "no";
+                            iframe.marginWidth = 0;
+                            iframe.marginHeight = 0;
+                            iframe.border = 0;
+                            iframe.frameBorder = 0;
+                            iframe.style.border = "none";
+                            function resizeAndNullIframe() { resizeIframe(); iframe = null;};
+                            function resizeIframe() {
+                                if (iframe !=null) {
+                                    iframe.style.height = iframe.contentWindow.document.body.scrollHeight + "px";
+                                    iframe.style.width = iframe.contentWindow.document.body.scrollWidth + "px";
+                                }
+                            };
+                            document.getElementById("iframeBody").appendChild(iframe);
+                            var doc = iframe.contentWindow ? iframe.contentWindow.document : iframe.contentDocument;
+                            doc.open();
+                            doc.write("${zm:jsEncode(theBody)}");
+                            doc.close();
+                            try {
+                                if (YAHOO && keydownH && keypressH) {
+                                    YAHOO.util.Event.addListener(doc, "keydown", keydownH);
+                                    YAHOO.util.Event.addListener(doc, "keypress", keypressH);
+                                }
+                            } catch (error) {
+                                // ignore
+                            }
+                            //if (keydownH) doc.onkeydown = keydownH;
+                            //if (keypressH) doc.onkeypress = keypressH;
+                            setTimeout(resizeIframe, 10);
+                            function onIframeLoad() { if (isKonqueror) setTimeout(resizeAndNullIframe, 100); else if (!isIE || iframe.readyState == "complete") resizeAndNullIframe();};
+                            if (isIE) iframe.onreadystatechange = onIframeLoad; else iframe.onload = onIframeLoad;
+                        })();
+                    </script>
                 </c:when>
                 <c:otherwise>
                     ${theBody}

@@ -42,9 +42,17 @@ ZmApptEditView = function(parent, appCtxt, attendees, controller, dateInfo) {
 
 	ZmCalItemEditView.call(this, parent, appCtxt, attendees, controller, dateInfo);
 
-	this._attTypes = [ZmCalItem.PERSON, ZmCalItem.LOCATION];
-	if (this._appCtxt.get(ZmSetting.GAL_ENABLED))
+	// cache so we dont keep calling appCtxt
+	this.GROUP_CALENDAR_ENABLED = this._appCtxt.get(ZmSetting.GROUP_CALENDAR_ENABLED);
+
+	this._attTypes = [];
+	if (this.GROUP_CALENDAR_ENABLED) {
+		this._attTypes.push(ZmCalItem.PERSON);
+	}
+	this._attTypes.push(ZmCalItem.LOCATION);
+	if (this._appCtxt.get(ZmSetting.GAL_ENABLED) && this.GROUP_CALENDAR_ENABLED) {
 		this._attTypes.push(ZmCalItem.EQUIPMENT);
+	}
 };
 
 ZmApptEditView.prototype = new ZmCalItemEditView;
@@ -212,6 +220,23 @@ function() {
 	return ZmAppt.quickClone(this._calItem);
 };
 
+/**
+ * sets any recurrence rules w/in given ZmAppt object
+*/
+ZmApptEditView.prototype._getRecurrence =
+function(calItem) {
+	ZmCalItemEditView.prototype._getRecurrence.call(this, calItem);
+
+	// bug fix #17048 - reset weekly day to reflect start date in case user changed it
+	if (calItem.getRecurType() == "WEE" &&
+		calItem._recurrence.repeatCustomCount == 1 &&
+		calItem._recurrence.repeatWeeklyDays.length == 1)
+	{
+		var day = ZmCalItem.SERVER_WEEK_DAYS[calItem.startDate.getDay()];
+		calItem._recurrence.repeatWeeklyDays = [day];
+	}
+};
+
 ZmApptEditView.prototype._populateForSave =
 function(calItem) {
 	ZmCalItemEditView.prototype._populateForSave.call(this, calItem);
@@ -238,6 +263,9 @@ function(calItem) {
 		var type = this._attTypes[t];
 		calItem.setAttendees(this._attendees[type].getArray(), type);
 	}
+
+	// set any recurrence rules LAST
+	this._getRecurrence(calItem);
 
 	return calItem;
 };
@@ -331,7 +359,8 @@ function() {
 		equipmentId: this._attTdId[ZmCalItem.EQUIPMENT],
 		currDate: (AjxDateUtil.simpleComputeDateStr(new Date())),
 		isGalEnabled: this._appCtxt.get(ZmSetting.GAL_ENABLED),
-		isAppt: true
+		isAppt: true,
+		isGroupCalEnabled: this.GROUP_CALENDAR_ENABLED
 	};
 
 	this.getHtmlElement().innerHTML = AjxTemplate.expand("zimbraMail.calendar.templates.Appointment#EditView", subs);
@@ -385,8 +414,9 @@ function(width) {
     // NOTE: tzone select is initialized later
 
 	// init auto-complete widget if contacts app enabled
-	if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED))
+	if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED)) {
 		this._initAutocomplete();
+	}
 };
 
 ZmApptEditView.prototype._initAutocomplete =
@@ -396,7 +426,9 @@ function() {
 	this._acList = {};
 
 	// autocomplete for attendees
-	if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED)) {
+	if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED) &&
+		this.GROUP_CALENDAR_ENABLED)
+	{
 		var contactsClass = this._appCtxt.getApp(ZmApp.CONTACTS);
 		var contactsLoader = contactsClass.getContactList;
 		var params = {parent: shell, dataClass: contactsClass, dataLoader: contactsLoader,
@@ -405,18 +437,24 @@ function() {
 		this._acContactsList.handle(this._attInputField[ZmCalItem.PERSON].getInputElement());
 		this._acList[ZmCalItem.PERSON] = this._acContactsList;
 	}
-	// autocomplete for locations/equipment
+
 	if (this._appCtxt.get(ZmSetting.GAL_ENABLED)) {
 		var resourcesClass = this._appCtxt.getApp(ZmApp.CALENDAR);
+
+		// autocomplete for locations
 		var params = {parent: shell, dataClass: resourcesClass, dataLoader: resourcesClass.getLocations,
 					  matchValue: ZmContactsApp.AC_VALUE_NAME, compCallback: acCallback};
 		this._acLocationsList = new ZmAutocompleteListView(params);
 		this._acLocationsList.handle(this._attInputField[ZmCalItem.LOCATION].getInputElement());
 		this._acList[ZmCalItem.LOCATION] = this._acLocationsList;
-		params.dataLoader = resourcesClass.getEquipment;
-		this._acEquipmentList = new ZmAutocompleteListView(params);
-		this._acEquipmentList.handle(this._attInputField[ZmCalItem.EQUIPMENT].getInputElement());
-		this._acList[ZmCalItem.EQUIPMENT] = this._acEquipmentList;
+
+		// autocomplete for equipment
+		if (this.GROUP_CALENDAR_ENABLED) {
+			params.dataLoader = resourcesClass.getEquipment;
+			this._acEquipmentList = new ZmAutocompleteListView(params);
+			this._acEquipmentList.handle(this._attInputField[ZmCalItem.EQUIPMENT].getInputElement());
+			this._acList[ZmCalItem.EQUIPMENT] = this._acEquipmentList;
+		}
 	}
 };
 

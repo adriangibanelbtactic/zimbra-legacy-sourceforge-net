@@ -210,6 +210,21 @@ public class RecurId
         return parent;
     }
     
+    public static RecurId fromXml(Element e, TimeZoneMap tzMap) throws ServiceException {
+    	String recurrenceId = e.getAttribute(MailConstants.A_CAL_RECURRENCE_ID, null);
+    	if (recurrenceId == null) return null;
+    	String rangeType = e.getAttribute(MailConstants.A_CAL_RECURRENCE_RANGE_TYPE, null);
+    	try {
+    		ParsedDateTime dt = ParsedDateTime.parse(recurrenceId, tzMap);
+            if (rangeType != null)
+        		return new RecurId(dt, rangeType);
+            else
+                return new RecurId(dt, RANGE_NONE);
+    	} catch (ParseException x) {
+    		throw ServiceException.FAILURE("recurId=" + recurrenceId, x);
+    	}
+    }
+    
     public static RecurId decodeMetadata(Metadata md, TimeZoneMap tzmap) throws ServiceException {
         try {
             return new RecurId(ParsedDateTime.parse(md.get(FN_DT), tzmap), (int)md.getLong(FN_RANGE));

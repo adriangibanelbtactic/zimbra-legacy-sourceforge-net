@@ -79,8 +79,8 @@ public class SendInviteReply extends CalendarRequest {
         ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Mailbox mbox = getRequestedMailbox(zsc);
         Account acct = getRequestedAccount(zsc);
-        Account authAcct = zsc.getAuthtokenAccount();
-        OperationContext octxt = zsc.getOperationContext();
+        Account authAcct = getAuthenticatedAccount(zsc);
+        OperationContext octxt = getOperationContext(zsc, context);
 
         boolean onBehalfOf = zsc.isDelegatedRequest();
 
@@ -129,7 +129,7 @@ public class SendInviteReply extends CalendarRequest {
                 oldInv = calItem.getInvite(inviteMsgId, compNum);  
             }
             if (oldInv == null)
-            	throw MailServiceException.NO_SUCH_CALITEM(iid.toString(), "Could not find calendar item");
+                throw MailServiceException.INVITE_OUT_OF_DATE(iid.toString());
             
             if ((mbox.getEffectivePermissions(octxt, calItemId, MailItem.TYPE_UNKNOWN) & ACL.RIGHT_ACTION) == 0)
                 throw ServiceException.PERM_DENIED("You do not have ACTION rights for CalendarItem "+calItemId);
@@ -182,8 +182,8 @@ public class SendInviteReply extends CalendarRequest {
                     // the <inv> element is *NOT* allowed -- we always build it manually
                     // based on the params to the <SendInviteReply> and stick it in the 
                     // mbps (additionalParts) parameter...
-                    csd.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, mbox, msgElem, mbps, 
-                        ParseMimeMessage.NO_INV_ALLOWED_PARSER, parsedMessageData);
+                    csd.mMm = ParseMimeMessage.parseMimeMsgSoap(zsc, octxt, mbox, msgElem, 
+                        mbps, ParseMimeMessage.NO_INV_ALLOWED_PARSER, parsedMessageData);
                 } else {
                     // build a default "Accepted" response
                     csd.mMm = CalendarMailSender.createDefaultReply(

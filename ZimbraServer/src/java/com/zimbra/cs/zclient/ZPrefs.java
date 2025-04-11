@@ -69,6 +69,8 @@ public class ZPrefs {
 
     public boolean getReadingPaneEnabled() { return getBool(Provisioning.A_zimbraPrefReadingPaneEnabled); }
 
+    public boolean getMailSignatureEnabled() { return getBool(Provisioning.A_zimbraPrefMailSignatureEnabled); }
+
     public boolean getIncludeSpamInSearch() { return getBool(Provisioning.A_zimbraPrefIncludeSpamInSearch); }
 
     public boolean getIncludeTrashInSearch() { return getBool(Provisioning.A_zimbraPrefIncludeTrashInSearch); }
@@ -88,6 +90,14 @@ public class ZPrefs {
     public boolean getMessageViewHtmlPreferred() { return getBool(Provisioning.A_zimbraPrefMessageViewHtmlPreferred); }
 
     public boolean getAutoAddAddressEnabled() { return getBool(Provisioning.A_zimbraPrefAutoAddAddressEnabled); }
+
+    public String getShortcuts() { return get(Provisioning.A_zimbraPrefShortcuts); }
+
+    public boolean getUseKeyboardShortcuts() { return getBool(Provisioning.A_zimbraPrefUseKeyboardShortcuts); }
+
+    public String getSignatureStyle() { return get(Provisioning.A_zimbraPrefMailSignatureStyle); }
+    public boolean getSignatureStyleTop() { return "outlook".equals(getSignatureStyle()); }
+    public boolean getSignatureStyleBottom() { return "internet".equals(getSignatureStyle()); }
 
     public String getGroupMailBy() { return get(Provisioning.A_zimbraPrefGroupMailBy); }
 
@@ -151,4 +161,25 @@ public class ZPrefs {
         }
         return mCachedTimeZone;
     }
+
+    public String getReplyIncludeOriginalText() { return get(Provisioning.A_zimbraPrefReplyIncludeOriginalText); }
+
+    public boolean getReplyIncludeAsAttachment() { return "includeAsAttachment".equals(getReplyIncludeOriginalText()); }
+    public boolean getReplyIncludeBody() { return "includeBody".equals(getReplyIncludeOriginalText()); }
+    public boolean getReplyIncludeBodyWithPrefx() { return "includeBodyWithPrefix".equals(getReplyIncludeOriginalText()); }
+    public boolean getReplyIncludeNone() { return "includeNone".equals(getReplyIncludeOriginalText()); }
+    public boolean getReplyIncludeSmart() { return "includeSmart".equals(getReplyIncludeOriginalText()); }
+    
+    public String getForwardIncludeOriginalText() { return get(Provisioning.A_zimbraPrefForwardIncludeOriginalText); }
+    public boolean getForwardIncludeAsAttachment() { return "includeAsAttachment".equals(getForwardIncludeOriginalText()); }
+    public boolean getForwardIncludeBody() { return "includeBody".equals(getForwardIncludeOriginalText()); }
+    public boolean getForwardIncludeBodyWithPrefx() { return "includeBodyWithPrefix".equals(getForwardIncludeOriginalText()); }
+    
+    public String getForwardReplyFormat() { return get(Provisioning.A_zimbraPrefForwardReplyFormat); }
+    public boolean getForwardReplyTextFormat() { return "text".equals(getForwardReplyFormat()); }
+    public boolean getForwardReplyHtmlFormat() { return "html".equals(getForwardReplyFormat()); }
+    public boolean getForwardReplySameFormat() { return "same".equals(getForwardReplyFormat()); }
+
+    public String getForwardReplyPrefixChar() { return get(Provisioning.A_zimbraPrefForwardReplyPrefixChar); }
+    
 }

@@ -27,6 +27,8 @@ ZmCallListController = function(appCtxt, container, app) {
 	if (arguments.length == 0) return;
 	
 	ZmVoiceListController.call(this, appCtxt, container, app);
+    this._listeners[ZmOperation.CHECK_CALLS] = new AjxListener(this, this._refreshListener);
+
 }
 
 ZmCallListController.prototype = new ZmVoiceListController;
@@ -60,8 +62,11 @@ function(view) {
 ZmCallListController.prototype._getToolBarOps =
 function() {
 	var list = [];
-	list.push(ZmOperation.SEP);
+    list.push(ZmOperation.CHECK_CALLS);
+    list.push(ZmOperation.SEP);
 	list.push(ZmOperation.PRINT);
+    list.push(ZmOperation.SEP);
+    list.push(ZmOperation.CALL_MANAGER);
 	return list;
 };
 
@@ -96,6 +101,9 @@ function() {
 ZmCallListController.prototype.handleKeyAction =
 function(actionCode) {
 	switch (actionCode) {
+        case ZmKeyMap.CALL_MANAGER:
+            this._callManagerListener();
+            break;
 		case ZmKeyMap.PRINT:
 			this._printListener();
 			break;
@@ -103,14 +111,6 @@ function(actionCode) {
 			return ZmVoiceListController.prototype.handleKeyAction.call(this, actionCode);
 	}
 	return true;
-};
-
-
-
-ZmCallListController.prototype._printListener =
-function(ev) {
-	var html = this._getView().getPrintHtml();
-	this._appCtxt.getPrintView().renderHtml(html);
 };
 
 

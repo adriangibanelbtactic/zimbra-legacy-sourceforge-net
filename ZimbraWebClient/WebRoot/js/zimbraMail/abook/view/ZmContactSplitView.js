@@ -38,7 +38,10 @@ ZmContactSplitView = function(parent, className, posStyle, controller, dropTgt) 
 	this._appCtxt = controller._appCtxt;
 
 	this._appCtxt.getFolderTree().addChangeListener(new AjxListener(this, this._addrbookTreeListener));
-	this._appCtxt.getTagTree().addChangeListener(new AjxListener(this, this._tagChangeListener));
+	var tagTree = this._appCtxt.getTagTree();
+	if (tagTree) {
+		tagTree.addChangeListener(new AjxListener(this, this._tagChangeListener));
+	}
 
 	this._tagCellId = Dwt.getNextId();
 
@@ -263,13 +266,15 @@ function(contact, isGal) {
 	this._setHeaderColor(contact.addrbook);
 
 	// set contact header (file as)
-	var contactHdr = document.getElementById(this._contactHeaderId);
-	var hdrHtml = new Array();
+	var newFolder = this._appCtxt.getById(contact.folderId);
+	var hdrHtml = [];
 	var idx = 0;
 	hdrHtml[idx++] = "<table border=0 width=100% cellpadding=0 cellspacing=0><tr>";
 	hdrHtml[idx++] = "<td width=20><center>";
 	hdrHtml[idx++] = AjxImg.getImageHtml(contact.getIcon());
-	hdrHtml[idx++] = "</center></td><td class='contactHeader'>";
+	hdrHtml[idx++] = "</center></td><td class='";
+	hdrHtml[idx++] = newFolder && newFolder.isInTrash() ? "contactHeader Trash" : "contactHeader";
+	hdrHtml[idx++] = "'>";
 	hdrHtml[idx++] = contact.getFileAs();
 	hdrHtml[idx++] = "</td><td align=right id='";
 	hdrHtml[idx++] = this._tagCellId;
@@ -279,6 +284,7 @@ function(contact, isGal) {
 	}
 	hdrHtml[idx++] = "</td></tr></table>";
 
+	var contactHdr = document.getElementById(this._contactHeaderId);
 	contactHdr.innerHTML = hdrHtml.join("");
 
 	// set body
@@ -511,18 +517,19 @@ function(contact, isGal, width) {
 
 ZmContactSplitView.prototype._getTagHtml =
 function(contact) {
-	var html = new Array();
+	var html = [];
 	var idx = 0;
 
 	// get sorted list of tags for this msg
-	var ta = new Array();
-	for (var i = 0; i < contact.tags.length; i++)
+	var ta = [];
+	for (var i = 0; i < contact.tags.length; i++) {
 		ta.push(this._appCtxt.getById(contact.tags[i]));
+	}
 	ta.sort(ZmTag.sortCompare);
 
 	for (var j = 0; j < ta.length; j++) {
 		var tag = ta[j];
-		if (!tag) continue;
+		if (!tag) { continue; }
 		var icon = ZmTag.COLOR_MINI_ICON[tag.color];
 		var attr = ["id='", this._tagCellId, tag.id, "'"].join("");
 		// XXX: set proper class name for link once defined!
@@ -619,6 +626,23 @@ function() {
 	this.parent.clear();
 };
 
+ZmContactSimpleView.prototype._changeListener =
+function(ev) {
+	ZmContactsBaseView.prototype._changeListener.call(this, ev);
+
+	// bug fix #14874 - if moved to trash, show strike-thru
+	var folderId = this._controller.getFolderId();
+	if (!folderId && ev.event == ZmEvent.E_MOVE) {
+		var contact = ev._details.items[0];
+		var folder = this._appCtxt.getById(contact.folderId);
+		var row = this._getElement(contact, ZmItem.F_ITEM_ROW);
+		if (row) {
+			row.className = folder && folder.isInTrash()
+				? "Trash" : "";
+		}
+	}
+};
+
 ZmContactSimpleView.prototype._modifyContact =
 function(ev) {
 	ZmContactsBaseView.prototype._modifyContact.call(this, ev);
@@ -647,19 +671,20 @@ function() {
 	}
 };
 
-// A contact is normally displayed in a list view with no headers, and shows
-// just an icon and name. The Trash list view has headers, and the row can
-// be built in the standard way.
+/**
+ * A contact is normally displayed in a list view with no headers, and shows
+ * just an icon and name. The mixed list view has headers, and the row can
+ * be built in the standard way.
+ * 
+ * @param contact	[ZmContact]		contact to display
+ * @param params	[hash]*			optional params
+ */
 ZmContactSimpleView.prototype._createItemHtml =
 function(contact, params) {
 
 	if (params.isMixedView) {
 		return ZmContactsBaseView.prototype._createItemHtml.apply(this, arguments);
 	}
-
-	// in canonical view, don't show contacts in the Trash unless explicitly set in prefs
-	if (contact.list.isCanonical &&	(contact.folderId == ZmFolder.ID_TRASH) &&
-		!this._appCtxt.get(ZmSetting.SEARCH_INCLUDES_TRASH)) { return null;	}
 
 	var div = this._getDiv(contact, params);
 	
@@ -679,6 +704,13 @@ function(contact, params) {
 	// table/row
 	idx = this._getTable(htmlArr, idx, params);
 	idx = this._getRow(htmlArr, idx, contact, params);
+
+	// checkbox selection
+	if (this._appCtxt.get(ZmSetting.SHOW_SELECTION_CHECKBOX)) {
+		htmlArr[idx++] = "<td style='vertical-align:middle;' width=20><center>";
+		idx = this._getImageHtml(htmlArr, idx, "TaskCheckbox", this._getFieldId(contact, ZmItem.F_SELECTION));
+		htmlArr[idx++] = "</center></td>";
+	}
 
 	// icon
 	htmlArr[idx++] = "<td style='vertical-align:middle;' width=20><center>";
