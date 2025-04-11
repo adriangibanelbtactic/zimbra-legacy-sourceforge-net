@@ -745,19 +745,20 @@ function(mode, callback, msg, result) {
 		var accountName = this.getRemoteFolderOwner();
 		this._addInviteAndCompNum(soapDoc);
 
-		if (mode == ZmCalItem.MODE_DELETE_INSTANCE) {
+		// Exceptions should be treated as instances (bug 15817)
+		if (mode == ZmCalItem.MODE_DELETE_INSTANCE || this.isException) {
 			soapDoc.setMethodAttribute("s", this.getOrigStartTime());
 			var inst = soapDoc.set("inst");
-            var allDay = this.isAllDayEvent();
-            var format = allDay ? AjxDateUtil.getServerDate : AjxDateUtil.getServerDateTime;
-            inst.setAttribute("d", format(this.getOrigStartDate()));
-            if (!allDay && this.timezone) {
-                var tz = AjxEnv.isSafari && !AjxEnv.isSafariNightly
+			var allDay = this.isAllDayEvent();
+			var format = allDay ? AjxDateUtil.getServerDate : AjxDateUtil.getServerDateTime;
+			inst.setAttribute("d", format(this.getOrigStartDate()));
+			if (!allDay && this.timezone) {
+				var tz = AjxEnv.isSafari && !AjxEnv.isSafariNightly
 					? AjxStringUtil.xmlEncode(this.timezone) : this.timezone;
 				inst.setAttribute("tz", tz);
 
-                var clientId = AjxTimezone.getClientId(this.timezone);
-                ZmTimezone.set(soapDoc, clientId, null, true);
+				var clientId = AjxTimezone.getClientId(this.timezone);
+				ZmTimezone.set(soapDoc, clientId, null, true);
 			}
 		}
 
@@ -819,7 +820,8 @@ function() {
 */
 ZmCalItem.prototype.getAttachListHtml =
 function(attach, hasCheckbox) {
-	var hrefRoot = "href='" + this._appCtxt.getCsfeMsgFetcher() + "id=" + this.invId + "&amp;part=";
+  	var msgFetchUrl = this._appCtxt.get(ZmSetting.CSFE_MSG_FETCHER_URI);
+	var hrefRoot = "href='" + msgFetchUrl + "&id=" + this.invId + "&amp;part=";
 
 	// gather meta data for this attachment
 	var mimeInfo = ZmMimeTable.getInfo(attach.ct);
@@ -1077,7 +1079,7 @@ function(soapDoc, attachmentId, notifyList, onBehalfOf) {
 	// set display name of organizer
 	var orgEmail = ZmApptViewHelper.getOrganizerEmail(this._appCtxt, this.organizer);
 	var orgName = orgEmail.getName();
-	if (name) org.setAttribute("d", name);
+	if (orgName) org.setAttribute("d", orgName);
 
 	// handle attachments
 	if (attachmentId != null || (this._validAttachments != null && this._validAttachments.length)) {

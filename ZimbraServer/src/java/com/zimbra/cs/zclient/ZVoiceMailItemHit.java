@@ -60,8 +60,26 @@ public class ZVoiceMailItemHit implements ZSearchHit {
             }
         }
     }
-    
-	public String getId() {
+
+    private ZVoiceMailItemHit() { }
+
+    public static ZVoiceMailItemHit deserialize(String value, String phone) throws ServiceException {
+        ZVoiceMailItemHit result = new ZVoiceMailItemHit();
+        String[] array = value.split("/");
+        result.mId = array[0];
+        result.mSortField = array[1];
+        result.mFlags = array[2];
+        result.mDate = Long.parseLong(array[3]);
+        result.mDuration = Long.parseLong(array[4]);
+        result.mCaller = new ZPhone(array[5]);
+        result.mScore = 0;
+        result.mSoundUrl =
+            "/service/extension/velodrome/voice/~/voicemail?phone=" +
+            phone + "&id=" + result.mId;
+        return result;
+    }
+
+    public String getId() {
 		return mId;
 	}
 
@@ -81,6 +99,10 @@ public class ZVoiceMailItemHit implements ZSearchHit {
         return hasFlags() && mFlags.indexOf(VoiceConstants.FLAG_HI_PRIORITY) != -1;
     }
 
+    public boolean isPrivate() {
+        return hasFlags() && mFlags.indexOf(VoiceConstants.FLAG_UNFORWARDABLE) != -1;
+    }
+
     public ZPhone getCaller() { return mCaller; }
 
     public String getDisplayCaller() { return mCaller.getDisplay(); }
@@ -95,4 +117,12 @@ public class ZVoiceMailItemHit implements ZSearchHit {
         // No-op.
     }
 
+    public String serialize() {
+        return  mId + "/" +
+                mSortField + "/" +
+                mFlags + "/" +
+                mDate + "/" +
+                mDuration + "/" +
+                mCaller.getName();
+    }
 }

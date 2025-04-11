@@ -41,6 +41,7 @@ import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.Account.CalendarUserType;
+import com.zimbra.cs.account.soap.SoapProvisioning;
 import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.Alias;
 import com.zimbra.cs.account.AttributeClass;
@@ -65,6 +66,7 @@ import com.zimbra.cs.account.Signature;
 import com.zimbra.cs.account.Zimlet;
 import com.zimbra.cs.httpclient.URLUtil;
 import com.zimbra.cs.mime.MimeTypeInfo;
+import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.cs.util.Zimbra;
 import com.zimbra.cs.zimlet.ZimletException;
 import com.zimbra.cs.zimlet.ZimletUtil;
@@ -133,7 +135,7 @@ public class LdapProvisioning extends Provisioning {
 
     static final SearchControls sSubtreeSC = new SearchControls(SearchControls.SUBTREE_SCOPE, 0, 0, null, false, false);
 
-    private static Log mLog = LogFactory.getLog(LdapProvisioning.class);
+    private static final Log mLog = LogFactory.getLog(LdapProvisioning.class);
     
     private static LdapConfig sConfig = null;
     
@@ -200,6 +202,9 @@ public class LdapProvisioning extends Provisioning {
         mDIT = new LdapDIT(this);
     }
     
+    /*
+     * Contains parallel arrays of old addrs and new addrs as a result of domain change
+     */
     protected static class ReplaceAddressResult {
         ReplaceAddressResult(String oldAddrs[], String newAddrs[]) {
             mOldAddrs = oldAddrs;
@@ -271,7 +276,7 @@ public class LdapProvisioning extends Provisioning {
      * @param attrs
      * @throws ServiceException
      */
-    private synchronized void modifyAttrsInternal(Entry entry, DirContext initCtxt, Map attrs)
+    protected synchronized void modifyAttrsInternal(Entry entry, DirContext initCtxt, Map attrs)
             throws ServiceException {
         DirContext ctxt = initCtxt;
         try {
@@ -1304,7 +1309,10 @@ public class LdapProvisioning extends Provisioning {
             String zimbraIdStr = LdapUtil.generateUUID();
             attrs.put(A_zimbraId, zimbraIdStr);
             attrs.put(A_zimbraDomainName, name);
-            attrs.put(A_zimbraMailStatus, MAIL_STATUS_ENABLED);
+            
+            String mailStatus = (String) domainAttrs.get(A_zimbraMailStatus);
+            if (mailStatus == null)
+                attrs.put(A_zimbraMailStatus, MAIL_STATUS_ENABLED);
             
             if (domainType.equalsIgnoreCase(DOMAIN_TYPE_ALIAS)) {
                 attrs.put(A_zimbraMailCatchAllAddress, "@" + name);
@@ -1483,6 +1491,15 @@ public class LdapProvisioning extends Provisioning {
             }
         }
     }
+    
+    public void modifyDomainStatus(Domain domain, String newStatus) throws ServiceException {
+        HashMap<String, String> attrs = new HashMap<String, String>();
+        attrs.put(Provisioning.A_zimbraDomainStatus, newStatus);
+        modifyAttrs(domain, attrs);
+        
+        flushDomainCacheOnAllServers(domain.getId());
+    }
+    
 
     /* (non-Javadoc)
      * @see com.zimbra.cs.account.Provisioning#createCos(java.lang.String, java.util.Map)
@@ -1782,7 +1799,7 @@ public class LdapProvisioning extends Provisioning {
             LdapUtil.closeContext(ctxt);
         }
     }
-         
+    
     public void deleteDomain(String zimbraId) throws ServiceException {
         // TODO: should only allow a domain delete to succeed if there are no people
         // if there aren't, we need to delete the people trees first, then delete the domain.
@@ -1815,7 +1832,11 @@ public class LdapProvisioning extends Provisioning {
                     if (key.startsWith("zimbra")) 
                         attrs.put(key, "");
                 }
-                modifyAttrs(d, attrs, false);
+                // cannot invoke callback here.  If another domain attr is added in a callback, 
+                // e.g. zimbraDomainStatus would add zimbraMailStatus, then we will get a LDAP 
+                // schema violation naming error(zimbraDomain is removed, thus there cannot be 
+                // any zimbraAttrs left) and the modify will fail.    
+                modifyAttrs(d, attrs, false, false); 
             }
 
             String defaultDomain = getConfig().getAttr(A_zimbraDefaultDomainName, null);
@@ -1836,6 +1857,31 @@ public class LdapProvisioning extends Provisioning {
             LdapUtil.closeContext(ctxt);
         }
     }
+    
+
+    
+    public void renameDomain(String zimbraId, String newDomainName) throws ServiceException {
+        newDomainName = newDomainName.toLowerCase().trim();
+        validDomainName(newDomainName);
+        
+        DirContext ctxt = null;
+        
+        try {
+            ctxt = LdapUtil.getDirContext(true);
+            
+            Domain oldDomain = getDomainById(zimbraId, ctxt);
+            if (oldDomain == null)
+               throw AccountServiceException.NO_SUCH_DOMAIN(zimbraId);
+            
+            String oldDomainName = oldDomain.getName();
+            
+            RenameDomain rd = new RenameDomain(ctxt, this, oldDomain, newDomainName);
+            rd.execute();
+        } finally {
+            LdapUtil.closeContext(ctxt);
+        }
+    }
+    
     
     public void deleteCos(String zimbraId) throws ServiceException {
         LdapCos c = (LdapCos) get(CosBy.id, zimbraId);
@@ -2345,8 +2391,7 @@ public class LdapProvisioning extends Provisioning {
 
         String uid = LdapUtil.escapeSearchFilterArg(parts[0]);
         String domain = parts[1];
-        String dn = mDIT.domainToAccountSearchDN(domain);
-        return getDistributionListByQuery(dn, 
+        return getDistributionListByQuery("", 
                                           "(&(zimbraMailAlias="+listAddress+")" +
                                           FILTER_DISTRIBUTION_LIST_OBJECTCLASS+ ")",
                                           null);
@@ -3204,7 +3249,6 @@ public class LdapProvisioning extends Provisioning {
      *  called when an account/dl is renamed
      *  
      */
-    // void renameAddressInAllDistributionLists(String oldName, String newName)
     protected void renameAddressesInAllDistributionLists(String oldName, String newName, ReplaceAddressResult replacedAliasPairs) {
     	Map<String, String> changedPairs = new HashMap<String, String>();
     	
@@ -3215,6 +3259,11 @@ public class LdapProvisioning extends Provisioning {
     	    if (!oldAddr.equals(newAddr))
     	    	changedPairs.put(oldAddr, newAddr);
     	}
+    	
+    	renameAddressesInAllDistributionLists(changedPairs);
+    }
+    	
+    protected void renameAddressesInAllDistributionLists(Map<String, String> changedPairs) {
 
     	String oldAddrs[] = changedPairs.keySet().toArray(new String[0]);
         String newAddrs[] = changedPairs.values().toArray(new String[0]);
@@ -3747,7 +3796,7 @@ public class LdapProvisioning extends Provisioning {
         ldl.removeMembers(members, this);        
     }
 
-    private List<Identity> getIdentitiesByQuery(Account acct, LdapEntry entry, String query, DirContext initCtxt) throws ServiceException {
+    private List<Identity> getIdentitiesByQuery(LdapEntry entry, String query, DirContext initCtxt) throws ServiceException {
         DirContext ctxt = initCtxt;
         List<Identity> result = new ArrayList<Identity>();
         try {
@@ -3757,7 +3806,7 @@ public class LdapProvisioning extends Provisioning {
             NamingEnumeration ne = LdapUtil.searchDir(ctxt, base, query, sSubtreeSC);
             while(ne.hasMore()) {
                 SearchResult sr = (SearchResult) ne.next();
-                result.add(new LdapIdentity(acct, sr.getNameInNamespace(), sr.getAttributes()));
+                result.add(new LdapIdentity((Account)entry, sr.getNameInNamespace(), sr.getAttributes()));
             }
             ne.close();            
         } catch (NameNotFoundException e) {
@@ -3773,9 +3822,9 @@ public class LdapProvisioning extends Provisioning {
         return result;
     }
 
-    private Identity getIdentityByName(Account acct, LdapEntry entry, String name,  DirContext ctxt) throws ServiceException {
+    private Identity getIdentityByName(LdapEntry entry, String name,  DirContext ctxt) throws ServiceException {
         name = LdapUtil.escapeSearchFilterArg(name);
-        List<Identity> result = getIdentitiesByQuery(acct, entry, "(&(zimbraPrefIdentityName="+name+")(objectclass=zimbraIdentity))", ctxt); 
+        List<Identity> result = getIdentitiesByQuery(entry, "(&(zimbraPrefIdentityName="+name+")(objectclass=zimbraIdentity))", ctxt); 
         return result.isEmpty() ? null : result.get(0);
     }
 
@@ -3834,7 +3883,7 @@ public class LdapProvisioning extends Provisioning {
             
             LdapUtil.createEntry(ctxt, dn, attrs, "createIdentity");
 
-            Identity identity = getIdentityByName(account, ldapEntry, identityName, ctxt);
+            Identity identity = getIdentityByName(ldapEntry, identityName, ctxt);
             AttributeManager.getInstance().postModify(identityAttrs, identity, attrManagerContext, true);
 
             return identity;
@@ -3865,7 +3914,7 @@ public class LdapProvisioning extends Provisioning {
             modifyAttrs(account, identityAttrs);
         } else {
             
-            LdapIdentity identity = (LdapIdentity) getIdentityByName(account, ldapEntry, identityName, null);
+            LdapIdentity identity = (LdapIdentity) getIdentityByName(ldapEntry, identityName, null);
             if (identity == null)
                     throw AccountServiceException.NO_SUCH_IDENTITY(identityName);   
         
@@ -3874,7 +3923,11 @@ public class LdapProvisioning extends Provisioning {
             if (newName) identityAttrs.remove(A_zimbraPrefIdentityName);
 
             modifyAttrs(identity, identityAttrs, true);
-            if (newName) renameIdentity(ldapEntry, identity, name);
+            if (newName) {
+                // the identity cache could've been loaded again if getAllIdentities were called in pre/poseModify callback, so we clear it again
+                account.setCachedData(IDENTITY_LIST_CACHE_KEY, null);
+                renameIdentity(ldapEntry, identity, name);
+            }
             
         }
     }
@@ -3912,7 +3965,7 @@ public class LdapProvisioning extends Provisioning {
         DirContext ctxt = null;
         try {
             ctxt = LdapUtil.getDirContext(true);
-            Identity identity = getIdentityByName(account, ldapEntry, identityName, ctxt);
+            Identity identity = getIdentityByName(ldapEntry, identityName, ctxt);
             if (identity == null)
                 throw AccountServiceException.NO_SUCH_IDENTITY(identityName);
             String dn = getIdentityDn(ldapEntry, identityName);            
@@ -3937,7 +3990,7 @@ public class LdapProvisioning extends Provisioning {
             return result;
         }
         
-        result = getIdentitiesByQuery(account, ldapEntry, "(objectclass=zimbraIdentity)", null);
+        result = getIdentitiesByQuery(ldapEntry, "(objectclass=zimbraIdentity)", null);
         for (Identity identity: result) {
             // gross hack for 4.5beta. should be able to remove post 4.5
             if (identity.getId() == null) {
@@ -4147,6 +4200,8 @@ public class LdapProvisioning extends Provisioning {
 
             modifyAttrs(signature, signatureAttrs, true);
             if (nameChanged) {
+                // the signature cache could've been loaded again if getAllSignatures were called in pre/poseModify callback, so we clear it again
+                account.setCachedData(SIGNATURE_LIST_CACHE_KEY, null);
                 renameSignature(ldapEntry, signature, newName);
             }
             
@@ -4269,7 +4324,7 @@ public class LdapProvisioning extends Provisioning {
             NamingEnumeration ne = LdapUtil.searchDir(ctxt, base, query, sSubtreeSC);
             while(ne.hasMore()) {
                 SearchResult sr = (SearchResult) ne.next();
-                result.add(new LdapDataSource(sr.getNameInNamespace(), sr.getAttributes()));
+                result.add(new LdapDataSource((Account)entry, sr.getNameInNamespace(), sr.getAttributes()));
             }
             ne.close();            
         } catch (NameNotFoundException e) {
@@ -4305,14 +4360,14 @@ public class LdapProvisioning extends Provisioning {
         String oldDomain = EmailUtil.getValidDomainPart(oldAddr);
         String newDomain = EmailUtil.getValidDomainPart(newAddr);    
         
-        String oldMails[] = entry.getMultiAttr(attrName);
-        String newMails[] = new String[0];      
+        String oldAddrs[] = entry.getMultiAttr(attrName);
+        String newAddrs[] = new String[0];      
          
-        for (int i = 0; i < oldMails.length; i++) {
-            String oldMail = oldMails[i];
+        for (int i = 0; i < oldAddrs.length; i++) {
+            String oldMail = oldAddrs[i];
             if (oldMail.equals(oldAddr)) {
                 // exact match, replace the entire old addr with new addr
-                newMails = addMultiValue(newMails, newAddr);
+                newAddrs = addMultiValue(newAddrs, newAddr);
             } else {
                 String[] oldParts = EmailUtil.getLocalPartAndDomain(oldMail);
                 
@@ -4325,18 +4380,18 @@ public class LdapProvisioning extends Provisioning {
                 if (oldD.equals(oldDomain)) {
                     // old domain is the same as the domain being renamed, 
                     //   - keep the local part 
-                    //   - repalce the domain with new domain 
+                    //   - replace the domain with new domain 
                     String newMail = oldL + "@" + newDomain;
-                    newMails = addMultiValue(newMails, newMail);
+                    newAddrs = addMultiValue(newAddrs, newMail);
                 } else {
                     // address is not in the domain being renamed, keep as is
-                    newMails = addMultiValue(newMails, oldMail);
+                    newAddrs = addMultiValue(newAddrs, oldMail);
                 }
             }
         }
         
         // returns a pair of parallel arrays of old and new addrs
-        return new ReplaceAddressResult(oldMails, newMails);
+        return new ReplaceAddressResult(oldAddrs, newAddrs);
      }
     
     protected boolean addressExists(DirContext ctxt, String baseDN, String[] addrs) throws ServiceException {
@@ -4543,6 +4598,8 @@ public class LdapProvisioning extends Provisioning {
         
         modifyAttrs(ds, attrs, true);
         if (newName) {
+            // the datasoruce cache could've been loaded again if getAllDataSources were called in pre/poseModify callback, so we clear it again
+            account.setCachedData(DATA_SOURCE_LIST_CACHE_KEY, null);
             DirContext ctxt = null;
             try {
                 ctxt = LdapUtil.getDirContext(true);
@@ -4660,6 +4717,137 @@ public class LdapProvisioning extends Provisioning {
             return ((LdapZimlet)entry).getDN();
         else
             throw ServiceException.FAILURE("not a ldap entry", null);
+    }
+    
+
+    
+    static void flushDomainCache(Provisioning prov, String domainId) throws ServiceException {
+        CacheEntry[] cacheEntries = new CacheEntry[1];
+        cacheEntries[0] = new CacheEntry(CacheEntryBy.id, domainId);
+        prov.flushCache(CacheEntryType.domain, cacheEntries);
+    }
+    
+    void flushDomainCacheOnAllServers(String domainId) throws ServiceException {
+        SoapProvisioning soapProv = new SoapProvisioning();
+        
+        for (Server server : getAllServers()) {
+            
+            String hostname = server.getAttr(Provisioning.A_zimbraServiceHostname);
+                                
+            int port = server.getIntAttr(Provisioning.A_zimbraMailSSLPort, 0);
+            if (port <= 0) {
+                ZimbraLog.account.warn("flushDomainCacheOnAllServers: remote server " + server.getName() + " does not have https port enabled, domain cache not flushed on server");
+                continue;        
+            }
+                
+            soapProv.soapSetURI(LC.zimbra_admin_service_scheme.value()+hostname+":"+port+ZimbraServlet.ADMIN_SERVICE_URI);
+                
+            try {
+                soapProv.soapZimbraAdminAuthenticate();
+                flushDomainCache(soapProv, domainId);
+            } catch (ServiceException e) {
+                ZimbraLog.account.warn("flushDomainCacheOnAllServers: domain cache not flushed on server " + server.getName(), e);
+            }
+        }
+    }
+    
+    @Override
+    public void flushCache(CacheEntryType type, CacheEntry[] entries) throws ServiceException {
+        
+        NamedEntryCache cache = null;
+        Set<NamedEntry> namedEntries = null;
+        
+        switch (type) {
+        case account:
+            cache = sAccountCache;
+            if (entries != null) {
+                namedEntries = new HashSet<NamedEntry>();
+                for (CacheEntry entry : entries) {
+                    AccountBy accountBy = (entry.mEntryBy==CacheEntryBy.id)? AccountBy.id : AccountBy.name;
+                    Account account = get(accountBy, entry.mEntryIdentity);
+                    if (account == null)
+                        throw AccountServiceException.NO_SUCH_ACCOUNT(entry.mEntryIdentity);
+                    else    
+                        namedEntries.add(account);
+                }
+            }
+            break;
+        case cos:
+            cache = sCosCache;
+            if (entries != null) {
+                namedEntries = new HashSet<NamedEntry>();
+                for (CacheEntry entry : entries) {
+                    CosBy cosBy = (entry.mEntryBy==CacheEntryBy.id)? CosBy.id : CosBy.name;
+                    Cos cos = get(cosBy, entry.mEntryIdentity);
+                    if (cos == null)
+                        throw AccountServiceException.NO_SUCH_COS(entry.mEntryIdentity);
+                    else    
+                        namedEntries.add(cos);
+                }
+            }
+            break;
+        case domain:
+            if (entries != null) {
+                namedEntries = new HashSet<NamedEntry>();
+                for (CacheEntry entry : entries) {
+                    DomainBy domainBy = (entry.mEntryBy==CacheEntryBy.id)? DomainBy.id : DomainBy.name;
+                    Domain domain = get(domainBy, entry.mEntryIdentity);
+                    if (domain == null)
+                        throw AccountServiceException.NO_SUCH_DOMAIN(entry.mEntryIdentity);
+                    else    
+                        namedEntries.add(domain);
+                }
+            }
+            
+            if (entries == null) {
+                sDomainCache.clear();
+            } else {    
+                for (NamedEntry entry : namedEntries) {
+                    sDomainCache.remove((Domain)entry);
+                }
+            }
+            return;
+        case server:
+            cache = sServerCache;
+            if (entries != null) {
+                namedEntries = new HashSet<NamedEntry>();
+                for (CacheEntry entry : entries) {
+                    ServerBy serverBy = (entry.mEntryBy==CacheEntryBy.id)? ServerBy.id : ServerBy.name;
+                    Server server = get(serverBy, entry.mEntryIdentity);
+                    if (server == null)
+                        throw AccountServiceException.NO_SUCH_SERVER(entry.mEntryIdentity);
+                    else    
+                        namedEntries.add(server);
+                }
+            }
+            break;
+        case zimlet:
+            cache = sZimletCache;
+            if (entries != null) {
+                namedEntries = new HashSet<NamedEntry>();
+                for (CacheEntry entry : entries) {
+                    if (entry.mEntryBy==CacheEntryBy.id)
+                        throw ServiceException.INVALID_REQUEST("zimlet by id is not supported "+type, null);
+                    Zimlet zimlet = getZimlet(entry.mEntryIdentity);
+                    if (zimlet == null)
+                        throw AccountServiceException.NO_SUCH_ZIMLET(entry.mEntryIdentity);
+                    else    
+                        namedEntries.add(zimlet);
+                }
+            }
+            break;
+        default:
+            throw ServiceException.INVALID_REQUEST("invalid cache type "+type, null);
+        }
+        
+        if (namedEntries == null)
+            cache.clear();
+        else {
+            for (NamedEntry entry : namedEntries) {
+                cache.remove(entry);
+            }
+        }
+        
     }
 
 }

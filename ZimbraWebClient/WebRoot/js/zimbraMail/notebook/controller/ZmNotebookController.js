@@ -84,39 +84,41 @@ ZmNotebookController.prototype.switchView = function(view, force) {
 // Overrides ZmListController method, leaving ZmOperation.MOVE off the menu.
 ZmNotebookController.prototype._standardActionMenuOps =
 function() {
-	return [ZmOperation.TAG_MENU, ZmOperation.DELETE,
-			ZmOperation.PRINT];
+	return [ZmOperation.TAG_MENU, ZmOperation.DELETE, ZmOperation.PRINT];
 };
 
-
-ZmNotebookController.prototype._getToolBarOps = function() {
-	var list = [];
-	list = list.concat(this._getBasicToolBarOps())
+ZmNotebookController.prototype._getToolBarOps =
+function() {
+	var list = this._getBasicToolBarOps();
 	list.push(ZmOperation.SEP);
 	list = list.concat(this._getItemToolBarOps());
-	list.push(ZmOperation.FILLER);
+	list.push(ZmOperation.SEP,
+				ZmOperation.TAG_MENU,
+				ZmOperation.SEP,
+				ZmOperation.FILLER);
 	list = list.concat(this._getNaviToolBarOps());
 	return list;
 };
 
-ZmNotebookController.prototype._getBasicToolBarOps = function() {
-	return [
-		ZmOperation.NEW_MENU, ZmOperation.REFRESH, ZmOperation.EDIT,
-	];
-};
-ZmNotebookController.prototype._getItemToolBarOps = function() {
-	return [ZmOperation.TAG_MENU, ZmOperation.SEP,
-			ZmOperation.DELETE, ZmOperation.PRINT];
-};
-ZmNotebookController.prototype._getNaviToolBarOps = function() {
-	return [
-		ZmOperation.SEND_PAGE,
-		ZmOperation.SEP,
-		ZmOperation.DETACH
-	];
+ZmNotebookController.prototype._getBasicToolBarOps =
+function() {
+	return [ZmOperation.NEW_MENU, ZmOperation.REFRESH, ZmOperation.EDIT];
 };
 
-ZmNotebookController.prototype._initializeToolBar = function(view) {
+ZmNotebookController.prototype._getItemToolBarOps =
+function() {
+	return [ZmOperation.DELETE, ZmOperation.PRINT];
+};
+
+ZmNotebookController.prototype._getNaviToolBarOps =
+function() {
+	return [ZmOperation.SEND_PAGE,
+			ZmOperation.SEP,
+			ZmOperation.DETACH];
+};
+
+ZmNotebookController.prototype._initializeToolBar =
+function(view) {
 	ZmListController.prototype._initializeToolBar.call(this, view);
 
 	this._setNewButtonProps(view, ZmMsg.createNewPage, "NewPage", "NewPageDis", ZmOperation.NEW_PAGE);
@@ -128,7 +130,7 @@ ZmNotebookController.prototype._initializeToolBar = function(view) {
 		button.setDisabledImage("RefreshDis");
 	}
 
-	var button = toolbar.getButton(ZmOperation.DELETE);
+	button = toolbar.getButton(ZmOperation.DELETE);
 	button.setToolTipContent(ZmMsg.deletePermanentTooltip);
 
 	/***
@@ -142,15 +144,39 @@ ZmNotebookController.prototype._resetOperations = function(toolbarOrActionMenu, 
 	if (!toolbarOrActionMenu) return;
 	ZmListController.prototype._resetOperations.call(this, toolbarOrActionMenu, num);
 	toolbarOrActionMenu.enable(ZmOperation.REFRESH, true);
+	toolbarOrActionMenu.enable(ZmOperation.PRINT, true);
 	//toolbarOrActionMenu.enable(ZmOperation.ATTACHMENT, true);
 	//toolbarOrActionMenu.enable(ZmOperation.DETACH, false);
 
 	var buttonIds = [ ZmOperation.SEND_PAGE, ZmOperation.DETACH ];
 	toolbarOrActionMenu.enable(buttonIds, true);
 	var writable = this._object && !this._object.isReadOnly();
-	toolbarOrActionMenu.enable([ZmOperation.EDIT, ZmOperation.DELETE], writable);
+	toolbarOrActionMenu.enable([ZmOperation.EDIT], writable);
+	toolbarOrActionMenu.enable([ZmOperation.DELETE], this.isDeletable());
+
 	var taggable = this._object && !this._object.isShared() && !this._object.isIndex();
 	toolbarOrActionMenu.enable([ZmOperation.TAG_MENU], taggable);
+};
+
+ZmNotebookController.prototype.isDeletable = function(){
+
+	var page = this._object;
+	if(!page)
+	return false;
+	var writable = page && !page.isReadOnly();	
+	if(!page.isIndex()){
+		return writable;
+	}
+	var id = page.id;
+	var rootId = ZmOrganizer.getSystemId(this._appCtxt, ZmOrganizer.ID_ROOT);	
+	var notebook = this._appCtxt.getById(id);
+	var notebookId = ZmOrganizer.getSystemId(this._appCtxt, ZmOrganizer.ID_NOTEBOOK);
+	var isRoot = (notebook.id == rootId);
+	var isNotebook = (notebook.id == notebookId);
+	var isTopLevel = (!isRoot && notebook.parent.id == rootId);
+	var isLink = notebook.link;
+	var isLinkOrRemote = isLink || notebook.isRemote();
+	return (!isNotebook && (!isLinkOrRemote || (isLink && isTopLevel) || ZmNotebookTreeController.__isAllowed(notebook.parent, ZmShare.PERM_DELETE)));
 };
 
 ZmNotebookController.prototype._getTagMenuMsg = function() {
@@ -162,6 +188,18 @@ ZmNotebookController.prototype._doDelete = function(items,delcallback) {
 	if(!items){
 	items = this._listView[this._currentView].getSelection();
 	}
+	var page = items instanceof Array ? items[0] : items;
+	if(page && page.isIndex() ){
+		var overviewController = this._appCtxt.getOverviewController();
+		var treeController = overviewController.getTreeController(ZmOrganizer.NOTEBOOK);
+		var organizer = this._appCtxt.getById(page.id);
+		var callback = new AjxCallback(treeController, treeController._deleteListener2, [ organizer ]);
+		var message = AjxMessageFormat.format(ZmMsg.confirmDeleteNotebook, organizer.name);
+		var dialog = this._appCtxt.getConfirmationDialog();
+		dialog.popup(message, callback);		
+		return;
+	}
+	
 	var dialog = this._appCtxt.getConfirmationDialog();
 	var message = items instanceof Array && items.length > 1 ? ZmMsg.confirmDeleteItemList : null;
 	if (!message) {

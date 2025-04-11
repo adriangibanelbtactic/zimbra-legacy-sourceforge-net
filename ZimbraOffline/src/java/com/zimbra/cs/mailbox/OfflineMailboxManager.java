@@ -1,136 +1,163 @@
 /*
  * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1
  * 
- * Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+ * The contents of this file are subject to the Mozilla Public License
+ * Version 1.1 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ * 
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * The Original Code is: Zimbra Collaboration Suite Server.
+ * 
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
  * All Rights Reserved.
  * 
- * The Original Code is: Zimbra Network
+ * Contributor(s): 
  * 
  * ***** END LICENSE BLOCK *****
  */
 package com.zimbra.cs.mailbox;
 
-import java.util.Timer;
 import java.util.TimerTask;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.Constants;
-import com.zimbra.cs.account.Account;
-import com.zimbra.cs.account.AccountServiceException;
-import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.account.Provisioning.AccountBy;
-import com.zimbra.cs.account.offline.OfflineProvisioning;
 import com.zimbra.cs.mailbox.Mailbox.MailboxData;
+import com.zimbra.cs.mailbox.OfflineMailbox.SyncProgress;
 import com.zimbra.cs.mailbox.OfflineMailbox.SyncState;
+import com.zimbra.cs.offline.Offline;
+import com.zimbra.cs.offline.OfflineLC;
 import com.zimbra.cs.offline.OfflineLog;
 
 public class OfflineMailboxManager extends MailboxManager {
 
-    private static final long MINIMUM_SYNC_INTERVAL = 5 * Constants.MILLIS_PER_SECOND;
-    // private static final long SYNC_INTERVAL = 5 * Constants.MILLIS_PER_MINUTE;
-    private static final long SYNC_INTERVAL = 15 * Constants.MILLIS_PER_SECOND;
+    /** Default interval between client-initiated sync requests.  Can be overridden by setting the
+     * {@link com.zimbra.cs.account.offline.OfflineProvisioning#A_offlineSyncInterval} attribute
+     *  on the Account. */
+    static final long DEFAULT_SYNC_INTERVAL = 2 * Constants.MILLIS_PER_MINUTE;
 
-    private static Timer    mTimer = new Timer(true);
-    private static SyncTask mSyncTask;
+    private SyncTask sSyncTask = null;
 
 
     public OfflineMailboxManager() throws ServiceException  {
         super();
+    }
 
+    @Override
+    public void startup() {
         // wait 5 seconds, then start to sync
-        if (mSyncTask == null) {
-            mSyncTask = new SyncTask();
-            mTimer.schedule(mSyncTask, 5 * Constants.MILLIS_PER_SECOND, SYNC_INTERVAL);
-        }
+        if (sSyncTask != null)
+            sSyncTask.cancel();
+        sSyncTask = new SyncTask();
+        Offline.sTimer.schedule(sSyncTask, 5 * Constants.MILLIS_PER_SECOND, 5 * Constants.MILLIS_PER_SECOND);
     }
 
     @Override
     public void shutdown() {
-        mTimer.cancel();
+        if (sSyncTask != null)
+            sSyncTask.cancel();
+        sSyncTask = null;
     }
 
+    /** Returns a new {@link OfflineMailbox} object to wrap the given data. */
     @Override
     Mailbox instantiateMailbox(MailboxData data) throws ServiceException {
-        Account local = Provisioning.getInstance().get(AccountBy.id, data.accountId);
-        if (local == null)
-            throw AccountServiceException.NO_SUCH_ACCOUNT(data.accountId);
-        String passwd = local.getAttr(OfflineProvisioning.A_offlineRemotePassword);
-        String uri = local.getAttr(OfflineProvisioning.A_offlineRemoteServerUri);
-        return new OfflineMailbox(data, data.accountId, passwd, uri);
+        return new OfflineMailbox(data);
     }
 
-    public void sync() {
-        mSyncTask.run();
+    public void sync(OfflineMailbox ombx) throws ServiceException {
+        if (sSyncTask != null)
+            sSyncTask.sync(ombx);
     }
 
 
     private class SyncTask extends TimerTask {
-        private boolean inProgress;
-        private long lastSync = System.currentTimeMillis();
-//        private boolean reset = false;
-
         @Override
         public void run() {
-            if (inProgress || System.currentTimeMillis() - lastSync < MINIMUM_SYNC_INTERVAL)
-                return;
-
-            inProgress = true;
-            try {
-//                if (reset) {
-//                    try {
-//                        // temp : kill all the existing mailboxen
-//                        for (String acctId : getAccountIds())
-//                            getMailboxByAccountId(acctId).deleteMailbox();
-//                        reset = false;
-//                    } catch (ServiceException e) { }
-//                }
-
-                for (String acctId : getAccountIds()) {
-                    try {
-                        Mailbox mbox = getMailboxByAccountId(acctId);
-                        if (!(mbox instanceof OfflineMailbox))
-                            continue;
-                        OfflineMailbox ombx = (OfflineMailbox) mbox;
-
-                        SyncState state = ombx.getSyncState();
-                        if (state == SyncState.INITIAL) {
-                            // FIXME: wiping the mailbox when detecting interrupted initial sync is bad
-                            ombx.deleteMailbox();
-                            mbox = getMailboxByAccountId(acctId);
-                            if (!(mbox instanceof OfflineMailbox))
-                                continue;
-                            ombx = (OfflineMailbox) mbox;
-                            state = ombx.getSyncState();
-                        }
-                        if (state == SyncState.BLANK) {
-                            InitialSync.sync(ombx);
-                        } else if (state == SyncState.INITIAL) {
-//                          InitialSync.resume(ombx);
-                            OfflineLog.offline.warn("detected interrupted initial sync; cannot recover at present: " + acctId);
-                            continue;
-                        }
-                        DeltaSync.sync(ombx);
-                        if (PushChanges.sync(ombx))
-                            DeltaSync.sync(ombx);
-                    } catch (ServiceException e) {
-                        if (e.getCode().equals(ServiceException.PROXY_ERROR)) {
-                            Throwable cause = e.getCause();
-                            if (cause instanceof java.net.NoRouteToHostException)
-                                OfflineLog.offline.debug("java.net.NoRouteToHostException: offline and unreachable account " + acctId);
-                            else if (cause instanceof org.apache.commons.httpclient.ConnectTimeoutException)
-                                OfflineLog.offline.debug("org.apache.commons.httpclient.ConnectTimeoutException: no connect after " + OfflineMailbox.SERVER_REQUEST_TIMEOUT_SECS + " seconds for account " + acctId);
-                            else if (cause instanceof java.net.SocketTimeoutException)
-                                OfflineLog.offline.info("java.net.SocketTimeoutException: read timed out after " + OfflineMailbox.SERVER_REQUEST_TIMEOUT_SECS + " seconds for account " + acctId);
-                            else
-                                OfflineLog.offline.warn("error communicating with account " + acctId, e);
-                        } else {
-                            OfflineLog.offline.warn("failed to sync account " + acctId, e);
-                        }
+            boolean pushEnabled = OfflineLC.zdesktop_enable_push.booleanValue();
+            for (String acctId : getAccountIds()) {
+                try {
+                    Mailbox mbox = getMailboxByAccountId(acctId);
+                    if (!(mbox instanceof OfflineMailbox)) {
+                        OfflineLog.offline.warn("cannot sync: not an OfflineMailbox for account " + mbox.getAccount().getName());
+                        continue;
                     }
+
+                    // do we need to sync this mailbox yet?
+                    OfflineMailbox ombx = (OfflineMailbox) mbox;
+                    if (ombx.getSyncState() == SyncState.ONLINE && pushEnabled && ombx.getRemoteServerVersion().getMajor() >= 5) {
+                    	if (ombx.getSyncProgress() != SyncProgress.SYNC || ombx.hasDataToSync())
+                    		sync(ombx);
+                    } else if (ombx.getSyncFrequency() + ombx.getLastSyncTime() <= System.currentTimeMillis()) {
+                        sync(ombx);
+                    }
+                } catch (ServiceException e) {
+                    OfflineLog.offline.warn("cannot sync: error fetching mailbox/account for acct id " + acctId, e);
+                } catch (Throwable t) {
+                	OfflineLog.offline.error("unexpected exception syncing account " + acctId, t);
                 }
-                lastSync = System.currentTimeMillis();
-            } finally {
-                inProgress = false;
+            }
+        }
+
+        void sync(OfflineMailbox ombx) throws ServiceException {        	
+            String username = ombx.getRemoteUser();
+            if (ombx.lockMailboxToSync()) { //don't want to start another sync when one is already in progress
+	            try {
+	                SyncProgress progress = ombx.getSyncProgress();
+	                if (progress == SyncProgress.RESET) {
+	                    String acctId = ombx.getAccountId();
+	                    ombx.deleteMailbox();
+	                    Mailbox mbox = getMailboxByAccountId(acctId);
+	                    if (!(mbox instanceof OfflineMailbox)) {
+	                        OfflineLog.offline.debug("cannot sync: not an OfflineMailbox for account " + username);
+	                        return;
+	                    }
+	                    ombx = (OfflineMailbox) mbox;
+	                    progress = ombx.getSyncProgress();
+	                }
+	
+	                if (progress == SyncProgress.BLANK)
+	                    InitialSync.sync(ombx);
+	                else if (progress == SyncProgress.INITIAL)
+	                    InitialSync.resume(ombx);
+	
+	                DeltaSync.sync(ombx);
+	                if (PushChanges.sync(ombx))
+	                    DeltaSync.sync(ombx);
+	
+	                ombx.setLastSyncTime(System.currentTimeMillis());
+	                ombx.setSyncState(SyncState.ONLINE);
+	            } catch (ServiceException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof java.net.UnknownHostException ||
+                        cause instanceof java.net.NoRouteToHostException ||
+                    	cause instanceof java.net.SocketTimeoutException ||
+                    	cause instanceof java.net.ConnectException ||
+                    	cause instanceof org.apache.commons.httpclient.ConnectTimeoutException) {
+                    	ombx.setSyncState(SyncState.OFFLINE);
+                    	OfflineLog.offline.info(cause + "; user=" + username);
+	                } else {
+	                	ombx.setSyncState(SyncState.ERROR);
+	                    OfflineLog.offline.error("failed to sync account " + username, e);
+	                }
+	            } catch (Exception e) {
+	                ombx.setSyncState(SyncState.ERROR);
+	                OfflineLog.offline.error("unexpected exception during sync for account " + username, e);
+	            } finally {
+	            	if (ombx.getSyncState() != SyncState.OFFLINE || ombx.incrementRetryCount() >= OfflineLC.zdesktop_retry_limit.intValue()) {
+	            		ombx.resetRetryCount();
+	            		ombx.setLastSyncTime(System.currentTimeMillis());	
+	            	}
+	            	ombx.unlockMailbox();
+	            }
+            } else {
+            	OfflineLog.offline.debug("sync already in progress");
             }
         }
     }

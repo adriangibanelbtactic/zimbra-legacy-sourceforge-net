@@ -39,7 +39,9 @@ import javax.servlet.http.HttpServletResponse;
 import com.zimbra.cs.index.MailboxIndex;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mime.Mime;
+import com.zimbra.cs.service.UserServlet;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet.Context;
 import com.zimbra.cs.service.mail.ImportContacts;
@@ -66,7 +68,10 @@ public class CsvFormatter extends Formatter {
         StringBuffer sb = new StringBuffer();
         try {
             iterator = getMailItems(context, -1, -1, Integer.MAX_VALUE);
-            ContactCSV.toCSV(iterator, sb);
+            String format = context.req.getParameter(UserServlet.QP_CSVFORMAT);
+            ContactCSV.toCSV(format, iterator, sb);
+        } catch (ContactCSV.ParseException e) {
+            throw MailServiceException.UNABLE_TO_IMPORT_CONTACTS("could not generate CSV", e);
         } finally {
             if (iterator instanceof QueryResultIterator)
                 ((QueryResultIterator) iterator).finished();
@@ -90,7 +95,8 @@ public class CsvFormatter extends Formatter {
     public void saveCallback(byte[] body, Context context, String contentType, Folder folder, String filename) throws UserServletException, ServiceException {
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(new ByteArrayInputStream(body), "UTF-8"));
-            List<Map<String, String>> contacts = ContactCSV.getContacts(reader);
+            String format = context.req.getParameter(UserServlet.QP_CSVFORMAT);
+            List<Map<String, String>> contacts = ContactCSV.getContacts(reader, format);
             ItemId iidFolder = new ItemId(folder);
             ImportContacts.ImportCsvContacts(context.opContext, context.targetMailbox, iidFolder, contacts, null);
         } catch (ContactCSV.ParseException e) {

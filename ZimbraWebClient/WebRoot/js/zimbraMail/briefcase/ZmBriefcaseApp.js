@@ -34,15 +34,15 @@ ZmEvent.S_DOCUMENT				= "DOCUMENT";
 ZmEvent.S_BRIEFCASE				= "BRIEFCASE";
 ZmItem.PAGE						= ZmEvent.S_PAGE;
 ZmItem.DOCUMENT					= ZmEvent.S_DOCUMENT;
-ZmItem.BRIEFCASE					= ZmEvent.S_BRIEFCASE;
+ZmItem.BRIEFCASE				= ZmEvent.S_BRIEFCASE;
 ZmOrganizer.BRIEFCASE			= ZmEvent.S_BRIEFCASE;
 
 // App-related constants
-ZmApp.BRIEFCASE					= "Briefcase";
-ZmApp.CLASS[ZmApp.BRIEFCASE]		= "ZmBriefcaseApp";
-ZmApp.SETTING[ZmApp.BRIEFCASE]	= ZmSetting.BRIEFCASE_ENABLED;
-ZmApp.LOAD_SORT[ZmApp.BRIEFCASE]	= 60;
-ZmApp.QS_ARG[ZmApp.BRIEFCASE]	= "documents";
+ZmApp.BRIEFCASE							= "Briefcase";
+ZmApp.CLASS[ZmApp.BRIEFCASE]			= "ZmBriefcaseApp";
+ZmApp.SETTING[ZmApp.BRIEFCASE]			= ZmSetting.BRIEFCASE_ENABLED;
+ZmApp.LOAD_SORT[ZmApp.BRIEFCASE]		= 60;
+ZmApp.QS_ARG[ZmApp.BRIEFCASE]			= "briefcase";
 
 ZmBriefcaseApp.prototype = new ZmApp;
 ZmBriefcaseApp.prototype.constructor = ZmBriefcaseApp;
@@ -131,6 +131,11 @@ function() {
 								 tooltipKey:	"searchForPages",
 								 icon:			"SearchNotes"
 								});*/
+};
+
+ZmBriefcaseApp.prototype._setupCurrentAppToolbar =
+function() {
+	ZmCurrentAppToolBar.registerApp(this.getName(), ZmOperation.NEW_BRIEFCASEITEM, ZmOrganizer.BRIEFCASE);
 };
 
 ZmBriefcaseApp.prototype._registerApp =
@@ -399,3 +404,63 @@ ZmBriefcaseApp.prototype.getBriefcaseController = function() {
 	return this._briefcaseController;
 };
 
+ZmBriefcaseApp.prototype.createFromAttachment =
+function(msgId, partId,name) {
+	var loadCallback = new AjxCallback(this,this._handleCreateFromAttachment,[msgId,partId,name]);
+	AjxDispatcher.require(["BriefcaseCore","Briefcase"], false, loadCallback);
+};
+
+ZmBriefcaseApp.prototype._handleCreateFromAttachment =
+function(msgId, partId, name) {
+	if(this._deferredFolders.length != 0){
+		this._createDeferredFolders(ZmApp.BRIEFCASE);
+	}
+	var copyToDialog = this._copyToDialog = this._appCtxt.getChooseFolderDialog();
+	var _chooseCb = new AjxCallback(this, this._chooserCallback,[msgId,partId,name]);
+	ZmController.showDialog(copyToDialog, _chooseCb, this._getCopyParams());
+};
+
+
+ZmBriefcaseApp.prototype._getCopyParams =
+function() {
+	var org = ZmOrganizer.BRIEFCASE;
+	var title = ZmMsg.addToBriefcase;
+	return {treeIds:[org], overviewId:"ZmListController",
+			title:title, description:ZmMsg.targetFolder};
+};
+
+ZmBriefcaseApp.prototype._chooserCallback =
+function(msgId, partId, name, folder) {
+	var bController = this.getBriefcaseController();
+	var callback = new AjxCallback(this,this.handleDuplicateCheck,[msgId, partId, name, folder.id]);
+	bController.getItemsInFolder(folder.id, callback);
+};
+
+ZmBriefcaseApp.prototype.handleDuplicateCheck =
+function(msgId, partId, name, folderId,items) {
+
+	var bController = this.getBriefcaseController();
+	if( bController.isReadOnly(folderId) ){
+		ZmOrganizer._showErrorMsg(this._appCtxt, ZmMsg.errorPermission);	
+		return;
+	}else if(bController.isShared(folderId)) {
+		ZmOrganizer._showErrorMsg(this._appCtxt,ZmMsg.sharedFolderNotSupported);
+		return;
+	}
+
+	var itemFound = false;
+	for(var i in items){
+		var item = items[i];		
+		if(item.name == name){
+			itemFound = true;
+			break;
+		}
+	}
+	if(!itemFound){	
+		var srcData = new ZmBriefcaseItem(this._appCtxt);	
+		srcData.createFromAttachment(msgId, partId, name, folderId);
+	}else{
+		var	msg = AjxMessageFormat.format(ZmMsg.errorFileAlreadyExists, name);
+		ZmOrganizer._showErrorMsg(this._appCtxt, msg);
+	}
+};

@@ -107,7 +107,7 @@ function(actionCode) {
 
 ZmTaskListController.prototype.quickSave =
 function(name, callback) {
-	var folderId = this._activeSearch.search.folderId;
+	var folderId = (this._activeSearch && this._activeSearch.search) ? this._activeSearch.search.folderId : null;
 
 	var task = new ZmTask(this._appCtxt, this._list, null, folderId);
 	task.setName(name);
@@ -155,14 +155,13 @@ function(view) {
 
 ZmTaskListController.prototype._getToolBarOps =
 function() {
-	var list = [ZmOperation.NEW_MENU, ZmOperation.TAG_MENU];
-	list.push(ZmOperation.SEP);
-	list.push(ZmOperation.DELETE, ZmOperation.MOVE);
-	if (this._appCtxt.get(ZmSetting.PRINT_ENABLED))
-		list.push(ZmOperation.PRINT);
-	list.push(ZmOperation.SEP);
-	list.push(ZmOperation.EDIT);
-	return list;
+	return [ZmOperation.NEW_MENU,
+			ZmOperation.SEP,
+			ZmOperation.EDIT,
+			ZmOperation.SEP,
+			ZmOperation.DELETE, ZmOperation.MOVE, ZmOperation.PRINT,
+			ZmOperation.SEP,
+			ZmOperation.TAG_MENU];
 };
 
 ZmTaskListController.prototype._initializeToolBar =
@@ -170,8 +169,6 @@ function(view) {
 	if (this._toolbar[view]) return;
 
 	ZmListController.prototype._initializeToolBar.call(this, view);
-
-//	this._setupViewMenu(view);
 
 	this._setNewButtonProps(view, ZmMsg.createNewTask, "NewTask", "NewTaskDis", ZmOperation.NEW_TASK);
 
@@ -199,7 +196,7 @@ function(parent, num) {
 	ZmListController.prototype._resetOperations.call(this, parent, num);
 
 	// a valid folderId means user clicked on an addrbook
-	var folderId = this._activeSearch.search.folderId;
+	var folderId = (this._activeSearch && this._activeSearch.search) ? this._activeSearch.search.folderId : null;
 	if (folderId) {
 		var folder = this._appCtxt.getById(folderId);
 		var isShare = folder && folder.link;

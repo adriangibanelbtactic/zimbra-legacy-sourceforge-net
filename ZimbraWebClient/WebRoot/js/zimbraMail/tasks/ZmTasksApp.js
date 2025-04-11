@@ -112,9 +112,15 @@ function() {
 	ZmSearchToolBar.addMenuItem(ZmItem.TASK,
 								{msgKey:		"tasks",
 								 tooltipKey:	"searchTasks",
-								 icon:			"SearchTasks",
+								 icon:			"TaskList",
+								 shareIcon:		"SharedTaskList",
 								 setting:		ZmSetting.TASKS_ENABLED
 								});
+};
+
+ZmTasksApp.prototype._setupCurrentAppToolbar =
+function() {
+	ZmCurrentAppToolBar.registerApp(this.getName(), ZmOperation.NEW_TASK_FOLDER, ZmOrganizer.TASKS);
 };
 
 ZmTasksApp.prototype._registerApp =

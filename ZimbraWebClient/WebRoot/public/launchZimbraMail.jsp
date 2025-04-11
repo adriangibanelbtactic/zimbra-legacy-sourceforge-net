@@ -13,6 +13,7 @@
 <html>
 <head>
 <!--
+ launchZimbraMail.jsp
  * ***** BEGIN LICENSE BLOCK *****
  * Version: ZPL 1.2
  *
@@ -127,10 +128,11 @@
 </script>
 
 <jsp:include page="Messages.jsp"/>
-<script type="text/javascript" src="<%=contextPath %>/js/keys/AjxKeys,ZmKeys.js<%=ext %>?v=<%=vers %>"></script>
+<script type="text/javascript" src="<%=contextPath %>/js/keys/AjxKeys,ZmKeys.js<%=ext %>?v=<%=vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>"></script>
 <style type="text/css">
 <!--
-@import url(<%= contextPath %>/css/imgs,common,dwt,msgview,login,zm,spellcheck,wiki,<%= skin %>_imgs,skin.css?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>&skin=<%= skin %>);
+@import url(<%= contextPath %>/css/common,dwt,zm?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>&skin=<%= skin %>);
+@import url(<%= contextPath %>/css/imgs,<%= skin %>_imgs,skin.css?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>&skin=<%= skin %>);
 -->
 </style>
 

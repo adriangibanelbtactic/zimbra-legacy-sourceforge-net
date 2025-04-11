@@ -53,8 +53,9 @@ ZmPortalApp.prototype._registerApp = function() {
 
 ZmApp.PORTAL                    = "Portal";
 ZmApp.CLASS[ZmApp.PORTAL]		= "ZmPortalApp";
-ZmApp.SETTING[ZmApp.PORTAL]	= ZmSetting.PORTAL_ENABLED;
+ZmApp.SETTING[ZmApp.PORTAL]		= ZmSetting.PORTAL_ENABLED;
 ZmApp.LOAD_SORT[ZmApp.PORTAL]	= 1;
+ZmApp.QS_ARG[ZmApp.PORTAL]		= "home";
 
 ZmEvent.S_PORTLET   = "PORTLET";
 ZmItem.PORTLET      = ZmEvent.S_PORTLET;
@@ -159,6 +160,7 @@ ZmPortalApp.prototype._handleLoadManifest = function(callback, req) {
 };
 
 ZmPortalApp.prototype.getPortalController = function() {
+	AjxDispatcher.require("Portal");
 	if (!this._portalController) {
 		this._portalController = new ZmPortalController(this._appCtxt, this._container, this);
 	}
@@ -166,17 +168,14 @@ ZmPortalApp.prototype.getPortalController = function() {
 };
 
 ZmPortalApp.prototype.getPortletMgr = function() {
+	AjxDispatcher.require("Portal");
     if (!this._portletMgr) {
         this._portletMgr = new ZmPortletMgr(this._appCtxt);
     }
     return this._portletMgr;
 };
 
-//
-// Protected methods
-//
-
-ZmPortalApp.prototype._getOverviewTrees =
+ZmPortalApp.prototype.getOverviewPanelContent =
 function() {
 	var apps = [];
 	for (var name in ZmApp.CHOOSER_SORT) {
@@ -190,11 +189,11 @@ function() {
 		if (app.name == this._name) continue;
 
 		appName = app.name;
-		break; 
+		break;
 	}
 	if (appName) {
 		var app = this._appCtxt.getApp(appName);
-		return app._getOverviewTrees();
+		return app.getOverviewPanelContent();
 	}
 	return null;
 };

@@ -24,36 +24,36 @@
  */
 
 /**
-* Creates a new search with the given properties.
-* @constructor
-* @class
-* This class represents a search to be performed on the server. It has properties for
-* the different search parameters that may be used. It can be used for a regular search,
-* or to search within a conv. The results are returned via a callback.
-*
-* @param appCtxt					[ZmAppCtxt]		the app context
-* @param query						[string]		query string
-* @param types						[AjxVector]		item types to search for
-* @param sortBy						[constant]*		sort order
-* @param offset						[int]*			starting point within result set
-* @param limit						[int]*			number of results to return
-* @param contactSource				[constant]*		where to search for contacts (GAL or personal)
-* @param isGalAutocompleteSearch	[boolean]*		if true, autocomplete against GAL
-* @param lastId						[int]*			ID of last item displayed (for pagination)
-* @param lastSortVal				[string]*		value of sort field for above item
-* @param fetch						[boolean]*		if true, fetch first hit message
-* @param searchId					[int]*			ID of owning search folder (if any)
-* @param conds						[array]*		list of search conditions (SearchCalendarResourcesRequest)
-* @param attrs						[array]*		list of attributes to return (SearchCalendarResourcesRequest)
-* @param field						[string]*		field to search within (instead of default)
-* @param soapInfo					[object]*		object with method, namespace, and response fields for creating soap doc
-*/
+ * Creates a new search with the given properties.
+ * @constructor
+ * @class
+ * This class represents a search to be performed on the server. It has properties for
+ * the different search parameters that may be used. It can be used for a regular search,
+ * or to search within a conv. The results are returned via a callback.
+ *
+ * @param query						[string]		query string
+ * @param queryHint					[string]*		query string that gets appended to the query but not something the user needs to know about
+ * @param types						[AjxVector]		item types to search for
+ * @param sortBy					[constant]*		sort order
+ * @param offset					[int]*			starting point within result set
+ * @param limit						[int]*			number of results to return
+ * @param contactSource				[constant]*		where to search for contacts (GAL or personal)
+ * @param isGalAutocompleteSearch	[boolean]*		if true, autocomplete against GAL
+ * @param lastId					[int]*			ID of last item displayed (for pagination)
+ * @param lastSortVal				[string]*		value of sort field for above item
+ * @param fetch						[boolean]*		if true, fetch first hit message
+ * @param searchId					[int]*			ID of owning search folder (if any)
+ * @param conds						[array]*		list of search conditions (SearchCalendarResourcesRequest)
+ * @param attrs						[array]*		list of attributes to return (SearchCalendarResourcesRequest)
+ * @param field						[string]*		field to search within (instead of default)
+ * @param soapInfo					[object]*		object with method, namespace, and response fields for creating soap doc
+ */
 ZmSearch = function(appCtxt, params) {
 
 	this._appCtxt = appCtxt;
-
 	if (params) {
 		this.query						= params.query;
+		this.queryHint					= params.queryHint;
 		this.types						= params.types;
 		this.sortBy						= params.sortBy;
 		this.offset						= params.offset;
@@ -80,6 +80,13 @@ ZmSearch = function(appCtxt, params) {
 	}
 	this.isGalSearch = false;
 	this.isCalResSearch = false;
+
+	if (ZmSearch._mailEnabled == null) {
+		ZmSearch._mailEnabled = this._appCtxt.get(ZmSetting.MAIL_ENABLED);
+		if (ZmSearch._mailEnabled) {
+			AjxDispatcher.require("MailCore");
+		}
+	}
 };
 
 // Search types
@@ -208,17 +215,21 @@ function(params) {
 			var a = this.types.getArray();
 			if (a.length) {
 				var typeStr = [];
-				for (var i = 0; i < a.length; i++)
+				for (var i = 0; i < a.length; i++) {
 					typeStr.push(ZmSearch.TYPE[a[i]]);
+				}
 				method.setAttribute("types", typeStr.join(","));
 				// special handling for showing participants ("To" instead of "From")
-				if (this.folderId == ZmFolder.ID_SENT || this.folderId == ZmFolder.ID_DRAFTS || this.folderId == ZmFolder.ID_OUTBOX)
+				if (this.folderId == ZmFolder.ID_SENT || this.folderId == ZmFolder.ID_DRAFTS || this.folderId == ZmFolder.ID_OUTBOX) {
 					method.setAttribute("recip", "1");
+				}
 				// if we're prefetching the first hit message, also mark it as read
-				if (this.fetch)
+				if (this.fetch) {
 					method.setAttribute("fetch", "1");
-				if (this.markRead)
+				}
+				if (this.markRead) {
 					method.setAttribute("read", "1");
+				}
 			}
 		}
 	}
@@ -298,17 +309,17 @@ function(callback, result) {
 */
 ZmSearch.prototype.getTitle =
 function() {
-	var where = null;
+	var where;
 	if (this.folderId) {
 		var folder = this._appCtxt.getById(this.folderId);
 		if (folder)
 			where = folder.getName(true, ZmOrganizer.MAX_DISPLAY_NAME_LENGTH, true);
 	} else if (this.tagId) {
-			where = this._appCtxt.getById(this.tagId).getName(true, ZmOrganizer.MAX_DISPLAY_NAME_LENGTH, true);
+		where = this._appCtxt.getById(this.tagId).getName(true, ZmOrganizer.MAX_DISPLAY_NAME_LENGTH, true);
 	}
-	var title = where ? [ZmMsg.zimbraTitle, where].join(": ") : 
-						[ZmMsg.zimbraTitle, ZmMsg.searchResults].join(": ");
-	return title;
+	return where
+		? ([ZmMsg.zimbraTitle, where].join(": "))
+		: ([ZmMsg.zimbraTitle, ZmMsg.searchResults].join(": "));
 };
 
 ZmSearch.prototype._getStandardMethod = 
@@ -316,12 +327,21 @@ function(soapDoc) {
 
 	var method = soapDoc.getMethod();
 
-	if (this.sortBy)
+	if (this.sortBy) {
 		method.setAttribute("sortBy", ZmSearch.SORT_BY[this.sortBy]);
+	}
+
+	if (ZmSearch._mailEnabled) {
+		var headerNode;
+		for (var hdr in ZmMailMsg.getAdditionalHeaders()) {
+			headerNode = soapDoc.set('header', null, null);
+			headerNode.setAttribute('n', hdr);
+		}
+	}
 
 	// bug 5771: add timezone and locale info
 	ZmTimezone.set(soapDoc, AjxTimezone.DEFAULT, null);
-	soapDoc.set("locale", AjxEnv.DEFAULT_LOCALE, null);
+	soapDoc.set("locale", this._appCtxt.get(ZmSetting.LOCALE_NAME), null);
 
 	if (this.lastId != null && this.lastSortVal) {
 		// cursor is used for paginated searches
@@ -349,8 +369,11 @@ function(soapDoc) {
 	}
 	method.setAttribute("limit", this.limit);
 
-	// and of course, always set the query
-	soapDoc.set("query", this.query);
+	// and of course, always set the query and append the query hint if applicable
+	var query = this.queryHint
+		? ([this.query, " (", this.queryHint, ")"].join(""))
+		: this.query;
+	soapDoc.set("query", query);
 
 	// set search field if provided
 	if (this.field) {

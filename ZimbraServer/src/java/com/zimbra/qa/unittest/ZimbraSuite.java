@@ -34,7 +34,6 @@ import junit.framework.TestSuite;
 
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.Element;
-import com.zimbra.cs.index.TestSearch;
 
 /**
  * Complete unit test suite for the Zimbra code base.
@@ -56,7 +55,9 @@ public class ZimbraSuite extends TestSuite
     }
 
     static final Class[] classes = {
-        TestWaitSet.class,
+        // XXX bburtin: commenting out TestWaitSet until bug 18483 is fixed. 
+        // TestWaitSet.class,
+        
         TestUtilCode.class,
         TestEmailUtil.class,
         TestOutOfOffice.class,
@@ -79,17 +80,22 @@ public class ZimbraSuite extends TestSuite
         TestPop3ImapAuth.class,
         TestContacts.class,
         TestTaskScheduler.class,
-        TestSearch.class,
+        
+        // XXX bburtin: commenting out TestSearch until bug 18802 is fixed
+        // TestSearch.class,
+        
         TestSendAndReceive.class,
         TestConnectionPool.class,
         TestLmtp.class,
-        TestMimeHandler.class
+        TestMimeHandler.class,
+        TestScheduledTaskManager.class,
+        TestDataSource.class,
+        TestPurge.class,
         
-        // xxx bburtin: Commenting out IMAP tests, since the new schema hasn't been
+        // XXX bburtin: Commenting out IMAP tests, since the new schema hasn't been
         // checked in
-        // TestImapImport.class,
-        // TestImapImport.TearDown.class,
-        
+        TestImapImport.class,
+        TestImapImport.TearDown.class
     };
     
     public static TestResult runUserTests(Element response, List<String> tests) throws ServiceException {

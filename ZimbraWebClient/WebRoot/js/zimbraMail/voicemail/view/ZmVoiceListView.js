@@ -76,6 +76,11 @@ function(item) {
 	return item.getCallingParty(type);
 };
 
+ZmVoiceListView.prototype.getLimit =
+function() {
+	return this._appCtxt.get(ZmSetting.VOICE_PAGE_SIZE);
+};
+
 ZmVoiceListView.prototype._getCallType =
 function() {
 	return this._folder ? this._folder.callType : ZmVoiceFolder.VOICEMAIL;
@@ -91,7 +96,9 @@ function(htmlArr, idx, voicemail, field, colIdx, params) {
 	if (field == ZmVoiceListView.F_CALLER) {
 		htmlArr[idx++] = this._getCallerNameHtml(voicemail);
 	} else if (field == ZmVoiceListView.F_DATE) {
-		htmlArr[idx++] = AjxDateUtil.computeDateStr(params.now, voicemail.date);
+		htmlArr[idx++] = AjxDateUtil.computeWordyDateStr(params.now, voicemail.date);
+	} else {
+		idx = ZmListView.prototype._getCellContents.call(this, htmlArr, idx, voicemail, field, colIdx, params); 
 	}
 	
 	return idx;

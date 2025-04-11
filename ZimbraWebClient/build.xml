@@ -560,16 +560,36 @@ if (ext == null) ext = "";
   </target>
 
   <target name='customer-skin' if='env.CUSTOMER_SKIN'>
-	<dirset id='customer.skins.dirset' dir='../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot' includes='skins/*'>
-	</dirset>
+	<dirset id='customer.skins.dirset' dir='../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot' includes='skins/*' />
 	<pathconvert property='customer.skins.dirs' refid='customer.skins.dirset' pathsep=','>
-		<flattenmapper />	
+		<flattenmapper />
 	</pathconvert>
 	<echo>dirs: ${customer.skins.dirs}</echo>
-	<foreach target='build-skin-images' list='${customer.skins.dirs}' param='skindir'>
-	  <param name="csspathprefix" value="/zimbra/img/"/>
-	  <param name="skinbasedir" value="../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot"/>
-	</foreach>
+	<for list='${customer.skins.dirs}' param='skindir'>
+		<sequential>
+			<if>
+				<available file="../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot/skins/@{skindir}/img/icons" />
+				<then>
+					<mkdir dir="${build.dir}/WebRoot/skins/@{skindir}/img/icons" />
+					<copy todir="${build.dir}/WebRoot/skins/@{skindir}/img/icons">
+						<fileset dir="img/loRes" />
+					</copy>
+					<mkdir dir="${build.dir}/WebRoot/skins/@{skindir}/img/icons/dwt"/>
+					<copy todir="${build.dir}/WebRoot/skins/@{skindir}/img/icons/dwt">
+						<fileset dir="${ajaxdwt.images.dir}" />
+					</copy>
+					<copy todir="${build.dir}/WebRoot/skins/@{skindir}/img/icons" overwrite="true">
+						<fileset dir="../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot/skins/@{skindir}/img/icons" />
+					</copy>
+				</then>
+			</if>
+			<antcall target='build-skin-images'>
+				<param name="skindir" value="@{skindir}" />
+				<param name="csspathprefix" value="/zimbra/img/"/>
+				<param name="skinbasedir" value="../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot"/>
+			</antcall>
+		</sequential>
+	</for>
   </target>
 
   <target name='package-skin'>
@@ -784,7 +804,11 @@ if (ext == null) ext = "";
   ZimbraWebClient webapp, so if there are any java changes, another
   deploy will have to be run.
   -->
-  <target name="dev-sync" depends='templates' description="Web Client Quick Sync">
+  <target name="dev-sync" depends='templates,dev-sync-copy' description="Web Client Quick Sync">
+  </target>
+  
+  <!-- copy files only (without munging templates) -->
+  <target name='dev-sync-copy'>
     <copy verbose="true" todir="${deploy.dir}${deploy.path}" failonerror="false">
         <fileset dir="../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/ZimbraWebClient/WebRoot" includes="skins/**" />
         <fileset dir="build/WebRoot" includes="skins/**/*.js" />
@@ -832,6 +856,12 @@ if (ext == null) ext = "";
   	<copy verbose="true" todir="${deploy.dir}${deploy.path}/h">
         <fileset dir="WebRoot/h" includes="**"/>
     </copy>
+  	<copy verbose="true" todir="${deploy.dir}${deploy.path}/m">
+        <fileset dir="WebRoot/m" includes="**"/>
+    </copy>
+  	<copy verbose="true" todir="${deploy.dir}${deploy.path}/images/mobile">
+        <fileset dir="WebRoot/m/img" includes="**"/>
+    </copy>
     <copy verbose="true" todir="${deploy.dir}${deploy.path}/yui">
         <fileset dir="WebRoot/yui" includes="**"/>
     </copy>
@@ -849,20 +879,17 @@ if (ext == null) ext = "";
          Windows you cannot undeploy because Tomcat is unable to
          complete delete the service directory. zimbra-native.jar
          opens a shared library so it should not be in a war file
-         which can be redeployed. Please copy
-         {mail,activation,zimbra-native}.jar to
-         $TOMCAT\common\lib -->
-    <condition property="war.exclude" value="${ical4j.jar},servlet-api.jar,jsp-api.jar,mail.jar,activation.jar,zimbra-native.jar,KeyView.jar">
-        <isset property="use-tomcat"/>
-    </condition>
-    <!-- jetty loads jetty-util*.jar, log4j*.jar and slf4j*.jar, and ldap.jar conflicts with jetty naming stuff  -->
-    <condition property="war.exclude" value="${ical4j.jar},servlet-api.jar,jsp-api.jar,mail.jar,activation.jar,zimbra-native.jar,KeyView.jar,ldap.jar,jetty-util-*.jar,log4j*.jar,*slf4j*.jar">
-        <isset property="use-jetty"/>
-    </condition>
+         which can be redeployed.-->
+        <condition property="war.include" value="log4j*.jar">
+                <isset property="use-tomcat"/>
+        </condition>
+        <!-- jetty loads jetty-util*.jar, log4j*.jar and slf4j*.jar -->
+        <condition property="war.include" value="dummy.jar">
+                <isset property="use-jetty"/>
+        </condition>
 	
 	<property name="war.exclude"
-              value="servlet-api.jar,jsp-api.jar,mail.jar,activation.jar,zimbra-native.jar,KeyView.jar,
-              ant-contrib-1.0b1.jar,catalina-ant.jar"/>
+              value="servlet-api.jar,*ant*.jar,commons-cli*.jar,servlet-api.jar,custom_rhino.jar"/>
 
     <target name="external-jar" depends="build-init">
         <ant dir="${server.dir}" target="jar" inheritAll="false"/>
@@ -885,7 +912,6 @@ if (ext == null) ext = "";
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@mailUrl@" value="${mail.url}" />
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@adminUrl@" value="${admin.url}" />  	
     <war warfile="${warfile}" webxml="${build.dir}/WebRoot/WEB-INF/web.xml">
-      <lib dir="${jars.dir}" includes="*.jar" excludes="servlet-api.jar,*ant*.jar"/>
       <classes dir="${build.dir}/classes" includes="**/*.class" excludes="com/zimbra/kabuki/tools/**,**/build/*"/>
       <classes dir="${build.dir}/i18n" includes="msgs/*.properties" />
       <classes dir='${build.dir}/WebRoot/js/ajax/config' includes='${l10n.includes}' excludes='${l10n.excludes}' />
@@ -896,16 +922,18 @@ if (ext == null) ext = "";
                includes="*,img/**,js/**,css/**,test/**,skins/**,portals/**"
                excludes="js/zimbraAdmin/**,js/ZimbraAdmin*all.*,**/config/msgs/**,**/config/keys/**"
       />
-      <fileset dir="${build.dir}/WebRoot" includes="public/**" excludes="public/admin.jsp,public/XForms.jsp,public/ZimbraAdmin.jsp,**/config/msgs/**,**/config/keys/**"/>
+      <fileset dir="${build.dir}/WebRoot" includes="public/**" excludes="public/admin.jsp,public/delegatedAuth.html,public/XForms.jsp,public/ZimbraAdmin.jsp,**/config/msgs/**,**/config/keys/**"/>
         <lib dir="${server.build.dir}" includes="zimbrastore.jar"/>
         <lib dir="${common.build.dir}" includes="zimbracommon.jar"/>
         <lib dir="${zimbratl.build.dir}" includes="zimbrataglib.jar"/>
-        <lib dir="${common.jars.dir}" includes="**.jar" excludes="${war.exclude}"/>
+        <lib dir="${common.jars.dir}" includes="${war.include}"/>
         <lib dir="${jars.dir}" includes="**.jar" excludes="${war.exclude}"/>
         <webinf dir="WebRoot/WEB-INF" includes="tags/**" excludes="**/web.xml"/>
         <zipfileset dir="WebRoot/h" includes="**" prefix="h"/>
+        <zipfileset dir="WebRoot/m" includes="**" prefix="m"/>
         <zipfileset dir="WebRoot/yui" includes="**" prefix="yui"/>
         <zipfileset dir="${ajaxdwt.images.dir}" prefix="images/dwt"/>
+        <zipfileset dir="WebRoot/m/img" prefix="images/mobile"/>
         <zipfileset dir="img/loRes" prefix="images"/>
         <zipfileset dir="WebRoot/skins/_base/logos" prefix="images/logos"/>
     </war>
@@ -918,7 +946,6 @@ if (ext == null) ext = "";
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@mailUrl@" value="${mail.url}" />
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@adminUrl@" value="${admin.url}" />		
     <war warfile="${warfile}" webxml="${build.dir}/WebRoot/WEB-INF/web.xml">
-      <lib dir="${jars.dir}" includes="*.jar" excludes="servlet-api.jar,*ant*.jar,gifencoder.jar,commons-cli-1.0.jar"/>
       <classes dir="${build.dir}/i18n" includes="msgs/*.properties" />
       <classes dir='${build.dir}/WebRoot/js/ajax/config' includes='${l10n.includes}' excludes='${l10n.excludes}' />
       <classes dir="${build.dir}/WebRoot/js/zimbra/config" includes='${l10n.includes}' excludes='${l10n.excludes}' />
@@ -931,18 +958,20 @@ if (ext == null) ext = "";
                includes="*,img/**,js/**,css/**,skins/**,portals/**"
                excludes="js/zimbraAdmin/**,js/Admin*,js/XForms*,**/config/msgs/**,**/config/keys/**,**/xforms/**,**/test/**"
       />
-      <fileset dir="${build.dir}/WebRoot" includes="public/**" excludes="public/admin.jsp,public/XForms.jsp,public/ZimbraAdmin.jsp,**/config/msgs/**,**/config/keys/**"/>
+      <fileset dir="${build.dir}/WebRoot" includes="public/**" excludes="public/admin.jsp,public/delegatedAuth.html,public/XForms.jsp,public/ZimbraAdmin.jsp,**/config/msgs/**,**/config/keys/**"/>
 
         <!-- ======= HTML ========== -->
         <lib dir="${server.build.dir}" includes="zimbrastore.jar"/>
         <lib dir="${common.build.dir}" includes="zimbracommon.jar"/>
         <lib dir="${zimbratl.build.dir}" includes="zimbrataglib.jar"/>
-        <lib dir="${common.jars.dir}" includes="**.jar" excludes="${war.exclude}"/>
+        <lib dir="${common.jars.dir}" includes="${war.include}"/>
         <lib dir="${jars.dir}" includes="**.jar" excludes="${war.exclude}"/>
         <webinf dir="WebRoot/WEB-INF" includes="tags/**" excludes="**/web.xml"/>
         <zipfileset dir="WebRoot/h" includes="**" prefix="h"/>
+        <zipfileset dir="WebRoot/m" includes="**" prefix="m"/>
         <zipfileset dir="WebRoot/yui" includes="**" prefix="yui"/>
         <zipfileset dir="${ajaxdwt.images.dir}" prefix="images/dwt"/>
+        <zipfileset dir="WebRoot/m/img" prefix="images/mobile"/>
         <zipfileset dir="img/loRes" prefix="images"/>
         <zipfileset dir="WebRoot/skins/_base/logos" prefix="images/logos"/>
         <!-- ======= HTML ========== -->
@@ -982,7 +1011,7 @@ if (ext == null) ext = "";
   <!-- admin console targets -->
   <target name="admin-dev-sync" depends='templates' description="Admin Quick Sync">
     <copy verbose="true" todir="${deploy.dir}${deploy.admin.path}">
-      <fileset dir="WebRoot" includes="js/**,test/**,public/**,skins/**" excludes="public/launch*,js/*/package/**,js/zimbraMail/**,public/Login.jsp,public/launchZimbraMail.jsp,public/ZimbraMail.jsp,public/ZimbraMailNewCompose.jsp,public/Messages.jsp"/>
+      <fileset dir="WebRoot" includes="js/**,test/**,public/**,skins/**" excludes="public/launch*,js/*/package/**,js/zimbraMail/**,public/login.jsp,public/Login.jsp,public/launchZimbraMail.jsp,public/ZimbraMail.jsp,public/ZimbraMailNewCompose.jsp,public/Messages.jsp"/>
       <fileset dir='${build.dir}/WebRoot' includes='public/jsp/**'/>
       <fileset dir='${build.dir}/WebRoot' includes='img/**'/>
     </copy>
@@ -1030,9 +1059,9 @@ if (ext == null) ext = "";
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@mailUrl@" value="${mail.url}" />
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@adminUrl@" value="${admin.url}" />  	
     <war destfile="${adminwarfile}" webxml="${build.dir}/WebRoot/WEB-INF/web.xml">
-      <lib dir="${jars.dir}" includes="*.jar" excludes="servlet-api.jar,*ant*.jar,gifencoder.jar,commons-cli-1.0.jar"/>
+      <lib dir="${jars.dir}" includes="*.jar" excludes="${war.exclude}"/>
       <lib dir="${common.build.dir}" includes="zimbracommon.jar"/>
-      <lib dir="${common.jars.dir}" includes="**.jar" excludes="${war.exclude}"/>
+      <lib dir="${common.jars.dir}" includes="${war.include}"/>
   	  <classes dir="${build.dir}/i18n" includes="msgs/*.properties" />
       <classes dir='${build.dir}/WebRoot/js/ajax/config' includes='${l10n.includes}' excludes='${l10n.excludes}' />
       <classes dir="${build.dir}/WebRoot/js/zimbra/config" includes='${l10n.includes}' excludes='${l10n.excludes}' />
@@ -1042,7 +1071,7 @@ if (ext == null) ext = "";
       <webinf dir="WebRoot/WEB-INF" includes="tlds/*"/>
       <fileset dir="${build.dir}/WebRoot" includes="*,img/**,js/ajax/**,js/zimbra/**,js/zimbraAdmin/**,css/**,skins/**" excludes="js/zimbraMail/**,**/config/msgs/**,**/*.psd"/>
       <fileset dir="${build.dir}/WebRoot" includes="js/Boot*.*,js/Ajax*.*,js/XForms*.*,js/Zimbra*.*,js/Admin*.*" excludes="js/AjaxZWC*,js/AjaxLogin*,js/ZimbraLogin*" />
-      <fileset dir="${build.dir}/WebRoot" includes="public/*" excludes="public/launch*,public/Login.jsp,public/SoundPlayer/**,public/Spreadsheet*"/>
+      <fileset dir="${build.dir}/WebRoot" includes="public/*" excludes="public/launch*,public/login.jsp,public/Login.jsp,public/SoundPlayer/**,public/Spreadsheet*"/>
       <fileset dir="${build.dir}/WebRoot" includes="public/jsp/Admin.jsp,public/jsp/Ajax.jsp,public/jsp/Boot.jsp,public/jsp/XForms.jsp,public/jsp/Zimbra.jsp"/>
       <fileset dir="${build.dir}/WebRoot" includes="adminhelp/html/**"/>
       <fileset dir="${build.dir}/WebRoot" includes="adminhelp/pdf/*.pdf"/>		
@@ -1055,9 +1084,9 @@ if (ext == null) ext = "";
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@mailUrl@" value="${mail.url}" />
     <replace file="${build.dir}/WebRoot/WEB-INF/web.xml" token="@adminUrl@" value="${admin.url}" />  	
     <war destfile="${adminwarfile}" webxml="${build.dir}/WebRoot/WEB-INF/web.xml">
-      <lib dir="${jars.dir}" includes="*.jar" excludes="servlet-api.jar,*ant*.jar"/>
+      <lib dir="${jars.dir}" includes="*.jar" excludes="${war.exclude}"/>
       <lib dir="${common.build.dir}" includes="zimbracommon.jar"/>
-      <lib dir="${common.jars.dir}" includes="**.jar" excludes="${war.exclude}"/>
+      <lib dir="${common.jars.dir}" includes="${war.include}"/>
    	  <classes dir="${build.dir}/i18n" includes="msgs/*.properties" />
       <classes dir='${build.dir}/WebRoot/js/ajax/config' includes='${l10n.includes}' excludes='${l10n.excludes}' />
       <classes dir="${build.dir}/WebRoot/js/zimbra/config" includes='${l10n.includes}' excludes='${l10n.excludes}' />
@@ -1067,7 +1096,7 @@ if (ext == null) ext = "";
       <webinf dir="WebRoot/WEB-INF" includes="tlds/*"/>
       <fileset dir="${build.dir}/WebRoot" includes="*,img/**,js/ajax/**,js/zimbra/**,js/zimbraAdmin/**,css/**,skins/**" excludes="js/zimbraMail/**,**/config/msgs/**,**/*.psd"/>
       <fileset dir="${build.dir}/WebRoot" includes="js/Boot*.*,js/Ajax*.*,js/XForms*.*,js/Zimbra*.*,js/Admin*.*" excludes="js/AjaxZWC*,js/AjaxLogin*,js/ZimbraLogin*" />
-      <fileset dir="${build.dir}/WebRoot" includes="public/*" excludes="public/launch*,public/Login.jsp"/>
+      <fileset dir="${build.dir}/WebRoot" includes="public/*" excludes="public/launch*,public/login.jsp,public/Login.jsp"/>
       <fileset dir="${build.dir}/WebRoot" includes="public/jsp/Admin.jsp,public/jsp/Ajax.jsp,public/jsp/Boot.jsp,public/jsp/XForms.jsp,public/jsp/Zimbra.jsp"/>
       <fileset dir="${build.dir}/WebRoot" includes="adminhelp/html/**"/>
       <fileset dir="${build.dir}/WebRoot" includes="adminhelp/pdf/*.pdf"/>		
@@ -1103,18 +1132,30 @@ if (ext == null) ext = "";
         <ant dir="${server.dir}" target="restart-webserver" />
     </target>
 
-    <target name="deploy-war">
-  		<if><isset property="use-tomcat"/><then>
-  			<echo>Deploy ${param.warfile} to ${deploy.url}${param.path}</echo>
+	<target name="deploy-war">
+	<if><isset property="use-tomcat"/><then>
+		<echo>Deploy ${param.warfile} to ${deploy.url}${param.path}</echo>
 			<deploy url="${deploy.url}" username="${deploy.user}" password="${deploy.password}" path="${param.path}" war="${param.warfile}" update="true"/>
-  		</then><else>
-  			<echo>Deploy ${param.warfile} to ${webserver.root.dir}/webapps</echo>
-  			<ant dir="../ZimbraServer" target="stop-jetty" inheritAll="false"/>
+	</then><else>
+		<echo>Deploy ${param.warfile} to ${webserver.root.dir}/webapps</echo>
+			<property name='webapp.dir' value='${webserver.root.dir}/webapps/${param.dirname}' />
+			<property name='webapp.file' value='${webserver.root.dir}/webapps/${param.warfilename}' />
+			<ant dir="../ZimbraServer" target="stop-jetty" inheritAll="false"/>
+			<delete dir="${webapp.dir}"/>
+			<delete file="${webapp.file}"/>
 			<copy file="${param.warfile}" todir="${webserver.root.dir}/webapps"/>
-            <mkdir dir='${webserver.root.dir}/webapps/${param.dirname}' />
-            <unzip dest='${webserver.root.dir}/webapps/${param.dirname}' src="${webserver.root.dir}/webapps/${param.warfilename}" /> 
-            <ant dir="../ZimbraServer" target="start-jetty" inheritAll="false"/>
-  		</else></if>
-  	</target>
+			<mkdir dir='${webapp.dir}' />
+			<unzip dest='${webapp.dir}' src="${webapp.file}" />
+			<replace file="${webapp.dir}/WEB-INF/web.xml" token="%%zimbraMailPort%%" value="7070" />
+			<replace file="${webapp.dir}/WEB-INF/web.xml" token="%%zimbraMailURL%%" value="${mail.url}" />
+			<replace file="${webapp.dir}/WEB-INF/web.xml" token="%%zimbraAdminURL%%" value="${admin.url}" />
+			<ant dir="../ZimbraServer" target="start-jetty" inheritAll="false"/>
+		</else></if>
+		<if><available file='../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/Zimlet' />
+			<then>
+				<ant dir="../ZimbraCustomerServices/${env.CUSTOMER_SKIN}/Zimlet" target="deploy-zimlets" inheritAll="false" />
+			</then>
+		</if>
+	  </target>
 
 </project>

@@ -48,20 +48,20 @@ ZmListController = function(appCtxt, container, app) {
 	if (arguments.length == 0) return;
 	ZmController.call(this, appCtxt, container, app);
 
-	this._toolbar = {};		// ZmButtonToolbar (one per view)
-	this._navToolBar = {};	// ZmNavToolBar (one per view)
-	this._listView = {};	// ZmListView (one per view)
-	this._tabGroups = {};	// DwtTabGroup (one per view)
-	this._list = null;				// ZmList (the data)
-	this._actionMenu = null; 		// ZmActionMenu
+	this._toolbar = {};			// ZmButtonToolbar (one per view)
+	this._navToolBar = {};		// ZmNavToolBar (one per view)
+	this._listView = {};		// ZmListView (one per view)
+	this._tabGroups = {};		// DwtTabGroup (one per view)
+	this._list = null;			// ZmList (the data)
+	this._actionMenu = null; 	// ZmActionMenu
 	this._actionEv = null;
+	this._activeSearch = null;
 
 	this._tagList = this._appCtxt.getTagTree();
 	if (this._tagList) {
 		this._tagChangeLstnr = new AjxListener(this, this._tagChangeListener);
 		this._tagList.addChangeListener(this._tagChangeLstnr);
 	}
-	this._activeSearch = null;
 
 	// create a listener for each operation
 	this._listeners = {};
@@ -77,7 +77,7 @@ ZmListController = function(appCtxt, container, app) {
 	this._listeners[ZmOperation.NEW_MESSAGE] = new AjxListener(this, this._participantComposeListener);
 	this._listeners[ZmOperation.IM] = new AjxListener(this, this._participantImListener);
 	this._listeners[ZmOperation.CONTACT] = new AjxListener(this, this._participantContactListener);
-	this._listeners[ZmOperation.VIEW] = new AjxListener(this, this._viewButtonListener);
+	this._listeners[ZmOperation.VIEW] = new AjxListener(this, this._viewMenuItemListener);
 	this._listeners[ZmOperation.SYNC_OFFLINE] = new AjxListener(this, this._syncOfflineListener);
 
 	this._menuPopdownListener = new AjxListener(this, this._menuPopdownActionListener);
@@ -147,6 +147,13 @@ function(actionCode) {
 	DBG.println(AjxDebug.DBG3, "ZmListController.handleKeyAction");
 	var listView = this._listView[this._currentView];
 
+	// check for action code with argument, eg MoveToFolder3
+	var origActionCode = actionCode;
+	var shortcut = ZmShortcut.parseAction(this._appCtxt, "Global", actionCode);
+	if (shortcut) {
+		actionCode = shortcut.baseAction;
+	}
+
 	switch (actionCode) {
 
 		case DwtKeyMap.DBLCLICK:
@@ -194,7 +201,7 @@ function(actionCode) {
 
 		case ZmKeyMap.TAG:
 			var items = listView.getSelection();
-			if (items && items.length) {
+			if (items && items.length && shortcut) {
 				var tag = this._appCtxt.getById(shortcut.arg);
 				if (tag) {
 					this._doTag(items, tag, true);
@@ -203,7 +210,7 @@ function(actionCode) {
 			break;
 
 		default:
-			return ZmController.prototype.handleKeyAction.call(this, actionCode);
+			return ZmController.prototype.handleKeyAction.call(this, origActionCode);
 	}
 	return true;
 };
@@ -261,29 +268,22 @@ function(view) {
 
 ZmListController.prototype._standardToolBarOps =
 function() {
-	return [ZmOperation.NEW_MENU, ZmOperation.TAG_MENU,
+	return [ZmOperation.NEW_MENU,
 			ZmOperation.SEP,
-			ZmOperation.DELETE, ZmOperation.MOVE,
-			ZmOperation.PRINT_MENU];
+			ZmOperation.DELETE, ZmOperation.MOVE, ZmOperation.PRINT];
 };
 
 ZmListController.prototype._standardActionMenuOps =
 function() {
-	var list = [];
-	if (this._appCtxt.get(ZmSetting.TAGGING_ENABLED))
-		list.push(ZmOperation.TAG_MENU);
-	list.push(ZmOperation.DELETE, ZmOperation.MOVE);
-	if (this._appCtxt.get(ZmSetting.PRINT_ENABLED))
-		list.push(ZmOperation.PRINT);
-	return list;
+	return [ZmOperation.TAG_MENU, ZmOperation.DELETE, ZmOperation.MOVE, ZmOperation.PRINT];
 };
 
 ZmListController.prototype._participantOps =
 function() {
-	var ops = [ZmOperation.SEARCH, ZmOperation.BROWSE,
-		   ZmOperation.NEW_MESSAGE];
-	if (ZmSetting.IM_ENABLED)
+	var ops = [ZmOperation.SEARCH, ZmOperation.BROWSE, ZmOperation.NEW_MESSAGE];
+	if (ZmSetting.IM_ENABLED) {
 		ops.push(ZmOperation.IM);
+	}
 	ops.push(ZmOperation.CONTACT);
 	return ops;
 };
@@ -325,6 +325,10 @@ function(view) {
 	if (tagMenuButton) {
 		tagMenuButton.noMenuBar = true;
 		this._setupTagMenu(this._toolbar[view]);
+	}
+
+	if (this._appCtxt.zimletsPresent()) {
+		this._appCtxt.getZimletMgr().notifyZimlets("initializeToolbar", this._app, this._toolbar[view]);
 	}
 };
 
@@ -551,9 +555,11 @@ function() {
 };
 
 // Switch to selected view.
-ZmListController.prototype._viewButtonListener =
+ZmListController.prototype._viewMenuItemListener =
 function(ev) {
-	if (ev.detail == DwtMenuItem.CHECKED || ev.detail == DwtMenuItem.UNCHECKED)	{
+	if (ev.detail == DwtMenuItem.CHECKED ||
+		ev.detail == DwtMenuItem.UNCHECKED)
+	{
 		this.switchView(ev.item.getData(ZmOperation.MENUITEM_ID));
 	}
 };
@@ -758,6 +764,8 @@ function(items, on) {
 // Tag/untag items
 ZmListController.prototype._doTag =
 function(items, tag, doTag) {
+	if (!(items instanceof Array)) items = [items];
+
 	var list = items[0].list || this._list;
 	list.tagItems(items, tag.id, doTag);
 };
@@ -765,6 +773,8 @@ function(items, tag, doTag) {
 // Remove all tags for given items
 ZmListController.prototype._doRemoveAllTags =
 function(items) {
+	if (!(items instanceof Array)) items = [items];
+
 	var list = items[0].list || this._list;
 	list.removeAllTags(items);
 };
@@ -778,6 +788,8 @@ function(items) {
 */
 ZmListController.prototype._doDelete =
 function(items, hardDelete, attrs) {
+	if (!(items instanceof Array)) items = [items];
+
 	var list = items[0].list || this._list;
 	list.deleteItems(items, hardDelete, attrs);
 };
@@ -920,7 +932,7 @@ function(parent, num) {
 	} else if (num > 1) {
 		// enable only the tag and delete operations
 		parent.enableAll(false);
-		parent.enable([ZmOperation.NEW_MENU, ZmOperation.TAG_MENU, ZmOperation.DELETE, ZmOperation.MOVE, ZmOperation.FORWARD_MENU], true);
+		parent.enable([ZmOperation.NEW_MENU, ZmOperation.TAG_MENU, ZmOperation.DELETE, ZmOperation.MOVE, ZmOperation.FORWARD], true);
     }
 };
 
@@ -933,7 +945,7 @@ function() {
 // this method gets overloaded if folder id is retrieved another way
 ZmListController.prototype._getSearchFolderId = 
 function() {
-	return this._activeSearch.search ? this._activeSearch.search.folderId : null;
+	return (this._activeSearch && this._activeSearch.search) ? this._activeSearch.search.folderId : null;
 };
 
 // Pagination
@@ -953,7 +965,8 @@ function(search, offset) {
 ZmListController.prototype._search =
 function(view, offset, limit, callback, isCurrent, lastId, lastSortVal) {
 	var sortBy = this._appCtxt.get(ZmSetting.SORTING_PREF, view);
-	var types = this._activeSearch.search.types; // use types from original search
+	// use types from original search
+	var types = (this._activeSearch && this._activeSearch.search) ? this._activeSearch.search.types : [];
 	var sc = this._appCtxt.getSearchController();
 	var params = {query: this.getSearchString(), types: types, sortBy: sortBy, offset: offset, limit: limit,
 				  lastId: lastId, lastSortVal: lastSortVal};
@@ -1004,9 +1017,7 @@ function(view, forward, loadIndex) {
 		// figure out if this requires cursor-based paging
 		var list = this._listView[this._currentView].getList();
 		var lastItem = list.getLast();
-		var lastSortVal = (lastItem && lastItem.id)
-			? lastItem.getSortVal(this._activeSearch.search.sortBy)
-			: null;
+		var lastSortVal = (lastItem && lastItem.id) ? lastItem.sf : null;
 		var lastId = lastSortVal ? lastItem.id : null;
 
 		// get next page of items from server; note that callback may be overridden

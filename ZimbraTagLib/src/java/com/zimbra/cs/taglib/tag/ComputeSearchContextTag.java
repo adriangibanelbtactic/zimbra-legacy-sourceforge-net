@@ -138,10 +138,14 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
         params.setTypes(mTypes);
 
         if (mLimit == -1) {
-            mLimit = (int) (ZSearchParams.TYPE_CONTACT.equals(mTypes) ?
-                    mailbox.getPrefs().getContactsPerPage() :
-                    mailbox.getPrefs().getMailItemsPerPage());
-            if (mLimit == -1)
+			if (ZSearchParams.TYPE_CONTACT.equals(mTypes)) {
+				mLimit = (int) mailbox.getPrefs().getContactsPerPage(); 
+			} else if (ZSearchParams.TYPE_VOICE_MAIL.equals(mTypes) || ZSearchParams.TYPE_CALL.equals(mTypes)) {
+				mLimit = (int) mailbox.getPrefs().getVoiceItemsPerPage(); 
+			} else {
+				mLimit = (int) mailbox.getPrefs().getMailItemsPerPage();
+			}
+			if (mLimit == -1)
                 mLimit = DEFAULT_SEARCH_LIMIT;
         }
         params.setLimit(mLimit);
@@ -208,6 +212,7 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
         if (sq != null) {
             result.setTitle(sq);
             result.setBackTo(LocaleSupport.getLocalizedMessage(pageContext, "backToSearch"));
+            result.setShortBackTo(sq);
             result.setQuery(sq);
             result.setShowMatches(true);
             return;
@@ -218,9 +223,11 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
                     result.setQuery(((ZSearchFolder)folder).getQuery());
                     result.setShowMatches(true);
                     result.setBackTo(LocaleSupport.getLocalizedMessage(pageContext, "backToSearchFolder", new Object[] {folder.getName()}));
+                    result.setShortBackTo(folder.getName());
                 } else {
                     result.setQuery("in:\"" + folder.getRootRelativePath() + "\"");
                     result.setBackTo(LocaleSupport.getLocalizedMessage(pageContext, "backToFolder", new Object[] {folder.getName()}));
+                    result.setShortBackTo(folder.getName());
                 }
                 result.setFolder(new ZFolderBean(folder));
                 result.setTitle(folder.getName());
@@ -232,7 +239,8 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
             if (tag != null) {
                 result.setQuery("tag:\"" + tag.getName() + "\"");
                 result.setTitle(tag.getName());
-                result.setBackTo(LocaleSupport.getLocalizedMessage(pageContext, "backToTag", new Object[] {tag.getName()}));                                    
+                result.setBackTo(LocaleSupport.getLocalizedMessage(pageContext, "backToTag", new Object[] {tag.getName()}));
+                result.setShortBackTo(tag.getName());
                 result.setSelectedId(tag.getId());
                 result.setTag(new ZTagBean(tag));                
                 result.setShowMatches(true);
@@ -243,7 +251,6 @@ public class ComputeSearchContextTag extends ZimbraSimpleTag {
     }
 
     private void determineVoiceQuery(ZMailbox mailbox, String sq, SearchContext result) throws ServiceException {
-        List<ZPhoneAccount> accounts = mailbox.getAllPhoneAccounts();
         ZPhoneAccount account = getAccountFromVoiceQuery(mailbox, sq);
         String query = sq;
         if (query == null && account != null) {

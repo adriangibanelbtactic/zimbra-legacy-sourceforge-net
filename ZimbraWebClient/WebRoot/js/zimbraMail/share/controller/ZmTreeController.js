@@ -196,14 +196,22 @@ function(account) {
 	if (!dataTree) {
 		dataTree = this._dataTree[account.id] = this._appCtxt.getTree(this.type, account);
 		if (dataTree) {
-			this._dataChangeListener = new AjxListener(this, this._treeChangeListener);
-			dataTree.addChangeListener(this._dataChangeListener);
+			dataTree.addChangeListener(this._getTreeChangeListener());
 		}
 	}
 	return dataTree;
 }
 
 // Private and protected methods
+
+
+ZmTreeController.prototype._getTreeChangeListener =
+function() {
+	if (!this._dataChangeListener) {
+		this._dataChangeListener = new AjxListener(this, this._treeChangeListener);
+	}
+	return this._dataChangeListener;
+};
 
 /**
  * Performs initialization.
@@ -224,7 +232,7 @@ function(overviewId) {
  * and shown.
  * 
  * @param overviewId		[constant]		overview ID
- * @param account			[ZmAccount]*	current account
+ * @param account			[ZmZimbraAccount]*	current account
  */
 ZmTreeController.prototype._postSetup =
 function(overviewId, account) {
@@ -502,7 +510,10 @@ function(ev) {
 	if (item) {
 		this._actionedOrganizer = item;
 		if (item.noSuchFolder) {
-			this._appCtxt.getFolderTree().handleDeleteNoSuchFolder(item);
+			var folderTree = this._appCtxt.getFolderTree();
+			if (folderTree) {
+				folderTree.handleDeleteNoSuchFolder(item);
+			}
 			return;
 		}
 	}

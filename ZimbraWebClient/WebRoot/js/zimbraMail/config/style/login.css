@@ -67,7 +67,7 @@ FORM {
 	position:relative;
 	width:500;
 	overflow:visible;
-	@WindowOuterContainer-light@
+	@LightWindowOuterBorder@
 }
 
 
@@ -80,14 +80,14 @@ FORM {
 
 /* Cell for the 'body' (notice/form/about/license) */
 #ZLoginBodyContainer {
-	@WindowInnerContainer-light@
+	@LightWindowInnerBorder@
 	@AppBg@
 	padding-top:20px;
 }
 
 /* Cell for the 'license' (copyright, etc) */
 #ZLoginLicenseContainer {
-	padding-top:20px;
+	padding-top:5px;
 	padding-bottom:5px;
 	text-align:center;
 	vertical-align:bottom;
@@ -101,8 +101,14 @@ FORM {
 	padding-bottom:5px;
 	text-align:center;
 	vertical-align:bottom;
-	font-size:9px;
+	@FontSize-smaller@
 }
+
+/* What's this anchor */
+#ZLoginWhatsThisAnchor {
+	@FontSize-smaller@
+}
+
 
 /*
  *	Banner (top) zone
@@ -132,7 +138,8 @@ FORM {
 /* Name of the app -- eg:  'Collaboration Suite' */
 #ZLoginAppName {
 	margin-top:5px;
-	width:100%;
+	margin-bottom:5px;
+	width:95%;
 	text-align:right;
 	@FontSize-biggest@
 }
@@ -164,7 +171,7 @@ FORM {
 	margin-top:10px;
 	margin-bottom:10px;
 	padding:5px;
-	@OutsetBorder@
+	@NormalOutsetBorder@
 	background-color:@HilightColor@;
 }
 
@@ -182,8 +189,8 @@ FORM {
 /* Panel that contains all versions of the login panel */
 #ZLoginFormPanel {
 	position:relative;
-	left:10%;
-	width:80%;
+	left:5%;
+	width:90%;
 }
 
 
@@ -272,6 +279,23 @@ FORM {
 
 
 
+/* Container to show an info message to the user */
+.ZLoginInfoMessage {
+	@ToastContainer@
+	@ToastContainer-warning@
+	width:80%;
+	margin:10px;
+	@BoxPadding@
+}
+
+/* Separator in the login dialog */
+.ZLoginSeparator {
+	position:relative;
+	width:100%;	
+	@BottomSeparator@
+	margin:10px 0px;
+}
+
 
 
 .error {  
@@ -289,18 +313,18 @@ FORM {
 }
 
 
-.DwtButton 								{	@NormalButton@					}
-.DwtButton-activated 					{	@NormalButton-hover@			}
-.DwtButton-triggered					{	@NormalButton-clicked@			}	
-.DwtButton-toggled						{	@NormalButton-toggled@			}	
-.DwtButton-disabled						{	@NormalButton-disabled@			}	
-.DwtButton-active						{	@NormalButton-default@			}	
-.DwtButton-focused						{	@NormalButton-focused@			}	
+.DwtButton 								{	@Button@ @ButtonBorder-normal@		}
+.DwtButton-hover 						{	@Button@ @ButtonBorder-hover@			}
+.DwtButton-active						{	@Button@ @ButtonBorder-active@		}	
+.DwtButton-selected						{	@Button@ @ButtonBorder-selected@		}	
+.DwtButton-disabled						{	@Button@ @ButtonBorder-disabled@		}	
+.DwtButton-active						{	@Button@ @ButtonBorder-default@		}	
+.DwtButton-focused						{	@Button@ @ButtonBorder-focused@		}	
 		
-.DwtButton .Text 						{	@NormalButtonText@				}
-.DwtButton-activated .Text				{	@NormalButtonText-hover@		}
-.DwtButton-triggered .Text				{	@NormalButtonText-clicked@		}	
-.DwtButton-toggled .Text				{	@NormalButtonText-clicked@		}	
-.DwtButton-disabled .Text				{	@NormalButtonText-disabled@		}	
-.DwtButton-active .Text					{	@NormalButtonText-default@		}	
-.DwtButton-focused .Text				{	@NormalButtonText-focused@		}	
+.DwtButton .Text 						{	@ButtonText@ @ButtonText-normal@	}
+.DwtButton-hover .Text					{	@ButtonText@ @ButtonText-hover@		}
+.DwtButton-active .Text					{	@ButtonText@ @ButtonText-active@	}	
+.DwtButton-selected .Text				{	@ButtonText@ @ButtonText-active@	}	
+.DwtButton-disabled .Text				{	@ButtonText@ @ButtonText-disabled@	}	
+.DwtButton-active .Text					{	@ButtonText@ @ButtonText-default@	}	
+.DwtButton-focused .Text				{	@ButtonText@ @ButtonText-focused@	}	

@@ -35,13 +35,16 @@ ZmContactCardsView = function(parent, className, posStyle, controller, dropTgt) 
 
 	// find out if the user's locale has a alphabet defined
 	if (ZmMsg.alphabet && ZmMsg.alphabet.length>0) {
-		this._alphabetBar = new ZmContactAlphabetBar(this, this._appCtxt, "ZmContactAlphabetBar");
+		this._alphabetBar = new ZmContactAlphabetBar(this, this._appCtxt);
 	}
 
 	this.addControlListener(new AjxListener(this, this._controlListener));
 
 	this._addrbookTree = this._appCtxt.getFolderTree();
 	this._addrbookTree.addChangeListener(new AjxListener(this, this._addrbookTreeListener));
+
+	this._htmlAttrs = this._getHtmlAttributes();
+	this._dndAttrs = this._getHtmlAttributes(true);
 
 	this._initialResized = false;
 };
@@ -109,287 +112,91 @@ function(data, type) {
 ZmContactCardsView.prototype._createItemHtml =
 function(contact, params) {
 
-	var html = [];
-	var idx = 0;
-	var div = null;
-	
-	var base = "ZmContactCard";
-	if (params.getHtml) {
-		var attrs = {};
-		attrs.name = ZmContactCardsView.CARD_NAME;
-		attrs['class'] = base;
-		attrs[DwtListView._STYLE_CLASS] = base;
-		attrs[DwtListView._SELECTED_STYLE_CLASS] = [base, DwtCssStyle.SELECTED].join("-");
-		attrs[DwtListView._KBFOCUS_CLASS] = [base, DwtCssStyle.FOCUSED].join("-");
-		attrs['id'] = this._getItemId(contact);
-		attrs['_itemIndex'] = AjxCore.assignId(contact);
-		attrs['_type'] = DwtListView.TYPE_LIST_ITEM;
-		attrs['style'] = ["width:", this._cardWidth].join("");
-		var attrList = [];
-		for (var attr in attrs) {
-			attrList.push([attr, "='", attrs[attr], "'"].join(""));
-		}
-		html[idx++] = "<div ";
-		html[idx++] = attrList.join(" ");
-		html[idx++] = ">";
-	} else {
-		// create div for DnD
-		div = document.createElement("div");
-		div[DwtListView._STYLE_CLASS] = [base, DwtCssStyle.DND].join("-");
-		// bug fix #3654 - yuck
-		if (AjxEnv.isMozilla) {
-			div.style.overflow = "visible";
-		}
-		div.style.position = "absolute";
-		div.className = div[DwtListView._STYLE_CLASS];
-		if (params.isDnDIcon) {
-			div.style.width = this._cardWidth;
-		}
-		this.associateItemWithElement(contact, div, DwtListView.TYPE_LIST_ITEM);
-	}
-
-	html[idx++] = "<table border=0 width=100% height=100% cellpadding=0 cellspacing=0>";
-	html[idx++] = "<tr class='contactHeader ";
-
-	var color = contact.addrbook ? contact.addrbook.color : ZmOrganizer.DEFAULT_COLOR[ZmOrganizer.ADDRBOOK];
-	html[idx++] = ZmOrganizer.COLOR_TEXT[color] + "Bg";
-	html[idx++] = "'>";
-	html[idx++] = "<td width=16>";
-	html[idx++] = AjxImg.getImageHtml(contact.getIcon(), "width:16");
-	html[idx++] = "</td>";
-	html[idx++] = "<td width=100% valign=top><div class='contactHeader'>";
-	html[idx++] = contact.getFileAs();
-	html[idx++] = "</div></td>";
-
-	// Tag
+	var isDnd = !!(params && params.isDragProxy);
+	var attrs = isDnd ? this._dndAttrs : this._htmlAttrs;
+	var color = contact.addrbook
+		? contact.addrbook.color
+		: ZmOrganizer.DEFAULT_COLOR[ZmOrganizer.ADDRBOOK];
+	var tagCellId;
+	var tagIcon;
 	if (this._appCtxt.get(ZmSetting.TAGGING_ENABLED)) {
-		var cellId = this._getFieldId(contact, ZmItem.F_TAG_CELL);
-		html[idx++] = "<td width=16 id='";
-		html[idx++] = cellId;
-		html[idx++] = "'>";
+		tagCellId = this._getFieldId(contact, ZmItem.F_TAG_CELL);
 		var fieldId = this._getFieldId(contact, ZmItem.F_TAG);
-		html[idx++] = AjxImg.getImageHtml(contact.getTagImageInfo(), null, ["id='", fieldId, "'"].join(""));
-		html[idx++] = "</td>";
+		tagIcon = AjxImg.getImageHtml(contact.getTagImageInfo(), null, ["id='", fieldId, "'"].join(""));
 	}
-	html[idx++] = "</tr>";
+	var groupMembers = contact.isGroup() ? contact.getGroupMembers().good.getArray() : null;
 
-	idx = contact.isGroup()
-		? this._getGroupHtml(contact, html, idx, params.isDnDIcon)
-		: this._getContactHtml(contact, html, idx, params.isDnDIcon);
+	var subs = {
+		id: this._getItemId(contact),
+		attrs: attrs,
+		width: this._cardWidth,
+		itemIndex: AjxCore.assignId(contact),
+		headerColor: (ZmOrganizer.COLOR_TEXT[color] + "Bg"),
+		tagCellId: tagCellId,
+		tagIcon: tagIcon,
+		groupMembers: groupMembers,
+		isDnd: isDnd,
+		view: this,
+		contact: contact
+	};
+	var html = AjxTemplate.expand("zimbraMail.abook.templates.Contacts#CardBase", subs);
 
-	html[idx++] = "</table>";
-
-	if (div) {
-		div.innerHTML = html.join("");
-		return div;
-	} else {
-		html[idx++] = "</div>";
-		return html.join("");
-	}
-};
-
-ZmContactCardsView.prototype._getGroupHtml =
-function(contact, html, idx, isDnDIcon) {
-	var style = AjxEnv.isLinux ? " style='line-height:13px'" : "";
-	var members = contact.getGroupMembers().good.getArray();
-	var size = members.length <= 5 ? members.length : Math.min(members.length, 5);
-
-	html[idx++] = "<tr height=100%";
-	html[idx++] = style;
-	html[idx++] = ">";
-
-	html[idx++] = "<td colspan=3 valign=top width=100% style='padding-left:2px'><table border=0>";
-
-	for (var i = 0; i < size; i++) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = "<td width=20>";
-		html[idx++] = AjxImg.getImageHtml("Message");
-		html[idx++] = "</td><td><nobr>";
-		html[idx++] = AjxStringUtil.htmlEncode(members[i].toString());
-		html[idx++] = "</nobr></td></tr>";
-	}
-	if (size < members.length) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = "><td colspan=2><a href='javascript:;' onclick='ZmContactCardsView._moreDetailsCallback(";
-		html[idx++] = '"';
-		html[idx++] = contact.id;
-		html[idx++] = '"';
-		html[idx++] = ")'>";
-		html[idx++] = ZmMsg.more;
-		html[idx++] = "</a></td></tr>";
-	}
-	html[idx++] = "</table></td></tr>";
-
-	return idx;
-};
-
-ZmContactCardsView.prototype._getContactHtml =
-function(contact, html, idx, isDnDIcon) {
-	var style = AjxEnv.isLinux ? " style='line-height:13px'" : "";
-
-	html[idx++] = "<tr";
-	html[idx++] = style;
-	html[idx++] = ">";
-
-	html[idx++] = "<td colspan=2 valign=top width=100% style='font-weight:bold; padding-left:2px'>";
-	var value = contact.getCompanyField() || "&nbsp;";
-	html[idx++] = value;
-	html[idx++] = "</td></tr>";
-
-	html[idx++] = "<tr height=100%><td valign=top colspan=10>";
-
-	html[idx++] = "<table height=100% border=0 cellpadding=1 cellspacing=1>";
-	html[idx++] = "<tr height=100%><td valign=top>";
-	html[idx++] = "<table border=0><tr";
-	html[idx++] = style;
-	html[idx++] = ">";
-	// add first column of work info here
-	if (value = contact.getWorkAddrField()) {
-		html[idx++] = this._getContactField("W", value, isDnDIcon);
-	} else if (value = contact.getHomeAddrField()) {
-		html[idx++] = this._getContactField("H", value, isDnDIcon);
-	}
-	html[idx++] = "</tr>";
-
-	if (value = contact.getAttr("email")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("E", value, isDnDIcon, ZmObjectManager.EMAIL);
-		html[idx++] = "</tr>";
-	}
-
-	if (value = contact.getAttr("email2")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("E2", value, isDnDIcon, ZmObjectManager.EMAIL);
-		html[idx++] = "</tr>";
-	} else if (value = contact.getAttr("email3")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("E3", value, isDnDIcon, ZmObjectManager.EMAIL);
-		html[idx++] = "</tr>";
-	}
-
-	html[idx++] = "</table>";
-
-	html[idx++] = "</td><td valign=top>";
-	html[idx++] = "<table border=0>";
-	// add second column of home info here
-	if (value = contact.getAttr("workPhone")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("W", value, isDnDIcon, ZmObjectManager.PHONE);
-		html[idx++] = "</tr>";
-	}
-	if (value = contact.getAttr("workPhone2")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("W2", value, isDnDIcon, ZmObjectManager.PHONE);
-		html[idx++] = "</tr>";
-	}
-	if (value = contact.getAttr("workFax")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("F", value, isDnDIcon, ZmObjectManager.PHONE);
-		html[idx++] = "</tr>";
-	}
-	if (value = contact.getAttr("mobilePhone")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("M", value, isDnDIcon, ZmObjectManager.PHONE);
-		html[idx++] = "</tr>";
-	}
-	if (value = contact.getAttr("homePhone")) {
-		html[idx++] = "<tr";
-		html[idx++] = style;
-		html[idx++] = ">";
-		html[idx++] = this._getContactField("H", value, isDnDIcon, ZmObjectManager.PHONE);
-		html[idx++] = "</tr>";
-	}
-
-	html[idx++] = "</table>";
-	html[idx++] = "</td></tr></table>";
-	html[idx++] = "</td></tr>";
-	if (!contact.isLoaded) {
-		html[idx++] = "<tr><td colspan=10 class='FinishLoading' onclick='ZmContactCardsView._loadContact(this, ";
-		html[idx++] = '"';
-		html[idx++] = contact.id;
-		html[idx++] = '"';
-		html[idx++] = ")'><center>";
-		html[idx++] = ZmMsg.finishLoading;
-		html[idx++] = "</center></td></tr>";
-	}
-
-	return idx;
-};
-
-ZmContactCardsView.prototype._getContactField =
-function(fname, value, skipObjectify, type) {
-	var newValue = skipObjectify ? value : this._generateObject(value, type);
-	var html = new Array();
-	var i = 0;
-
-	html[i++] = "<td valign=top class='ZmContactFieldValue'>";
-	html[i++] = fname;
-	html[i++] = " </td><td valign=top class='ZmContactField'>";
-	html[i++] = AjxStringUtil.nl2br(newValue);
-	html[i++] = "</td>";
-
-	return html.join("");
+	return isDnd
+		? Dwt.parseHtmlFragment(html)
+		: html;
 };
 
 ZmContactCardsView.prototype._layout =
 function() {
 	this._resetListView();
 
-	var html = new Array();
-	var i = 0;
-
-	html[i++] = "<center>";
-	if (this._list instanceof AjxVector && this._list.size()) {
+	if (this._list instanceof AjxVector && this._list.size())
+	{
 		var list = this._list.getArray();
-		var count = 0;
+		var subs = {
+			id: this._htmlElId,
+			cardTableId: ZmContactCardsView.CARD_TABLE_ID,
+			list: list
+		};
+		html = AjxTemplate.expand("zimbraMail.abook.templates.Contacts#CardsView", subs);
+		this.getHtmlElement().appendChild(Dwt.parseHtmlFragment(html));
 
-		// OPTIMIZE: dont use appendChild to add to DOM - slows down IE
-		html[i++] = "<table border=0 cellpadding=5 cellspacing=5 id='";
-		html[i++] = ZmContactCardsView.CARD_TABLE_ID;
-		html[i++] = "'>";
-		for (var j = 0; j < list.length; j++) {
-			var contact = list[j];
-			
-			if (count % 2 == 0)
-				html[i++] = "<tr>";
-
-			count++;
-
-			html[i++] = "<td valign=top>";
-			html[i++] = this._createItemHtml(contact, {getHtml:true});
-			html[i++] = "</td>";
-
-			if (count%2 == 0)
-				html[i++] = "</tr>";
+		for (var i = 0; i < list.length; i++) {
+			var contact = list[i];
+			var cid = this._htmlElId + "_contact_" + contact.id;
+			var el = document.getElementById(cid);
+			if (el) {
+				el.innerHTML = this._createItemHtml(contact);
+			}
 		}
-		html[i++] = "</table>";
-	} else {
-		html[i++] = "<div class='NoResults' id='";
-		html[i++] = ZmContactCardsView.CARD_TABLE_ID;
-		html[i++] = "'><br><br>";
-		html[i++] = AjxMsg.noResults;
-		html[i++] = "</div>";
 	}
-	html[i++] = "</center>";
+	else
+	{
+		var subs = {
+			id: ZmContactCardsView.CARD_TABLE_ID
+		};
+		html = AjxTemplate.expand("zimbraMail.abook.templates.Contacts#CardsView-NoResults", subs);
+		this.getHtmlElement().appendChild(Dwt.parseHtmlFragment(html));
+	}
+};
 
-	this.getHtmlElement().appendChild(Dwt.parseHtmlFragment(html.join("")));
+ZmContactCardsView.prototype._getHtmlAttributes =
+function(isDnd) {
+	var base = "ZmContactCard";
+
+	var attrs = {};
+	attrs.name = ZmContactCardsView.CARD_NAME;
+	attrs[DwtListView._STYLE_CLASS] = attrs['class'] = isDnd ? ([base, DwtCssStyle.DRAG_PROXY].join("-")) : base;
+	attrs[DwtListView._SELECTED_STYLE_CLASS] = [base, DwtCssStyle.SELECTED].join("-");
+	attrs[DwtListView._KBFOCUS_CLASS] = [base, DwtCssStyle.FOCUSED].join("-");
+	attrs['_type'] = DwtListView.TYPE_LIST_ITEM;
+
+	var attrList = [];
+	for (var attr in attrs) {
+		attrList.push([attr, "='", attrs[attr], "'"].join(""));
+	}
+
+	return (attrList.join(" "));
 };
 
 ZmContactCardsView.prototype._setNoResultsHtml =
@@ -410,8 +217,9 @@ function() {
 	}
 
 	var cardTable = document.getElementById(ZmContactCardsView.CARD_TABLE_ID);
-	if (cardTable)
+	if (cardTable) {
 		cardTable.parentNode.removeChild(cardTable);
+	}
 };
 
 ZmContactCardsView.prototype._modifyContact =
@@ -437,22 +245,22 @@ function(item) {
 	return null;
 };
 
-ZmContactCardsView.prototype._setDnDIconState =
+ZmContactCardsView.prototype._setDragProxyState =
 function(dropAllowed) {
 	if (this._dndImg || !AjxEnv.isLinux) {
-		ZmContactsBaseView.prototype._setDnDIconState.call(this, dropAllowed)
-	} else if (this._dndIcon) {
+		ZmContactsBaseView.prototype._setDragProxyState.call(this, dropAllowed)
+	} else if (this._dndProxy) {
 		// bug fix #3235 - no opacity for linux
-		var addClass = dropAllowed ? DwtCssStyle.DROP_OK : DwtCssStyle.DROP_NOT_OK;
+		var addClass = dropAllowed ? DwtCssStyle.DROPPABLE : DwtCssStyle.NOT_DROPPABLE;
 		var linuxClass = [addClass, DwtCssStyle.LINUX].join("-");
-		this._dndIcon.className = [this._dndIcon._origClassName, linuxClass].join(" ");
+		this._dndProxy.className = [this._dndProxy._origClassName, linuxClass].join(" ");
 	}
 };
 
 ZmContactCardsView.prototype._handleResponseLoad =
 function(result, contact) {
 	var div = document.getElementById(this._getItemId(contact));
-	var html = this._createItemHtml(contact, {getHtml:true});
+	var html = this._createItemHtml(contact);
 	var newDiv = Dwt.parseHtmlFragment(html);
 	div.innerHTML = newDiv.innerHTML;
 };

@@ -59,7 +59,6 @@ import com.zimbra.cs.index.queryparser.ZimbraQueryParser;
 import com.zimbra.cs.index.queryparser.ParseException;
 import com.zimbra.cs.index.queryparser.ZimbraQueryParserConstants;
 import com.zimbra.cs.mailbox.Folder;
-import com.zimbra.cs.mailbox.MailItem;
 import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mountpoint;

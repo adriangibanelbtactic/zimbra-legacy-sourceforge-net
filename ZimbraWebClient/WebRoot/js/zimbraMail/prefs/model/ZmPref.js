@@ -39,6 +39,7 @@ ZmPref.prototype.constructor = ZmPref;
 
 ZmPref.KEY_ID = "prefId_";
 
+ZmPref.TYPE_STATIC		= "STATIC"; // static text
 ZmPref.TYPE_INPUT		= "INPUT";
 ZmPref.TYPE_CHECKBOX	= "CHECKBOX";
 ZmPref.TYPE_COLOR		= "COLOR";
@@ -49,6 +50,8 @@ ZmPref.TYPE_PASSWORD	= "PASSWORD";
 ZmPref.TYPE_IMPORT		= "IMPORT";
 ZmPref.TYPE_EXPORT		= "EXPORT";
 ZmPref.TYPE_SHORTCUTS	= "SHORTCUTS";
+ZmPref.TYPE_CUSTOM		= "CUSTOM";
+ZmPref.TYPE_LOCALES     = "LOCALES";
 
 ZmPref.ORIENT_VERTICAL      = "vertical";
 ZmPref.ORIENT_HORIZONTAL    = "horizontal";
@@ -99,6 +102,14 @@ function(interval) {
 		ZmPref.SETUP[ZmSetting.POLLING_INTERVAL].errorMessage = AjxMessageFormat.format(ZmMsg.invalidPollingInterval, min);
 		return false;
 	}
+};
+
+ZmPref.int2DurationDay = function(intValue) {
+	return intValue != null && intValue != 0 ? intValue + "d" : intValue;
+};
+
+ZmPref.durationDay2Int = function(durValue) {
+	return parseInt(durValue, 10); // NOTE: parseInt ignores non-digits
 };
 
 ZmPref.approximateInterval =
@@ -239,6 +250,20 @@ ZmPref.getPrefSectionWithPref = function(prefId) {
     }
     return null;
 };
+
+/** Returns true if <em>all</em> of the preconditions pass. */
+ZmPref.requireAllPreConditions = function(pre1 /* ..., preN */) {
+	var appCtxt = ZmAppCtxt.getFromShell(DwtShell.getShell(window));
+	var app = appCtxt.getApp(ZmApp.PREFERENCES);
+	var controller = app.getPrefController();
+
+	for (var i = 0; i < arguments.length; i++) {
+		if (!controller.checkPreCondition({}, arguments[i])) {
+			return false;
+		}
+	}
+	return true;
+}
 
 // Make sure the pref sections are init'd
 ZmPref.clearPrefSections();

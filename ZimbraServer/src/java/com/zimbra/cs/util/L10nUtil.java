@@ -52,6 +52,7 @@ public class L10nUtil {
         // calendar messages
 
         calendarSubjectCancelled,
+        calendarSubjectWithheld,
         calendarCancelRemovedFromAttendeeList,
         calendarCancelAppointment,
         calendarCancelAppointmentInstance,
@@ -239,22 +240,27 @@ public class L10nUtil {
         return LocalizedClientLocales.getLocales(inLocale);
     }
     
+    public static void flushLocaleCache() {
+        LocalizedClientLocales.flushCache();
+    }
+    
     private static class LocalizedClientLocales {
         enum ClientResource {
-            I18nMsg,
+            // I18nMsg,  // generated, all locales are there, so we don't count this resource
             AjxMsg, 
             ZMsg, 
             ZaMsg, 
-            ZmMsg,
-            ZhMsg
+            ZhMsg,
+            ZmMsg
         }
+
         
         // set of localized(translated) locales
-        static Set<Locale> sLocalizedLocales;
+        static Set<Locale> sLocalizedLocales = null;
         
         // we cache the sorted list per display locale to avoid the array copy
         // and sorting each time for a GetLocale request
-        static Map<Locale, Locale[]> sLocalizedLocalesSorted;
+        static Map<Locale, Locale[]> sLocalizedLocalesSorted = null;
         
         private static void loadBundles() {
             sLocalizedLocales = new HashSet<Locale>();
@@ -263,16 +269,23 @@ public class L10nUtil {
             String msgsDir = LC.localized_client_msgs_directory.value();
             ClassLoader classLoader = getClassLoader(msgsDir);
             Locale[] allLocales = Locale.getAvailableLocales();
+            
+            // the en_US locale is alwasy available
+            sLocalizedLocales.add(Locale.US);
+            
             for (Locale lc : allLocales) {
                 for (ClientResource clientRes : ClientResource.values()) {
                     try {
                         ResourceBundle rb = ResourceBundle.getBundle(clientRes.name(), lc, classLoader);
-                        /*
-                         * found a resource for the locale, a locale is considered
-                         * "installed" as long as any of its resource (the list in ClientResource) is present
-                         */ 
-                        sLocalizedLocales.add(lc);
-                        break;
+                        Locale rbLocale = rb.getLocale();
+                        if (rbLocale.equals(lc)) {
+                            /*
+                             * found a resource for the locale, a locale is considered "installed" as long as 
+                             * any of its resource (the list in ClientResource) is present
+                             */ 
+                            sLocalizedLocales.add(lc);
+                            break;
+                        }
                     } catch (MissingResourceException e) {
                     }
                 }
@@ -296,6 +309,11 @@ public class L10nUtil {
                 sLocalizedLocalesSorted.put(inLocale, sortedLocales);
             }
             return sortedLocales;
+        }
+        
+        public synchronized static void flushCache() {
+            sLocalizedLocales = null;
+            sLocalizedLocalesSorted = null;
         }
     }
 }

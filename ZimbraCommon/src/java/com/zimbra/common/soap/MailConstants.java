@@ -156,6 +156,7 @@ public class MailConstants {
     public static final QName ICAL_REPLY_REQUEST = QName.get("ICalReplyRequest", NAMESPACE);
     public static final QName GET_FREE_BUSY_REQUEST = QName.get("GetFreeBusyRequest", NAMESPACE);
     public static final QName GET_ICAL_REQUEST = QName.get("GetICalRequest", NAMESPACE);
+    public static final QName ANNOUNCE_ORGANIZER_CHANGE = QName.get("AnnounceOrganizerChange", NAMESPACE);
 
     // spell checking
     public static final QName CHECK_SPELLING_REQUEST = QName.get("CheckSpellingRequest", NAMESPACE);
@@ -281,6 +282,7 @@ public class MailConstants {
     public static final String A_RESULT_MODE = "resultMode";
     public static final String A_PREFETCH = "prefetch";
     public static final String A_VERBOSE = "verbose";
+    public static final String A_CSVFORMAT = "csvfmt";
 
     // messages
     public static final String E_MIMEPART = "mp";
@@ -431,6 +433,7 @@ public class MailConstants {
     public static final String A_DEFAULT = "default";
     public static final String A_VERB = "verb";
     public static final String A_CAL_ITEM_TYPE = "type";
+    public static final String A_CAL_COMP = "comp";
     public static final String A_CAL_COMPONENT_NUM = "compNum";
     public static final String A_CAL_SEQUENCE = "seq";
     public static final String A_CAL_IS_EXCEPTION = "ex";
@@ -451,6 +454,7 @@ public class MailConstants {
     public static final String A_APPT_FREEBUSY = "fb";
     public static final String A_APPT_FREEBUSY_ACTUAL = "fba";
     public static final String A_APPT_TRANSPARENCY = "transp";
+    public static final String A_CAL_CLASS = "class";
     public static final String A_CAL_ALLDAY = "allDay";
     public static final String A_CAL_LOCATION = "loc";
     public static final String A_CAL_NEEDS_REPLY = "needsReply";
@@ -474,6 +478,7 @@ public class MailConstants {
     public static final String A_CAL_ATTENDEE = "at";
     public static final String A_CAL_PRIORITY = "priority";
     public static final String A_TASK_PERCENT_COMPLETE = "percentComplete";
+    public static final String A_TASK_DUE_DATE = "dueDate";
     public static final String A_TASK_COMPLETED = "completed";
     public static final String A_WAIT = "wait";
     public static final String A_TIMEOUT = "timeout";

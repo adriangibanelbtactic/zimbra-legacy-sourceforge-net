@@ -184,7 +184,7 @@ ZmGroupView.prototype._setFields =
 function() {
 	this._setGroupName();
 	this._setGroupMembers();
-	this._setHeaderColor();
+	this._setHeaderInfo();
 	this._setTitle();
 	this._setTags();
 };
@@ -203,8 +203,7 @@ function() {
 
 ZmGroupView.prototype._createHtml =
 function() {
-	this._contactHeaderId = 	this._htmlElId + "_header";
-	this._contactHeaderRowId = 	this._htmlElId + "_headerRow";
+	this._headerRowId = 		this._htmlElId + "_headerRow";
 	this._titleId = 			this._htmlElId + "_title";
 	this._tagsId = 				this._htmlElId + "_tags";
 	this._groupNameId = 		this._htmlElId + "_groupName";
@@ -353,8 +352,9 @@ function() {
 
 ZmGroupView.prototype._searchButtonListener =
 function(ev) {
-	this._query = AjxStringUtil.trim(document.getElementById(this._searchFieldId).value);
-	if (this._query.length) {
+	var query = AjxStringUtil.trim(document.getElementById(this._searchFieldId).value);
+	if (query.length) {
+		var queryHint;
 		if (this._appCtxt.get(ZmSetting.GAL_ENABLED)) {
 			var searchFor = this._searchInSelect
 				? this._searchInSelect.getSelectedOption().getValue()
@@ -362,12 +362,12 @@ function(ev) {
 			this._contactSource = (searchFor == ZmContactsApp.SEARCHFOR_CONTACTS || searchFor == ZmContactsApp.SEARCHFOR_PAS)
 				? ZmItem.CONTACT : ZmSearchToolBar.FOR_GAL_MI;
 			if (searchFor == ZmContactsApp.SEARCHFOR_PAS) {
-				this._query += (" " + ZmSearchController.QUERY_ISREMOTE);
+				queryHint = ZmSearchController.QUERY_ISREMOTE;
 			}
 		} else {
 			this._contactSource = this._appCtxt.get(ZmSetting.CONTACTS_ENABLED) ? ZmItem.CONTACT : ZmSearchToolBar.FOR_GAL_MI;
 		}
-		ZmContactsHelper.search(this, true, this._searchRespCallback, this._searchErrorCallback);
+		ZmContactsHelper.search(this, true, query, queryHint, this._searchRespCallback, this._searchErrorCallback);
 	}
 };
 
@@ -489,34 +489,23 @@ function(ev) {
 
 ZmGroupView.getPrintHtml =
 function(contact, abridged, appCtxt) {
-	contact = contact.list._realizeContact(contact); // make sure it's a real ZmContact
-	var members = contact.getGroupMembers().good.getArray();
-
-	var html = new Array();
-	var idx = 0;
+	// make sure it's a real ZmContact
+	var real = contact.list._realizeContact(contact);
+	var members = real.getGroupMembers().good.getArray();
 
 	var size = (members.length <= 5 || !abridged)
 		? members.length
 		: Math.min(members.length, 5);
 
-	html[idx++] = "<table border=0 cellpadding=2 cellspacing=2 width=100%>";
-	html[idx++] = "<tr><td style='font-family:Arial; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:bold; background-color:#DDDDDD'>";
-	html[idx++] = contact.getFileAs();
-	html[idx++] = "</td></tr>";
+	var hasMore = (abridged && size < members.length);
 
-	for (var i = 0; i < size; i++) {
-		html[idx++] = "<tr><td valign=top style='font-family:Arial; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>";
-		html[idx++] = AjxStringUtil.htmlEncode(members[i].toString());
-		html[idx++] = "</td></tr>";
-	}
-	if (abridged && size < members.length) {
-		html[idx++] = "<tr><td valign=top style='font-family:Arial; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>";
-		html[idx++] = ZmMsg.more;
-		html[idx++] = "</td></tr>";
-	}
-	html[idx++] = "</table>";
-
-	return html.join("");
+	var subs = {
+		fileAs: real.getFileAs(),
+		members: members,
+		size: size,
+		hasMore: hasMore
+	};
+	return (AjxTemplate.expand("zimbraMail.abook.templates.Contacts#PrintGroup", subs));
 };
 
 

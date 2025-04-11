@@ -98,6 +98,7 @@ public class Invite {
             long completed,
             String freebusy,
             String transp,
+            String classProp,
             ParsedDateTime start,
             ParsedDateTime end,
             ParsedDuration duration,
@@ -132,6 +133,8 @@ public class Invite {
         mCompleted = completed;
         mFreeBusy = freebusy;
         mTransparency = transp;
+        mClass = classProp;
+        mClassSetByMe = sentByMe;
         mStart = start;
         mEnd = end;
         mDuration = duration;
@@ -155,8 +158,8 @@ public class Invite {
         mSentByMe = sentByMe;
         mDescription = description;
         mFragment = fragment != null ? fragment : "";
-            }
-    
+    }
+
     private Recurrence.IRecurrence mRecurrence;
     public Recurrence.IRecurrence getRecurrence() { return mRecurrence; }
     public void setRecurrence(Recurrence.IRecurrence recur) { mRecurrence = recur; setIsRecurrence(mRecurrence != null); }
@@ -174,6 +177,7 @@ public class Invite {
      * @param status IcalXmlStrMap.STATUS_* RFC2445 status: eg TENTATIVE/CONFIRMED/CANCELLED
      * @param freeBusy IcalXmlStrMap.FB* (F/B/T/U -- show time as Free/Busy/Tentative/Unavailable)
      * @param transparency IcalXmlStrMap.TRANSP_* RFC2445 Transparency
+     * @param classProp IcalXmlStrMap.CLASS_*
      * @param allDayEvent TRUE if this is an all-day-event, FALSE otherwise.  This will override the Time part of DtStart and DtEnd, and will throw an ServiceException.FAILURE if the Duration is not Days or Weeks
      * @param dtStart Start time 
      * @param dtEndOrNull End time OR NULL (duration must be specified if this is null)
@@ -203,6 +207,7 @@ public class Invite {
             long completed,
             String freeBusy,
             String transparency,
+            String classProp,
             boolean allDayEvent,
             ParsedDateTime dtStart,
             ParsedDateTime dtEndOrNull,
@@ -234,6 +239,7 @@ public class Invite {
                 completed,
                 freeBusy,
                 transparency,
+                classProp,
                 dtStart,
                 dtEndOrNull,
                 durationOrNull,
@@ -271,13 +277,15 @@ public class Invite {
             mRecurrence.setInviteId(new InviteInfo(this));
         }
     }
-    
+
 
     //private static final String FN_ADDRESS         = "a";
     private static final String FN_ITEMTYPE        = "it";
     private static final String FN_APPT_FLAGS      = "af";
     private static final String FN_ATTENDEE        = "at";
     private static final String FN_SENTBYME        = "byme";
+    private static final String FN_CLASS           = "cl";
+    private static final String FN_CLASS_SETBYME   = "clSetByMe";
     private static final String FN_COMPLETED       = "completed";
     private static final String FN_COMPNUM         = "comp";
     private static final String FN_ICAL_COMMENT    = "cmt";
@@ -311,7 +319,7 @@ public class Invite {
     private static final String FN_ALARM           = "al";
     private static final String FN_XPROP_OR_XPARAM = "x";
 
-    
+
     /**
      * This is only really public to support serializing RedoOps -- you
      * really don't want to call this API from anywhere else 
@@ -327,6 +335,9 @@ public class Invite {
         meta.put(FN_INVMSGID, inv.getMailItemId());
         meta.put(FN_COMPNUM, inv.getComponentNum());
         meta.put(FN_SENTBYME, inv.mSentByMe);
+        if (!inv.isPublic())
+            meta.put(FN_CLASS, inv.getClassProp());
+        meta.put(FN_CLASS_SETBYME, inv.classPropSetByMe());
         meta.put(FN_STATUS, inv.getStatus());
         meta.put(FN_APPT_FREEBUSY, inv.getFreeBusy());
         meta.put(FN_TRANSP, inv.getTransparency());
@@ -470,6 +481,8 @@ public class Invite {
         String uid = meta.get(FN_UID, null);
         int mailItemId = (int)meta.getLong(FN_INVMSGID);
         int componentNum = (int)meta.getLong(FN_COMPNUM);
+        String classProp = meta.get(FN_CLASS, IcalXmlStrMap.CLASS_PUBLIC);
+        boolean classPropSetByMe = meta.getBool(FN_CLASS_SETBYME, false);
         String status = meta.get(FN_STATUS, IcalXmlStrMap.STATUS_CONFIRMED);
         String freebusy = meta.get(FN_APPT_FREEBUSY, IcalXmlStrMap.FBTYPE_BUSY);
         String transp = meta.get(FN_TRANSP, IcalXmlStrMap.TRANSP_OPAQUE);
@@ -578,11 +591,13 @@ public class Invite {
         String pctComplete = meta.get(FN_PCT_COMPLETE, null);
 
         Invite invite = new Invite(itemType, methodStr, tzMap, calItem, uid, status,
-                priority, pctComplete, completed, freebusy, transp,
+                priority, pctComplete, completed, freebusy, transp, classProp,
                 dtStart, dtEnd, duration, recurrence, isOrganizer, org, attendees,
                 name, comment, loc, flags, partStat, rsvp,
                 recurrenceId, dtstamp, seqno,
                 mailboxId, mailItemId, componentNum, sentByMe, null, fragment);
+
+        invite.setClassPropSetByMe(classPropSetByMe);
 
         long numAlarms = meta.getLong(FN_NUM_ALARMS, 0);
         for (int i = 0; i < numAlarms; i++) {
@@ -830,6 +845,10 @@ public class Invite {
     public String getTransparency() { return mTransparency; }
     public boolean isTransparent() { return IcalXmlStrMap.TRANSP_TRANSPARENT.equals(mTransparency); }
     public void setTransparency(String transparency) { mTransparency = transparency; }
+    public String getClassProp() { return mClass; }
+    public void setClassProp(String classProp) { mClass = classProp; }
+    public boolean classPropSetByMe() { return mClassSetByMe; }
+    public void setClassPropSetByMe(boolean b) { mClassSetByMe = b; }
     public RecurId getRecurId() { return mRecurrenceId; }
     public void setRecurId(RecurId rid) { mRecurrenceId = rid; }
     public boolean hasRecurId() { return mRecurrenceId != null; }
@@ -849,7 +868,11 @@ public class Invite {
     public void setPriority(String prio) { mPriority = prio; }
     public String getPercentComplete() { return mPercentComplete; }
     public void setPercentComplete(String pct) { mPercentComplete = pct; }
-    
+
+    public boolean isPublic() {
+        return IcalXmlStrMap.CLASS_PUBLIC.equals(mClass);
+    }
+
     public boolean isCancel() {
         return ICalTok.CANCEL.toString().equals(mMethod) ||
                IcalXmlStrMap.STATUS_CANCELLED.equals(mStatus);
@@ -993,6 +1016,9 @@ public class Invite {
         sb.append(", rsvp: ").append(getRsvp());
         sb.append(", freeBusy: ").append(getFreeBusy());
         sb.append(", transp: ").append(getTransparency());
+        sb.append(", class: ").append(getClassProp());
+        sb.append(", classSetByMe: ").append(classPropSetByMe());
+        sb.append(", sentByMe: ").append(sentByMe());
         sb.append(", start: ").append(this.mStart);
         sb.append(", end: ").append(this.mEnd);
         sb.append(", duration: ").append(this.mDuration);
@@ -1044,6 +1070,8 @@ public class Invite {
     protected String mStatus = IcalXmlStrMap.STATUS_CONFIRMED;
     protected String mFreeBusy = IcalXmlStrMap.FBTYPE_BUSY;  // (F)ree, (B)usy, (T)entative, (U)navailable
     protected String mTransparency = IcalXmlStrMap.TRANSP_OPAQUE;  // transparent or opaque
+    protected String mClass = IcalXmlStrMap.CLASS_PUBLIC;  // public, private, confidential
+    protected boolean mClassSetByMe;
     protected ParsedDateTime mStart = null;
     protected ParsedDateTime mEnd = null;
     protected ParsedDuration mDuration = null;
@@ -1313,10 +1341,14 @@ public class Invite {
     public TimeZoneMap getTimeZoneMap() { return mTzMap; }
 
     public ZVCalendar newToICalendar() throws ServiceException {
-        return newToICalendar(OUTLOOK_COMPAT_ALLDAY);
+        return newToICalendar(OUTLOOK_COMPAT_ALLDAY, true);
     }
 
-    public ZVCalendar newToICalendar(boolean useOutlookCompatMode)
+    public ZVCalendar newToICalendar(boolean isOwner) throws ServiceException {
+        return newToICalendar(OUTLOOK_COMPAT_ALLDAY, isOwner);
+    }
+
+    public ZVCalendar newToICalendar(boolean useOutlookCompatMode, boolean isOwner)
     throws ServiceException {
         ZVCalendar vcal = new ZVCalendar();
         
@@ -1335,7 +1367,7 @@ public class Invite {
         }
         
         
-        vcal.addComponent(newToVComponent(useOutlookCompatMode));
+        vcal.addComponent(newToVComponent(useOutlookCompatMode, isOwner));
         return vcal;
     }
 
@@ -1536,6 +1568,11 @@ public class Invite {
                                 }
                             }
                             break;
+                        case CLASS:
+                            String classProp = IcalXmlStrMap.sClassMap.toXml(prop.getValue());
+                            if (classProp != null)
+                                newInv.setClassProp(classProp);
+                            break;
                         case X_MICROSOFT_CDO_ALLDAYEVENT:
                             if (isEvent) {
                                 if (prop.getBoolValue()) 
@@ -1636,7 +1673,7 @@ public class Invite {
     }
     
     
-    public ZComponent newToVComponent(boolean useOutlookCompatMode)
+    public ZComponent newToVComponent(boolean useOutlookCompatMode, boolean isOwner)
     throws ServiceException {
         ICalTok compTok;
         if (mItemType == MailItem.TYPE_TASK) {
@@ -1684,26 +1721,62 @@ public class Invite {
             }
         }
         
-        
+
+        if (isOwner || isPublic()) {
+            // SUMMARY (aka Name or Subject)
+            String name = getName();
+            if (name != null && name.length()>0)
+                component.addProperty(new ZProperty(ICalTok.SUMMARY, name));
+            
+            // DESCRIPTION
+            String desc = getDescription();
+            if (desc != null && desc.length()>0)
+                component.addProperty(new ZProperty(ICalTok.DESCRIPTION, desc));
+            
+            // COMMENT
+            String comment = getComment();
+            if (comment != null && comment.length()>0) 
+                component.addProperty(new ZProperty(ICalTok.COMMENT, comment));
+
+            // LOCATION
+            String location = getLocation();
+            if (location != null)
+                component.addProperty(new ZProperty(ICalTok.LOCATION, location.toString()));
+
+            // ATTENDEES
+            for (ZAttendee at : (List<ZAttendee>)getAttendees()) 
+                component.addProperty(at.toProperty());
+
+            // PRIORITY
+            if (mPriority != null)
+                component.addProperty(new ZProperty(ICalTok.PRIORITY, mPriority));
+
+            // PERCENT-COMPLETE
+            if (isTodo() && mPercentComplete != null)
+                component.addProperty(new ZProperty(ICalTok.PERCENT_COMPLETE, mPercentComplete));
+
+            // COMPLETED
+            if (isTodo() && mCompleted != 0) {
+                ParsedDateTime completed = ParsedDateTime.fromUTCTime(mCompleted);
+                component.addProperty(completed.toProperty(ICalTok.COMPLETED, false));
+            }
+
+            // VALARMs
+            for (Alarm alarm : mAlarms) {
+                ZComponent alarmComp = alarm.toZComponent();
+                component.addComponent(alarmComp);
+            }
+
+            // x-prop
+            for (ZProperty xprop : mXProps) {
+                component.addProperty(xprop);
+            }
+        }
+
         // ORGANIZER
         if (hasOrganizer())
             component.addProperty(getOrganizer().toProperty());
-        
-        // SUMMARY (aka Name or Subject)
-        String name = getName();
-        if (name != null && name.length()>0)
-            component.addProperty(new ZProperty(ICalTok.SUMMARY, name));
-        
-        // DESCRIPTION
-        String desc = getDescription();
-        if (desc != null && desc.length()>0)
-            component.addProperty(new ZProperty(ICalTok.DESCRIPTION, desc));
-        
-        // COMMENT
-        String comment = getComment();
-        if (comment != null && comment.length()>0) 
-            component.addProperty(new ZProperty(ICalTok.COMMENT, comment));
-        
+
         // DTSTART
         ParsedDateTime dtstart = getStartTime();
         if (dtstart != null)
@@ -1723,11 +1796,6 @@ public class Invite {
         if (dur != null)
             component.addProperty(new ZProperty(ICalTok.DURATION, dur.toString()));
         
-        // LOCATION
-        String location = getLocation();
-        if (location != null)
-            component.addProperty(new ZProperty(ICalTok.LOCATION, location.toString()));
-        
         // STATUS
         String status = getStatus();
         String statusIcal = IcalXmlStrMap.sStatusMap.toIcal(status);
@@ -1740,6 +1808,9 @@ public class Invite {
         } else {
             component.addProperty(new ZProperty(ICalTok.STATUS, statusIcal));
         }
+
+        // CLASS
+        component.addProperty(new ZProperty(ICalTok.CLASS, IcalXmlStrMap.sClassMap.toIcal(getClassProp())));
 
         if (isEvent()) {
             // allDay
@@ -1757,9 +1828,6 @@ public class Invite {
             component.addProperty(new ZProperty(ICalTok.TRANSP, IcalXmlStrMap.sTranspMap.toIcal(getTransparency())));
         }
         
-        // ATTENDEES
-        for (ZAttendee at : (List<ZAttendee>)getAttendees()) 
-            component.addProperty(at.toProperty());
         
         // RECURRENCE-ID
         RecurId recurId = getRecurId();
@@ -1772,31 +1840,6 @@ public class Invite {
         
         // SEQUENCE
         component.addProperty(new ZProperty(ICalTok.SEQUENCE, getSeqNo()));
-
-        // PRIORITY
-        if (mPriority != null)
-            component.addProperty(new ZProperty(ICalTok.PRIORITY, mPriority));
-
-        // PERCENT-COMPLETE
-        if (isTodo() && mPercentComplete != null)
-            component.addProperty(new ZProperty(ICalTok.PERCENT_COMPLETE, mPercentComplete));
-
-        // COMPLETED
-        if (isTodo() && mCompleted != 0) {
-            ParsedDateTime completed = ParsedDateTime.fromUTCTime(mCompleted);
-            component.addProperty(completed.toProperty(ICalTok.COMPLETED, false));
-        }
-
-        // VALARMs
-        for (Alarm alarm : mAlarms) {
-            ZComponent alarmComp = alarm.toZComponent();
-            component.addComponent(alarmComp);
-        }
-
-        // x-prop
-        for (ZProperty xprop : mXProps) {
-            component.addProperty(xprop);
-        }
 
         return component;
     }
@@ -1839,7 +1882,7 @@ public class Invite {
                 mCalItem, mUid,
                 mStatus, mPriority,
                 mPercentComplete, mCompleted,
-                mFreeBusy, mTransparency,
+                mFreeBusy, mTransparency, mClass,
                 mStart, mEnd, mDuration,
                 mRecurrence,
                 mIsOrganizer, mOrganizer, mAttendees,
@@ -1850,6 +1893,7 @@ public class Invite {
                 0, // mComponentNum
                 mSentByMe,
                 mDescription, mFragment);
+        inv.setClassPropSetByMe(classPropSetByMe());
         return inv;
     }
 }

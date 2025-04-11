@@ -53,6 +53,7 @@ import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity;
 import org.apache.commons.httpclient.methods.multipart.Part;
 import org.apache.commons.httpclient.methods.multipart.PartBase;
+import org.dom4j.DocumentException;
 
 import com.zimbra.cs.account.AccountServiceException;
 import com.zimbra.cs.account.Cos;
@@ -146,7 +147,6 @@ public class ZimletUtil {
 	
 	public static List<Zimlet> orderZimletsByPriority() throws ServiceException {
 		Provisioning prov = Provisioning.getInstance();
-		@SuppressWarnings({"unchecked"})
 		List<Zimlet> allzimlets = prov.listAllZimlets();
 		return orderZimletsByPriority(allzimlets);
 	}
@@ -297,29 +297,31 @@ public class ZimletUtil {
 	 * @param elem - Parent Element node
 	 * @param zimlet
 	 */
-	public static void listZimlet(Element elem, String zimlet, int priority) {
-		loadZimlets();
-		ZimletFile zim = (ZimletFile) sZimlets.get(zimlet);
-		if (zim == null) {
-			ZimbraLog.zimlet.info("cannot find zimlet "+zimlet);
-			return;
-		}
-		try {
-			String zimletBase = ZIMLET_BASE + "/" + zim.getZimletName() + "/";
+	public static void listZimlet(Element elem, Zimlet zimlet, int priority) {
+        loadZimlets();
+        ZimletFile zf = (ZimletFile) sZimlets.get(zimlet.getName());
+        if (zf == null) {
+            ZimbraLog.zimlet.info("cannot find zimlet "+zimlet.getName());
+            return;
+        }
+        try {
+			String zimletBase = ZIMLET_BASE + "/" + zimlet.getName() + "/";
 			Element entry = elem.addElement(AccountConstants.E_ZIMLET);
 			Element zimletContext = entry.addElement(AccountConstants.E_ZIMLET_CONTEXT);
 			zimletContext.addAttribute(AccountConstants.A_ZIMLET_BASE_URL, zimletBase);
 			if (priority >= 0) {
 				zimletContext.addAttribute(AccountConstants.A_ZIMLET_PRIORITY, priority);
 			}
-			zim.getZimletDescription().addToElement(entry);
-			if (zim.hasZimletConfig()) {
-				zim.getZimletConfig().addToElement(entry);
-			}
+			zf.getZimletDescription().addToElement(entry);
+			String config = zimlet.getHandlerConfig();
+			if (config != null)
+			    entry.addElement(Element.parseXML(config, elem.getFactory()));
+		} catch (DocumentException de) {
+		    ZimbraLog.zimlet.info("error loading zimlet "+zimlet+": "+de.getMessage());
 		} catch (ZimletException ze) {
-			ZimbraLog.zimlet.info("error loading zimlet "+zimlet+": "+ze.getMessage());
+		    ZimbraLog.zimlet.info("error loading zimlet "+zimlet+": "+ze.getMessage());
 		} catch (IOException ioe) {
-			ZimbraLog.zimlet.info("error loading zimlet "+zimlet+": "+ioe.getMessage());
+		    ZimbraLog.zimlet.info("error loading zimlet "+zimlet+": "+ioe.getMessage());
 		}
 	}
 	
@@ -965,7 +967,7 @@ public class ZimletUtil {
 	}
 	
 	public static void installConfig(String config) throws IOException, ZimletException {
-		installConfig(new ZimletConfig(new File(config)));
+		installConfig(new ZimletConfig(config));
 	}
 	
 	public static void listPriority() throws ServiceException {
@@ -1125,6 +1127,18 @@ public class ZimletUtil {
 			}
 		}
 		
+        public void configureZimlet(byte[] config) throws ServiceException {
+            List<Server> allServers = mProv.getAllServers();
+            for (Server server : allServers) {
+                boolean hasMailboxService = server.getMultiAttrSet(Provisioning.A_zimbraServiceEnabled).contains("mailbox");
+                if (mRunningInServer && (mProv.getLocalServer().compareTo(server) == 0) ||
+                    !hasMailboxService)
+                    continue;
+                ZimbraLog.zimlet.info("Configure zimlet on " + server.getName());
+                configureZimletOnServer(config, server);
+            }
+        }
+        
 		public void deployZimletOnServer(String zimlet, byte[] data, Server server, DeployListener listener) throws ServiceException {
 			mTransport = null;
 			try {
@@ -1191,13 +1205,48 @@ public class ZimletUtil {
 			}
 		}
 		
-		private void soapUndeployZimlet(String name) throws ServiceException, IOException {
-			XMLElement req = new XMLElement(AdminConstants.UNDEPLOY_ZIMLET_REQUEST);
-			req.addAttribute(AdminConstants.A_ACTION, AdminConstants.A_DEPLOYLOCAL);
-			req.addAttribute(AdminConstants.A_NAME, name);
-			mTransport.invoke(req);
-		}
-		
+        private void soapUndeployZimlet(String name) throws ServiceException, IOException {
+            XMLElement req = new XMLElement(AdminConstants.UNDEPLOY_ZIMLET_REQUEST);
+            req.addAttribute(AdminConstants.A_ACTION, AdminConstants.A_DEPLOYLOCAL);
+            req.addAttribute(AdminConstants.A_NAME, name);
+            mTransport.invoke(req);
+        }
+        
+        public void configureZimletOnServer(byte[] config, Server server) throws ServiceException {
+            mTransport = null;
+            try {
+                String adminUrl = URLUtil.getAdminURL(server, ZimbraServlet.ADMIN_SERVICE_URI);
+                mTransport = new SoapHttpTransport(adminUrl);
+                
+                // auth if necessary
+                if (mAuth == null)
+                    auth();
+                mTransport.setAuthToken(mAuth);
+                
+                // upload
+                String uploadUrl = URLUtil.getAdminURL(server, "/service/upload?fmt=raw");
+                mAttachmentId = postAttachment(uploadUrl, "config.xml", config, server.getName());
+                
+                // configure
+                soapConfigureZimlet();
+                ZimbraLog.zimlet.info("Configure successful");
+            } catch (Exception e) {
+                if (e instanceof ServiceException)
+                    throw (ServiceException)e;
+                else 
+                    throw ServiceException.FAILURE("Unable to configure Zimlet on " + server.getName(), e);
+            } finally {
+                if (mTransport != null)
+                    mTransport.shutdown();
+            }
+        }
+        
+        private void soapConfigureZimlet() throws ServiceException, IOException {
+            XMLElement req = new XMLElement(AdminConstants.CONFIGURE_ZIMLET_REQUEST);
+            req.addElement(MailConstants.E_CONTENT).addAttribute(MailConstants.A_ATTACHMENT_ID, mAttachmentId);
+            mTransport.invoke(req);
+        }
+        
 	    private String postAttachment(String uploadURL, String name, byte[] data, String domain) throws ZimletException {
 	    	String aid = null;
 
@@ -1429,7 +1478,8 @@ public class ZimletUtil {
 				dumpConfig(zimlet);
 				break;
 			case INSTALL_CONFIG:
-				installConfig(zimlet);
+			    ZimletSoapUtil soapUtil = new ZimletSoapUtil();
+			    soapUtil.configureZimlet(ByteUtil.getContent(new File(zimlet)));
 				break;
 			default:
 				usage();

@@ -36,7 +36,7 @@ ZmAppCtxt = function() {
 	this._trees = {};
 	this._accounts = {};
 	// create dummy account for startup
-	this._accounts[ZmAccount.DEFAULT_ID] = new ZmAccount(this, ZmAccount.DEFAULT_ID, null, false);
+	this._accounts[ZmZimbraAccount.DEFAULT_ID] = new ZmZimbraAccount(this, ZmZimbraAccount.DEFAULT_ID, null, false);
 
 	// public flags
 	this.inStartup = false;
@@ -92,24 +92,19 @@ function() {
 };
 
 ZmAppCtxt.prototype.setStatusMsg =
-function(msg, level, detail, delay, transition) {
-	this._appController.setStatusMsg(msg, level, detail, delay, transition);
-};
-
-ZmAppCtxt.prototype.setStatusIconVisible =
-function(icon, visible) {
-	this._appController.setStatusIconVisible(icon, visible);
+function(msg, level, detail) {
+	this._appController.setStatusMsg(msg, level, detail);
 };
 
 ZmAppCtxt.prototype.getSettings =
 function(account) {
-	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmAccount.DEFAULT_ID;
+	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmZimbraAccount.DEFAULT_ID;
 	return this._accounts[id] ? this._accounts[id].settings : null;
 };
 
 ZmAppCtxt.prototype.setSettings = 
 function(settings, account) {
-	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmAccount.DEFAULT_ID;
+	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmZimbraAccount.DEFAULT_ID;
 	if (this._accounts[id]) {
 		this._accounts[id].settings = settings;
 	}
@@ -118,12 +113,13 @@ function(settings, account) {
 /**
  * Returns the value of a setting.
  *
- * @param id	[constant]		setting ID
- * @param key	[string]*		setting key (for settings that are of the hash type)
+ * @param id		[constant]		setting ID
+ * @param key		[string]*		setting key (for settings that are of the hash type)
+ * @param account	[ZmAccount]*	account to get the ZmSettings instance for
  */
 ZmAppCtxt.prototype.get =
-function(id, key) {
-	return this.getSettings().get(id, key);
+function(id, key, account) {
+	return this.getSettings(account).get(id, key);
 };
 
 /**
@@ -163,14 +159,13 @@ function() {
 	return this._appController.getAppViewMgr();
 };
 
-ZmAppCtxt.prototype.setClientCmdHdlr =
+ZmAppCtxt.prototype.getClientCmdHandler =
 function(clientCmdHdlr) {
-	this._clientCmdHdlr = clientCmdHdlr;
-};
-
-ZmAppCtxt.prototype.getClientCmdHdlr =
-function() {
-	return this._clientCmdHdlr;
+	if (!this._clientCmdHandler) {
+		AjxDispatcher.require("Extras");
+		this._clientCmdHandler = new ZmClientCmdHandler(this);
+	}
+	return this._clientCmdHandler;
 };
 
 /**
@@ -466,6 +461,14 @@ function() {
 	return this._uploadDialog;
 };
 
+ZmAppCtxt.prototype.getAttachDialog = function() {
+	if(!this._attachDialog){
+		AjxDispatcher.require("Share");
+		this._attachDialog = new ZmAttachDialog(this, this._shell);
+	}
+	return this._attachDialog;
+};
+
 ZmAppCtxt.prototype.getUploadConflictDialog =
 function() {
 	if (!this._uploadConflictDialog) {
@@ -474,15 +477,6 @@ function() {
 	}
 	return this._uploadConflictDialog;
 };
-
-ZmAppCtxt.prototype.getChangePasswordDialog =
-function() {
-	if (!this._changePasswordDialog) {
-		AjxDispatcher.require("Extras");
-		this._changePasswordDialog = new ZmChangePasswordDialog(this._shell);
-	}
-	return this._changePasswordDialog;
-}
 
 ZmAppCtxt.prototype.clearAllDialogs =
 function() {
@@ -535,7 +529,6 @@ function() {
 	this._filterRuleDialog = null;
 	this._confirmDialog = null;
 	this._pickTagDialog = null;
-	this._changePasswordDialog = null;
 	this._renameTagDialog = null;
 };
 
@@ -573,8 +566,8 @@ function(account) {
 	}
 };
 
-ZmAppCtxt.prototype.getAccounts =
-function(id) {
+ZmAppCtxt.prototype.getZimbraAccounts =
+function() {
 	return this._accounts;
 };
 
@@ -591,7 +584,7 @@ function(id) {
 			return account;
 		}
 	}
-	return this._accounts[ZmAccount.DEFAULT_ID];
+	return this._accounts[ZmZimbraAccount.DEFAULT_ID];
 };
 
 /**
@@ -599,7 +592,7 @@ function(id) {
  * when fetching any account-specific data such as settings or folder
  * tree. The account goes and fetches its data if necessary.
  *
- * @param account	[ZmAccount]		account to make active
+ * @param account	[ZmZimbraAccount]		account to make active
  * @param callback	[AjxCallback]*	client callback
  */
 ZmAppCtxt.prototype.setActiveAccount =
@@ -613,19 +606,29 @@ function() {
 	return this._activeAccount;
 };
 
+ZmAppCtxt.prototype.getIdentityCollection = function() {
+	return AjxDispatcher.run("GetIdentityCollection");
+};
+ZmAppCtxt.prototype.getDataSourceCollection = function() {
+	return AjxDispatcher.run("GetDataSourceCollection");
+};
+ZmAppCtxt.prototype.getSignatureCollection = function() {
+	return AjxDispatcher.run("GetSignatureCollection");
+};
+
 ZmAppCtxt.prototype.getTree =
 function(type, account) {
 	if (this.getAppController().isChildWindow()) {
 		return window.parentController._appCtxt.getTree(type, account);
 	}
-	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmAccount.DEFAULT_ID;
+	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmZimbraAccount.DEFAULT_ID;
 	var acct = this._accounts[id];
 	return acct ? acct.trees[ZmOrganizer.TREE_TYPE[type]] : null;
 };
 
 ZmAppCtxt.prototype.setTree =
 function(type, tree, account) {
-	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmAccount.DEFAULT_ID;
+	var id = account ? account.id : this._activeAccount ? this._activeAccount.id : ZmZimbraAccount.DEFAULT_ID;
 	if (this._accounts[id]) {
 		this._accounts[id].trees[type] = tree;
 	}
@@ -668,13 +671,12 @@ function() {
 };
 
 ZmAppCtxt.prototype.getUploadManager = 
-function() { 
+function() {
+	if (!this._uploadManager) {
+		// Create upload manager (for sending attachments)
+		this._uploadManager = new AjxPost(this.getUploadFrameId());
+	}
 	return this._uploadManager;
-};
-
-ZmAppCtxt.prototype.setUploadManager = 
-function(uploadManager) {
-	this._uploadManager = uploadManager;
 };
 
 ZmAppCtxt.prototype.getCurrentAppToolbar =
@@ -777,17 +779,17 @@ function(id) {
 	return this._itemCache ? this._itemCache.get(id) : null;
 };
 
-ZmAppCtxt.prototype.getCsfeMsgFetcher = 
-function() {
-	if (!this._csfeMsgFetchSvc) {
-		this._csfeMsgFetchSvc = location.protocol + "//" + document.domain + this.get(ZmSetting.CSFE_MSG_FETCHER_URI);
-	}
-	return this._csfeMsgFetchSvc;
-};
-
 ZmAppCtxt.prototype.getKeyboardMgr =
 function() {
 	return this._shell.getKeyboardMgr();
+};
+
+ZmAppCtxt.prototype.getHistoryMgr =
+function() {
+	if (!this._historyMgr) {
+		this._historyMgr = new AjxHistoryMgr();
+	}
+	return this._historyMgr;
 };
 
 ZmAppCtxt.prototype.zimletsPresent =

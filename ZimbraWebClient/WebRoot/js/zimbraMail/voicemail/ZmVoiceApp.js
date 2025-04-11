@@ -37,11 +37,12 @@ ZmItem.CALL						= ZmEvent.S_CALL;
 ZmOrganizer.VOICE				= ZmEvent.S_VOICEMAIL;
 
 // App-related constants
-ZmApp.VOICE						= "Voice";
-ZmApp.CLASS[ZmApp.VOICE]		= "ZmVoiceApp";
-ZmApp.SETTING[ZmApp.VOICE]		= ZmSetting.VOICE_ENABLED;
-ZmApp.LOAD_SORT[ZmApp.VOICE]	= 80;
-ZmApp.QS_ARG[ZmApp.VOICE]		= "voice";
+ZmApp.VOICE							= "Voice";
+ZmApp.CLASS[ZmApp.VOICE]			= "ZmVoiceApp";
+ZmApp.SETTING[ZmApp.VOICE]			= ZmSetting.VOICE_ENABLED;
+ZmApp.UPSELL_SETTING[ZmApp.VOICE]	= ZmSetting.VOICE_UPSELL_ENABLED;
+ZmApp.LOAD_SORT[ZmApp.VOICE]		= 80;
+ZmApp.QS_ARG[ZmApp.VOICE]			= "voice";
 
 ZmVoiceApp.SOAP_INFO = {
 	method: "SearchVoiceRequest", 
@@ -146,7 +147,8 @@ function() {
 							  searchTypes:			[ZmItem.VOICEMAIL],
 							  gotoActionCode:		ZmKeyMap.GOTO_VOICE,
 							  chooserSort:			15,
-							  defaultSort:			15
+							  defaultSort:			15,
+							  upsellUrl:			ZmSetting.VOICE_UPSELL_URL
 							  });
 };
 
@@ -169,6 +171,12 @@ ZmVoiceApp.prototype._registerPrefs = function() {
     for (var id in sections) {
         ZmPref.registerPrefSection(id, sections[id]);
     }
+};
+
+ZmVoiceApp.prototype._registerSettings =
+function(settings) {
+	settings = settings || this._appCtxt.getSettings();
+	settings.registerSetting("VOICE_PAGE_SIZE", {name:"zimbraPrefVoiceItemsPerPage", type:ZmSetting.T_PREF, dataType:ZmSetting.D_INT, defaultValue:25});
 };
 
 // Public methods
@@ -198,19 +206,23 @@ function() {
 	var accordionId = this._name;
 	var opc = this._appCtxt.getOverviewController();
 	var params = {accordionId:accordionId};
-	var accordion = this._overviewPanelContent = opc.createAccordion(params);
-	accordion.addSelectionListener(new AjxListener(this, this._accordionSelectionListener));
+	this._overviewPanelContent = opc.createAccordion(params);
+	this._overviewPanelContent.addSelectionListener(new AjxListener(this, this._accordionSelectionListener));
 
-	for (var i = 0; i < this.phones.length; i++) {
-		var phone = this.phones[i];
-		var data = {phone:phone, lastFolder:null, appName:this._name};
-		var item = accordion.addAccordionItem({title:phone.getDisplay(), data:data});
-		if (i == 0) {
-			this._activateAccordionItem(item);
-		}
+	if (!this.phones.length) {
+		// GetVoiceInfo hasn't been called yet.
+		var currentApp = this._appCtxt.getCurrentApp();
+		this.getVoiceInfo(new AjxCallback(this, this._handleResponseGetOverviewPanelContent, [currentApp]));
+	} else {
+		this._createAccordionItems();
 	}
-
 	return this._overviewPanelContent;
+};
+
+
+ZmVoiceApp.prototype._handleResponseGetOverviewPanelContent =
+function(currentApp) {
+	this._createAccordionItems();
 };
 
 ZmVoiceApp.prototype.getOverviewId =
@@ -237,6 +249,12 @@ function(callback) {
 
 ZmVoiceApp.prototype._handleResponseVoiceInfo =
 function(callback, response) {
+	var callback = new AjxCallback(this, this._handleResponseVoiceInfo2, [callback, response]);
+	AjxPackage.require({ name: "Voicemail", callback: callback });
+};
+
+ZmVoiceApp.prototype._handleResponseVoiceInfo2 =
+function(callback, response) {
 	var phones = response._data.GetVoiceInfoResponse.phone;
 	for (var i = 0, count = phones.length; i < count; i++) {
 		var obj = phones[i];
@@ -251,6 +269,19 @@ function(callback, response) {
 	}
 	if (callback) {
 		callback.run();
+	}
+};
+
+ZmVoiceApp.prototype._createAccordionItems =
+function() {
+	var data = {lastFolder:null, appName:this._name};
+	for (var i = 0; i < this.phones.length; i++) {
+		var phone = this.phones[i];
+		data.phone = phone;
+		var item = this._overviewPanelContent.addAccordionItem({title:phone.getDisplay(), data:data});
+		if (i == 0) {
+			this._activateAccordionItem(item);
+		}
 	}
 };
 
@@ -297,7 +328,8 @@ function(folder, callback, sortBy) {
 		soapInfo: ZmVoiceApp.SOAP_INFO,
 		types: AjxVector.fromArray([folder.getSearchType()]),
 		sortBy: sortBy,
-		query: folder.getSearchQuery()
+		query: folder.getSearchQuery(),
+		limit: this._appCtxt.get(ZmSetting.VOICE_PAGE_SIZE)
 	};
 	var search = new ZmSearch(this._appCtxt, searchParams);	
 	var responseCallback = new AjxCallback(this, this._handleResponseSearch, [folder, callback]);

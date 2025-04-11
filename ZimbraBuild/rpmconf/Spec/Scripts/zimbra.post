@@ -29,13 +29,13 @@ I=`hostname -i`
 
 #Symlinks
 rm -f /opt/zimbra/mysql
-ln -s /opt/zimbra/mysql-standard-5.0.33-pc-linux-gnu-i686-glibc23 /opt/zimbra/mysql
+ln -s /opt/zimbra/mysql-standard-5.0.45-pc-linux-gnu-i686-glibc23 /opt/zimbra/mysql
 
 mv /opt/zimbra/db/db.sql /opt/zimbra/db/db.sql.in
 sed -e "/server.hostname/ s/local/$H/" /opt/zimbra/db/db.sql.in > /opt/zimbra/db/db.sql
 
-rm -rf /opt/zimbra/perdition
-ln -s /opt/zimbra/perdition-1.17 /opt/zimbra/perdition
+rm -f /opt/zimbra/perdition
+ln -s /opt/zimbra/perdition-1.17.1 /opt/zimbra/perdition
 mkdir -p /opt/zimbra/perdition/var/run
 chown -R zimbra:zimbra /opt/zimbra/perdition/var
 
@@ -62,8 +62,8 @@ for i in jetty apache-tomcat ; do
 done
 rm -f /opt/zimbra/mailboxd
 rm -f /opt/zimbra/jetty
-ln -s /opt/zimbra/jetty-6.1.4 /opt/zimbra/jetty
-ln -s /opt/zimbra/jetty-6.1.4 /opt/zimbra/mailboxd
+ln -s /opt/zimbra/jetty-6.1.5 /opt/zimbra/jetty
+ln -s /opt/zimbra/jetty-6.1.5 /opt/zimbra/mailboxd
 
 mkdir -p /opt/zimbra/mailboxd/logs
 chown zimbra:zimbra /opt/zimbra/mailboxd/logs

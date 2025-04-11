@@ -1,6 +1,6 @@
 <%@ page buffer="8kb" autoFlush="true" %>
 <%@ page pageEncoding="UTF-8" contentType="text/html; charset=UTF-8" %>
-<%@ page session="true" %>
+<%@ page session="false" import="javax.naming.*" %>
 <%@ taglib prefix="zm" uri="com.zimbra.zm" %>
 <%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
 <%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
@@ -19,6 +19,7 @@
 <html>
 <head>
 <!--
+ launchZCS.jsp
  * ***** BEGIN LICENSE BLOCK *****
  * Version: ZPL 1.2
  *
@@ -43,6 +44,18 @@
  * ***** END LICENSE BLOCK *****
 -->
 <script>
+<%!
+	private static String protocolMode = null;
+	static {
+		try {
+			Context initCtx = new InitialContext();
+			Context envCtx = (Context) initCtx.lookup("java:comp/env");
+			protocolMode = (String) envCtx.lookup("protocolMode");
+		} catch (NamingException ne) {
+			protocolMode = "http";
+		}
+	}
+%>
 <%
 	String contextPath = request.getContextPath();
 	if (contextPath.equals("/")) {
@@ -55,9 +68,19 @@
 	if (requestSkin != null) {
 		skin = requestSkin;
 	} else if (authResult != null) {
-		skin = authResult.getPrefs().get("zimbraPrefSkin").get(0);
+	    java.util.List<String> prefSkin = authResult.getPrefs().get("zimbraPrefSkin");
+	    if (prefSkin != null && prefSkin.size() > 0) {
+	        skin = prefSkin.get(0);
+        } else {
+            skin = "sand"; // TODO: find better default?
+        }
 	}
-
+    if (authResult != null) {
+        java.util.List<String> localePref = authResult.getPrefs().get("zimbraPrefLocale");
+        if (localePref != null && localePref.size() > 0) {
+            request.setAttribute("localeId", localePref.get(0));
+        }
+    }
 	String isDev = (String) request.getParameter("dev");
 	if (isDev != null) {
 		request.setAttribute("mode", "mjsf");
@@ -90,13 +113,20 @@
 	if (offlineMode == null) {
 		offlineMode = application.getInitParameter("offlineMode");
 	}
+
 %>
+
+<zm:getDomainInfo var="domainInfo" by="virtualHostname" value="${zm:getServerName(pageContext)}"/> 
 
 		var settings = {
 "dummy":1<c:forEach var="pref" items="${requestScope.authResult.prefs}">,
 "${pref.key}":"${zm:jsEncode(pref.value[0])}"</c:forEach>
 <c:forEach var="attr" items="${requestScope.authResult.attrs}">,
 "${attr.key}":"${zm:jsEncode(attr.value[0])}"</c:forEach>
+<c:if test="${not empty domainInfo}"> 
+<c:forEach var="info" items="${domainInfo.attrs}">,
+"${info.key}":"${zm:jsEncode(info.value)}"</c:forEach> 
+</c:if>
 		};
 </script>
 
@@ -115,10 +145,11 @@
 </script>
 
 <jsp:include page="Messages.jsp"/>
-<script src="<%=contextPath %>/js/keys/AjxKeys,ZmKeys.js<%=ext %>?v=<%=vers %>"></script>
+<script src="<%=contextPath %>/js/keys/AjxKeys,ZmKeys.js<%=ext %>?v=<%=vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>"></script>
 <style type="text/css">
 <!--
-@import url(<%= contextPath %>/css/imgs,common,dwt,msgview,login,zm,spellcheck,wiki,<%= skin %>_imgs,skin.css?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>&skin=<%= skin %>);
+@import url(<%= contextPath %>/css/common,dwt,msgview,login,zm,spellcheck,wiki?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>&skin=<%= skin %>);
+@import url(<%= contextPath %>/css/imgs,<%= skin %>_imgs,skin.css?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %>&skin=<%= skin %>);
 -->
 </style>
 
@@ -127,7 +158,7 @@
     String allPackages = "AjaxLogin,AjaxZWC,ZimbraLogin,ZimbraZWC,ZimbraCore";
     if (extraPackages != null) {
     	if (extraPackages.equals("dev")) {
-    		extraPackages = "CalendarCore,Calendar,ContactsCore,Contacts,IM,Mail,Mixed,NotebookCore,Notebook,BriefcaseCore,Briefcase,PreferencesCore,Preferences,TasksCore,Tasks,Voicemail,Assistant,Browse,Extras,Share,Zimlet,Portal";
+    		extraPackages = "CalendarCore,Calendar,ContactsCore,Contacts,IM,MailCore,Mail,Mixed,NotebookCore,Notebook,BriefcaseCore,Briefcase,PreferencesCore,Preferences,TasksCore,Tasks,Voicemail,Assistant,Browse,Extras,Share,Zimlet,Portal";
     	}
     	allPackages += "," + extraPackages;
     }
@@ -170,7 +201,7 @@ AjxEnv.DEFAULT_LOCALE = "<%=request.getLocale()%>";
 			_timer = null;
 		}
 
-		AjxWindowOpener.HELPER_URL = "<%=contextPath%>/public/frameOpenerHelper.jsp"
+		AjxWindowOpener.HELPER_URL = "<%=contextPath%>/public/frameOpenerHelper.jsp";
 		DBG = new AjxDebug(AjxDebug.NONE, null, false);
 		// figure out the debug level
 		var debugLevel = "<%= (debug != null) ? debug : "" %>";
@@ -182,11 +213,13 @@ AjxEnv.DEFAULT_LOCALE = "<%=request.getLocale()%>";
 			}
 		}
 
+		AjxHistoryMgr.BLANK_FILE = "<%=contextPath%>/public/blankHistory.html";
 		var app = "<%= (startApp != null) ? startApp : "" %>";
 		var offlineMode = "<%= (offlineMode != null) ? offlineMode : "" %>";
 		var isDev = "<%= (isDev != null) ? isDev : "" %>";
+		var protocolMode = "<%=protocolMode%>";
 
-		ZmZimbraMail.run({domain:document.domain, app:app, offlineMode:offlineMode, devMode:isDev, settings:settings});
+		ZmZimbraMail.run({app:app, offlineMode:offlineMode, devMode:isDev, settings:settings, protocolMode:protocolMode});
 	}
 
     //	START DOMContentLoaded
@@ -240,7 +273,9 @@ AjxEnv.DEFAULT_LOCALE = "<%=request.getLocale()%>";
 	    public String getPathInfo() { return "/skin.html"; }
 	    public String getRequestURI() { return getServletPath() + getPathInfo(); }
 	    public String getParameter(String name) {
-	    	return name.equals("skin") ? this.skin : super.getParameter(name);
+	    	if (name.equals("skin")) return this.skin;
+			if (name.equals("client")) return "advanced";
+			return super.getParameter(name);
 	    }
 	}
 %>

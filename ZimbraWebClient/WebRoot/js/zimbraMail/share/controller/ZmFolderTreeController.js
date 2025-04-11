@@ -46,8 +46,7 @@ ZmFolderTreeController = function(appCtxt, type, dropTgt) {
 	this._listeners[ZmOperation.RENAME_FOLDER] = new AjxListener(this, this._renameListener);
 	this._listeners[ZmOperation.SHARE_FOLDER] = new AjxListener(this, this._shareAddrBookListener);
 	this._listeners[ZmOperation.MOUNT_FOLDER] = new AjxListener(this, this._mountAddrBookListener);
-	
-	this._listeners[ZmOperation.EMPTY_FOLDER] = new AjxListener(this,this._emptyListener);
+	this._listeners[ZmOperation.EMPTY_FOLDER] = new AjxListener(this, this._emptyListener);
 };
 
 ZmFolderTreeController.prototype = new ZmTreeController;
@@ -70,12 +69,14 @@ function(params) {
 		omit[id] = true;		
 	}
     var dataTree = this.getDataTree(params.account);
-    for (var name in ZmFolder.HIDE_NAME) {
-		var folder = dataTree.getByName(name);
-		if (folder) {
-			omit[folder.id] = true;
+    if (dataTree) {
+	    for (var name in ZmFolder.HIDE_NAME) {
+			var folder = dataTree.getByName(name);
+			if (folder) {
+				omit[folder.id] = true;
+			}
 		}
-	}
+    }
 	params.omit = omit;
 	return ZmTreeController.prototype.show.call(this, params);
 };
@@ -99,7 +100,7 @@ function(parent, type, id) {
 		parent.enableAll(true);
 		parent.enable(ZmOperation.SYNC, folder.isFeed());
 		parent.enable([ZmOperation.SHARE_FOLDER, ZmOperation.MOUNT_FOLDER], !folder.link);
-		parent.enable(ZmOperation.EMPTY_FOLDER, hasContent);
+		parent.enable(ZmOperation.EMPTY_FOLDER, (hasContent || folder.link));	// numTotal is not set for shared folders
 
 		if (folder.isRemote() && folder.isReadOnly()) {
 			if (folder.parent && folder.parent.isRemote()) {
@@ -127,7 +128,8 @@ function(parent, type, id) {
 
 	parent.enable(ZmOperation.EXPAND_ALL, (folder.size() > 0));
 	if (nId != ZmOrganizer.ID_ROOT && !folder.isReadOnly()) {
-		parent.enable(ZmOperation.MARK_ALL_READ, (folder.numUnread > 0));
+		// always enable for shared folders since we dont get this info from server
+		parent.enable(ZmOperation.MARK_ALL_READ, (folder.numUnread > 0 || folder.link));
 	}
 
 	var op = parent.getOp(ZmOperation.EMPTY_FOLDER);
@@ -135,24 +137,30 @@ function(parent, type, id) {
 		op.setText(emptyText);
 	}
 
-    // are there any pop accounts associated to this folder?
+    // are there any external accounts associated to this folder?
     var button = parent.getOp(ZmOperation.SYNC);
     if (button) {
         button.setEnabled(true);
         button.setVisible(true);
         if (folder.isFeed()) {
             button.setText(ZmMsg.checkFeed);
-        } else if (this._appCtxt.get(ZmSetting.POP_ACCOUNTS_ENABLED)) {
-            var dsCollection = AjxDispatcher.run("GetDataSourceCollection");
-            var popAccounts = dsCollection.getPopAccountsFor(folder.id);
-            if (popAccounts.length > 0) {
-                button.setText(ZmMsg.checkPopMail);
-            } else {
-                button.setVisible(false);
-            }
-        } else {
-            button.setVisible(false);
         }
+		else {
+			// TODO: also consider if IMAP is enabled
+			var isEnabled = this._appCtxt.get(ZmSetting.POP_ACCOUNTS_ENABLED);
+			if (isEnabled) {
+				var dsCollection = AjxDispatcher.run("GetDataSourceCollection");
+				var dataSources = dsCollection.getItemsFor(folder.id);
+				if (dataSources.length > 0) {
+					button.setText(ZmMsg.checkExternalMail);
+				} else {
+					button.setVisible(false);
+				}
+			}
+			else {
+				button.setVisible(false);
+			}
+		}
     }
 };
 
@@ -174,14 +182,14 @@ function() {
 	var list = new Array();
 	list.push(ZmOperation.NEW_FOLDER,
 			  ZmOperation.MARK_ALL_READ,
-			  ZmOperation.EMPTY_FOLDER,
 			  ZmOperation.DELETE,
 			  ZmOperation.RENAME_FOLDER,
 			  ZmOperation.MOVE,
 			  ZmOperation.SHARE_FOLDER,
 			  ZmOperation.EDIT_PROPS,
 			  ZmOperation.EXPAND_ALL,
-			  ZmOperation.SYNC);
+			  ZmOperation.SYNC,
+			  ZmOperation.EMPTY_FOLDER);
 	return list;
 };
 
@@ -229,11 +237,11 @@ function(folder) {
 		if (folder.isInTrash()) {
 			var app = this._appCtxt.getCurrentAppName();
 			// if other apps add Trash to their folder tree, set appropriate type here:
-			if (app == ZmApp.CONTACTS)
+			if (app == ZmApp.CONTACTS) {
 				searchFor = ZmItem.CONTACT;
+			}
 		}
-		var types = searchController.getTypes(searchFor);
-		searchController.search({query: folder.createQuery(), types: types});
+		searchController.search({query:folder.createQuery(), searchFor:searchFor});
 	}
 };
 
@@ -254,10 +262,10 @@ function(appCtxt) {
 ZmFolderTreeController.prototype._doSync =
 function(folder) {
     var dsCollection = AjxDispatcher.run("GetDataSourceCollection");
-    var popAccounts = dsCollection.getPopAccountsFor(folder.id);
+    var dataSources = dsCollection.getItemsFor(folder.id);
 
-    if (popAccounts.length > 0) {
-        dsCollection.importPopMailFor(folder.id);
+    if (dataSources.length > 0) {
+        dsCollection.importMailFor(folder.id);
     }
     else {
         ZmTreeController.prototype._doSync.call(this, folder);
@@ -317,18 +325,21 @@ function(ev) {
 */
 ZmFolderTreeController.prototype._emptyListener = 
 function(ev) {
-	var organizer = this._getActionedOrganizer(ev);
-	this._pendingActionData = organizer;
+	var organizer = this._pendingActionData = this._getActionedOrganizer(ev);
 	var ds = this._emptyShield = this._appCtxt.getOkCancelMsgDialog();
 	ds.reset();
 	ds.registerCallback(DwtDialog.OK_BUTTON, this._emptyShieldYesCallback, this, organizer);
 	ds.registerCallback(DwtDialog.CANCEL_BUTTON, this._clearDialog, this, this._emptyShield);
-	var confirm = ZmMsg.confirmEmptyFolder;
-	var msg = AjxMessageFormat.format(confirm, organizer.getName());
+	
+	var msg = AjxMessageFormat.format(ZmMsg.confirmEmptyFolder, organizer.getName());
 	ds.setMessage(msg, DwtMessageDialog.WARNING_STYLE);
-	ds.popup();	
+	ds.popup();
+		
+	if(!(organizer.nId == ZmFolder.ID_SPAM || organizer.isInTrash())){
+		var cancelButton = ds.getButton(DwtDialog.CANCEL_BUTTON);
+		cancelButton.focus();
+	}
 };
-
 
 /*
 * Don't allow dragging of system folders.
@@ -380,8 +391,8 @@ function(ev) {
 						action |= actionData[i].getDefaultDndAction();
 				}
 				plusDiv = actionData.length == 1
-					? ev.dndIcon.firstChild.nextSibling
-					: ev.dndIcon.firstChild.nextSibling.nextSibling;
+					? ev.dndProxy.firstChild.nextSibling
+					: ev.dndProxy.firstChild.nextSibling.nextSibling;
 
 				if (action && plusDiv) {
 					// TODO - what if action is ZmItem.DND_ACTION_BOTH ??

@@ -24,27 +24,31 @@
  */
 
 /**
-* Creates a controller to run ZimbraMail. Do not call directly, instead use the run()
-* factory method.
-* @constructor
-* @class
-* This class is the "ubercontroller", as it manages all the apps as well as bootstrapping
-* the ZimbraMail application.
-*
-* @param appCtxt	[ZmAppCtxt]		the app context (global storage)
-* @param domain		[string]		current domain
-* @param app		[constant]		starting app
-*/
-ZmZimbraMail = function(appCtxt, domain, app, userShell) {
+ * Creates a controller to run ZimbraMail. Do not call directly, instead use the run()
+ * factory method.
+ * @constructor
+ * @class
+ * This class is the "ubercontroller", as it manages all the apps as well as bootstrapping
+ * the ZimbraMail application.
+ *
+ * @param appCtxt	[ZmAppCtxt]		the app context (global storage)
+ * @param params	[hash]			hash of params:
+ *        app		[constant]		starting app
+ *        userShell	[Element]		top-level skin container
+ */
+ZmZimbraMail = function(appCtxt, params) {
 
 	ZmController.call(this, appCtxt);
 
-	this._userShell = userShell;
-	this._requestMgr = new ZmRequestMgr(appCtxt, this, domain);
+	this._userShell = params.userShell;
+	this._requestMgr = new ZmRequestMgr(appCtxt, this);
 
 	// ALWAYS set back reference into our world (also used by unload handler)
 	window._zimbraMail = this;
-
+	
+	// setup history support
+	window.historyMgr = appCtxt.getHistoryMgr();
+	
 	// settings structure and defaults
 	this._settings = appCtxt.getSettings();
 	var branch = appCtxt.get(ZmSetting.BRANCH);
@@ -55,10 +59,10 @@ ZmZimbraMail = function(appCtxt, domain, app, userShell) {
 	this._settings.getSetting(ZmSetting.QUOTA_USED).addChangeListener(listener);
 	this._settings.getSetting(ZmSetting.POLLING_INTERVAL).addChangeListener(listener);
 	this._settings.getSetting(ZmSetting.SKIN_NAME).addChangeListener(listener);
+	this._settings.getSetting(ZmSetting.LOCALE_NAME).addChangeListener(listener);
 	this._settings.getSetting(ZmSetting.SHORTCUTS).addChangeListener(listener);
 
 	appCtxt.setAppController(this);
-	appCtxt.setClientCmdHdlr(new ZmClientCmdHandler(appCtxt));
 
 	this._shell = appCtxt.getShell();
 
@@ -69,6 +73,7 @@ ZmZimbraMail = function(appCtxt, domain, app, userShell) {
 	}
 
 	this._apps = {};
+	this._upsellView = {};
 	this._activeApp = null;
 	this._sessionTimer = new AjxTimedAction(null, ZmZimbraMail.logOff);
 	this._sessionTimerId = -1;
@@ -95,7 +100,7 @@ ZmZimbraMail = function(appCtxt, domain, app, userShell) {
 		ZmApp.QS_ARG_R[ZmApp.QS_ARG[i]] = i;
 	}
 
-	this.startup({app:app});
+	this.startup(params);
 };
 
 ZmZimbraMail.prototype = new ZmController;
@@ -123,11 +128,11 @@ function() {
  * CSFE is on the same host.
  *
  * @param params		[hash]			hash of params:
- *        domain		[string]		the host that we're running on
  *        app			[constant]*		starting app
  *        offlineMode	[boolean]*		if true, this is the offline client
  *        devMode		[boolean]*		if true, we are in development environment
  *        settings		[hash]*			server prefs/attrs
+ *        protocolMode	[constant]*		http, https, or mixed
  */
 ZmZimbraMail.run =
 function(params) {
@@ -147,7 +152,8 @@ function(params) {
 				settings.getSetting(id).setValue(params.settings[name]);
 			}
 		}
-	} else {	
+	} else {
+		// Note: removing cookie support may affect offline.jsp
 		var apps = AjxCookie.getCookie(document, ZmLogin.APPS_COOKIE);
 		DBG.println(AjxDebug.DBG1, "apps: " + apps);
 		if (apps) {
@@ -178,8 +184,12 @@ function(params) {
     	appCtxt.set(ZmSetting.POLLING_INTERVAL, 0);
     }
 
+	if (params.protocolMode) {
+		appCtxt.set(ZmSetting.PROTOCOL_MODE, params.protocolMode);
+	}
+
 	// Create the shell
-	var userShell = window.document.getElementById(settings.get(ZmSetting.SKIN_SHELL_ID));
+	var userShell = params.userShell = window.document.getElementById(settings.get(ZmSetting.SKIN_SHELL_ID));
 	if (!userShell) {
 		alert("Could not get user shell - skin file did not load properly");
 	}
@@ -188,11 +198,8 @@ function(params) {
 
 	appCtxt.setItemCache(new AjxCache());
 
-	// Create upload manager (for sending attachments)
-	appCtxt.setUploadManager(new AjxPost(appCtxt.getUploadFrameId()));
-
 	// Go!
-	new ZmZimbraMail(appCtxt, params.domain, params.app, userShell);
+	new ZmZimbraMail(appCtxt, params);
 };
 
 /**
@@ -231,23 +238,23 @@ function(hash, a, b) {
 };
 
 /**
-* Loads the app and presents the initial view. First, it gets the user's preferences.
-* Next, it launches the start app (which defaults to mail) and shows the results to
-* the user. Finally, we load contacts in the background.
-*
-* @param app			[constant]*		starting app
-* @param isRelogin		[boolean]*		user has re-authenticated after session timeout
-* @param settings		[hash]*			settings overrides
-*/
+ * Loads the app and presents the initial view. First, it gets the user's preferences.
+ * Next, it launches the start app (which defaults to mail) and shows the results to
+ * the user. Finally, we load contacts in the background.
+ *
+ * @param params		[hash]			hash of params:
+ *        app			[constant]*		starting app
+ *        isRelogin		[boolean]*		user has re-authenticated after session timeout
+ *        settings		[hash]*			settings overrides
+ */
 ZmZimbraMail.prototype.startup =
 function(params) {
 	
 	this._appCtxt.inStartup = true;
 	if (typeof(skin) == "undefined") {
 		DBG.println(AjxDebug.DBG1, "No skin!");
-		var locationStr = location.protocol + "//" + location.hostname + ((location.port == '80') ?
-					  "" : ":" + location.port) + "/public/skinError.jsp?skin=" + appCurrentSkin;
-		ZmZimbraMail.sendRedirect(locationStr);
+		var url = AjxUtil.formatUrl({path:"/public/skinError.jsp", qsArgs:{skin:appCurrentSkin}, qsReset:true});
+		ZmZimbraMail.sendRedirect(url);
         return;
     }
 
@@ -258,7 +265,7 @@ function(params) {
 		var htmlArr = [];
 		var idx = 0;
 		htmlArr[idx++] = "<table width='100%' cellspacing='0' cellpadding='1'><tr><td class='NoResults'><br>";
-		htmlArr[idx++] = "Loading...";
+		htmlArr[idx++] = ZmMsg.loading;
 		htmlArr[idx++] = "</td></tr></table>";
 		el.innerHTML = htmlArr.join("");
 		var elements = {};
@@ -275,7 +282,7 @@ function(params) {
 		this._components[ZmAppViewMgr.C_BANNER] = this._createBanner();
 		this._components[ZmAppViewMgr.C_USER_INFO] = this._userNameField = this._createUserInfo("BannerTextUser", ZmAppViewMgr.C_USER_INFO);
 		this._components[ZmAppViewMgr.C_QUOTA_INFO] = this._usedQuotaField = this._createUserInfo("BannerTextQuota", ZmAppViewMgr.C_QUOTA_INFO);
-		var currentAppToolbar = new ZmCurrentAppToolBar(this._shell, this._TAB_SKIN_ENABLED);
+		var currentAppToolbar = new ZmCurrentAppToolBar(this._shell, this._appCtxt);
 		this._appCtxt.setCurrentAppToolbar(currentAppToolbar);
 		this._components[ZmAppViewMgr.C_CURRENT_APP] = currentAppToolbar;
 		this._components[ZmAppViewMgr.C_STATUS] = this._statusView = new ZmStatusView(this._shell, "ZmStatus", Dwt.ABSOLUTE_STYLE);
@@ -308,21 +315,25 @@ function(params, ex) {
 	return false;
 };
 
-/*
-* Startup: part 2
-* Creates components which have dependencies on the settings, including the overview.
-*
-* @param settings	[Object]		hash of overrides of user settings
-* @param app		[constant]		starting app
-* @param results	[ZmCsfeResult]	result object from load of user settings
-*/
+/**
+ * Startup: part 2
+ * Creates components which have dependencies on the settings, including the overview.
+ *
+ * @param params			[hash]			hash of params:
+ *        app				[constant]		starting app
+ *        settingOverrides	[Object]		hash of overrides of user settings
+ * @param result			[ZmCsfeResult]	result object from load of user settings
+ */
 ZmZimbraMail.prototype._handleResponseStartup =
 function(params, result) {
 
-	if (params && params.settings) {
+	if (params && params.settingOverrides) {
 		this._needOverviewLayout = true;
-		for (var id in params.settings) {
-			this._settings.getSetting(id).setValue(params.settings[id]);
+		for (var id in params.settingOverrides) {
+			var setting = this._settings.getSetting(id);
+			if (setting) {
+				setting.setValue(params.settingOverrides[id]);
+			}
 		}
 	}
 	
@@ -356,7 +367,7 @@ function(params, result) {
 	}
 
 	if (!this._components[ZmAppViewMgr.C_APP_CHOOSER]) {
-		this._components[ZmAppViewMgr.C_APP_CHOOSER] = this._createAppChooser();
+		this._components[ZmAppViewMgr.C_APP_CHOOSER] = this._appChooser = this._createAppChooser();
 	}
 
 	var kbMgr = this._appCtxt.getKeyboardMgr();
@@ -427,7 +438,6 @@ function(params) {
 		}
 	}
 	this.activateApp(startApp, false, respCallback, this._errorCallback, checkQS);
-	this.setStatusMsg(ZmMsg.initializationComplete, null, null, null, ZmStatusView.TRANSITION_INVISIBLE);
 };
 
 /*
@@ -461,7 +471,7 @@ function(settings) {
 	// could have each app do shutdown()
 	DBG.println(AjxDebug.DBG1, "RESTARTING APP");
 	this.reset();
-   	this.startup({settings: settings});
+   	this.startup({settingOverrides:settings});
 };
 
 ZmZimbraMail.prototype.reset =
@@ -469,7 +479,7 @@ function() {
 	ZmCsfeCommand.setSessionId(null);	// so we get a refresh block
     this._highestNotifySeen = 0; 		// we have a new session
 
-	var accts = this._appCtxt.getAccounts();
+	var accts = this._appCtxt.getZimbraAccounts();
 	for (var id in accts) {
 		var trees = accts[id].trees;
 	    for (var type in trees) {
@@ -536,11 +546,14 @@ function(apps) {
 		return ZmZimbraMail.hashSortCompare(ZmApp.LOAD_SORT, a, b);
 	});
 	
-	// instantiate enabled apps - this will invoke app registration
+	// Instantiate enabled apps, which will invoke app registration.
+	// We also create "upsell" apps, which will only show the content of a URL in an iframe,
+	// to encourage the user to upgrade.
 	for (var i = 0; i < ZmApp.APPS.length; i++) {
 		var app = ZmApp.APPS[i];
 		var setting = ZmApp.SETTING[app];
-		if (!setting || this._appCtxt.get(setting)) {
+		var upsellSetting = ZmApp.UPSELL_SETTING[app];
+		if ((setting && this._appCtxt.get(setting)) || (upsellSetting && this._appCtxt.get(upsellSetting))) {
 			this._createApp(app);
 		}
 	}
@@ -846,9 +859,15 @@ function(appName, force, callback, errorCallback, checkQS) {
     	if (!this._apps[appName]) {
 			this._createApp(appName);
     	}
-		DBG.println(AjxDebug.DBG1, "Launching app " + appName);
-		var respCallback = new AjxCallback(this, this._handleResponseActivateApp, [callback]);
-		this._apps[appName].launch(respCallback, checkQS);
+    	var appEnabled = this._appCtxt.get(ZmApp.SETTING[appName]);
+		var upsellEnabled = this._appCtxt.get(ZmApp.UPSELL_SETTING[appName]);
+		if (!appEnabled && upsellEnabled) {
+			this._createUpsellView(appName);
+		} else {
+			DBG.println(AjxDebug.DBG1, "Launching app " + appName);
+			var respCallback = new AjxCallback(this, this._handleResponseActivateApp, [callback]);
+			this._apps[appName].launch(respCallback, checkQS);
+		}
     }
 };
 
@@ -873,9 +892,14 @@ function(appName, view) {
 	// update app chooser
 	this._components[ZmAppViewMgr.C_APP_CHOOSER].setSelected(appName);
 
-	// update view menu
-	var toolbar = this._appCtxt.getCurrentAppToolbar();
-	toolbar.showViewMenu(view);
+	// app not actually enabled if this is result of upsell view push
+   	var appEnabled = this._appCtxt.get(ZmApp.SETTING[appName]);
+
+	// update current app toolbar
+	var toolbar = appEnabled ? this._appCtxt.getCurrentAppToolbar() : null;
+	if (toolbar) {
+		toolbar.setupView(appName);
+	}
 
 	if (this._activeApp != appName) {
 
@@ -891,19 +915,19 @@ function(appName, view) {
 
 	    // switch app
 		this._activeApp = appName;
-		toolbar.setCurrentApp(appName);
-		toolbar.setViewTooltip(view, ZmMsg[ZmApp.VIEW_TOOLTIP[appName]]);
-		if (ZmApp.DEFAULT_SEARCH[appName]) {
-			this._appCtxt.getSearchController().setDefaultSearchType(ZmApp.DEFAULT_SEARCH[appName], true);
-		}
-		
-		// set search string value to match current app's last search, if applicable		
-		var app = this._apps[this._activeApp];
-		this._appCtxt.getSearchController().getSearchToolbar().setSearchFieldValue(app.currentQuery ? app.currentQuery : "");
-
-		// activate current app
-		if (app) {
-			app.activate(true, view);
+		if (appEnabled) {
+			if (ZmApp.DEFAULT_SEARCH[appName]) {
+				this._appCtxt.getSearchController().setDefaultSearchType(ZmApp.DEFAULT_SEARCH[appName], true);
+			}
+			
+			// set search string value to match current app's last search, if applicable		
+			var app = this._apps[this._activeApp];
+			this._appCtxt.getSearchController().getSearchToolbar().setSearchFieldValue(app.currentQuery ? app.currentQuery : "");
+	
+			// activate current app
+			if (app) {
+				app.activate(true, view);
+			}
 		}
 	}
 };
@@ -946,6 +970,8 @@ function() {
 		this._setUserInfoLink("ZmZimbraMail.conditionalLogOff();", "Logoff", text, "skin_container_logoff", hideIcon);
 	}
 
+	var data = {};
+
 	var login = this._appCtxt.get(ZmSetting.USERNAME);
 	var username = (this._appCtxt.get(ZmSetting.DISPLAY_NAME)) || login;
 	if (username) {
@@ -961,6 +987,14 @@ function() {
 	var size = AjxUtil.formatSize(usedQuota, false, 1);
 	var quotaTooltip = null;
 
+	data['login'] = login;
+	data['username'] = username;
+	data['quota'] = quota;
+	data['usedQuota'] = usedQuota;
+	data['size'] = size;
+
+
+	/*
 	var html = [];
 	var idx = 0;
 	html[idx++] = "<center><table border=0 cellpadding=0 cellspacing=0 class='BannerBar'><tr";
@@ -994,10 +1028,28 @@ function() {
 		html[idx++] = "</td>";
 	}
 	html[idx++] = "</tr></table></center>";
-
-	if (!this._appCtxt.get(ZmSetting.SKIN_HINTS, "help_button.hideIcon")) {
-		this._usedQuotaField.getHtmlElement().innerHTML = html.join("");
+	*/
+	var quotaTemplateId;
+	if (quota) {
+		quotaTemplateId = 'UsedLimited';
+		data['limit'] = AjxUtil.formatSize(data.quota, false, 1);
+		data['percent'] = Math.min(Math.round((data.usedQuota / data.quota) * 100), 100);
+		data['desc'] = AjxMessageFormat.format(ZmMsg.quotaDescLimited, [data.percent+'%', data.limit]);
+		var tooltipDesc = AjxMessageFormat.format(ZmMsg.quotaDescLimited, [data.size, data.limit]);
+		quotaTooltip = [ZmMsg.quota, ": ", data.percent, "% ", '('+tooltipDesc+')'].join("");
 	}
+	else {
+		data['desc'] = AjxMessageFormat.format(ZmMsg.quotaDescUnlimited, [size]);
+		quotaTemplateId = 'UsedUnlimited';
+	}
+
+//	if (!this._appCtxt.get(ZmSetting.SKIN_HINTS, "help_button.hideIcon")) {
+		//this._usedQuotaField.getHtmlElement().innerHTML = html.join("");
+//	}
+	data['id'] = this._usedQuotaField._htmlElId;
+	this._usedQuotaField.getHtmlElement().innerHTML =
+		AjxTemplate.expand('zimbraMail.share.templates.Quota#'+quotaTemplateId,
+							data)
 
 	if (userTooltip || quotaTooltip) {
 		var tooltip = [];
@@ -1057,12 +1109,7 @@ function() {
 	
 	var url = window._zimbraMail ? window._zimbraMail._appCtxt.get(ZmSetting.LOGOUT_URL) : null;
 	if (!url) {
-		var port = (location.port == '80') ? "" : [":", location.port].join("");
-		var locationStr = [location.protocol, "//", location.hostname, port].join("");
-		if (appContextPath) {
-			locationStr = [locationStr, appContextPath].join("");
-		}
-		url = [locationStr, location.search].join("");
+		url = AjxUtil.formatUrl({path:appContextPath});
 	}
 	ZmZimbraMail.sendRedirect(url);
 };
@@ -1085,7 +1132,9 @@ function() {
 		? window.parentController._appCtxt
 		: window._zimbraMail._appCtxt;
 
-	window.open(appCtxt.get(ZmSetting.HELP_URI));
+	var url;
+	try { url = skin.hints.help_button.url; } catch (e) { /* ignore */ }
+	window.open(url || appCtxt.get(ZmSetting.HELP_URI));
 };
 
 ZmZimbraMail.sendRedirect =
@@ -1246,6 +1295,13 @@ function(ev) {
 		cd.registerCallback(DwtDialog.YES_BUTTON, this._newSkinYesCallback, this, [skin]);
 		cd.setMessage(ZmMsg.skinChangeRestart, DwtMessageDialog.WARNING_STYLE);
 		cd.popup();
+	} else if (id == ZmSetting.LOCALE_NAME) {
+		var cd = this._confirmDialog = this._appCtxt.getYesNoMsgDialog();
+		cd.reset();
+		var skin = ev.source.getValue();
+		cd.registerCallback(DwtDialog.YES_BUTTON, this._newLocaleYesCallback, this);
+		cd.setMessage(ZmMsg.localeChangeRestart, DwtMessageDialog.WARNING_STYLE);
+		cd.popup();
 	} else if (id == ZmSetting.SHORTCUTS) {
 		this._appCtxt.getKeyboardMgr().registerKeyMap(new ZmKeyMap(this._appCtxt));
 		this._settings._loadShortcuts();
@@ -1256,11 +1312,18 @@ ZmZimbraMail.prototype._newSkinYesCallback =
 function(skin) {
 	this._confirmDialog.popdown();
     window.onbeforeunload = null;
-    var qs = AjxStringUtil.queryStringSet(location.search, "skin", skin);
-	var locationStr = location.protocol + "//" + location.hostname + ((location.port == '80') ?
-					  "" : ":" + location.port) + location.pathname + qs;
-	DBG.println(AjxDebug.DBG1, "skin change, redirect to: " + locationStr);
-    ZmZimbraMail.sendRedirect(locationStr); // redirect to self to force reload
+    var url = AjxUtil.formatUrl({qsArgs:{skin:skin}});
+	DBG.println(AjxDebug.DBG1, "skin change, redirect to: " + url);
+    ZmZimbraMail.sendRedirect(url); // redirect to self to force reload
+};
+
+ZmZimbraMail.prototype._newLocaleYesCallback =
+function(skin) {
+	this._confirmDialog.popdown();
+    window.onbeforeunload = null;
+    var url = AjxUtil.formatUrl();
+	DBG.println(AjxDebug.DBG1, "skin change, redirect to: " + url);
+    ZmZimbraMail.sendRedirect(url); // redirect to self to force reload
 };
 
 ZmZimbraMail.prototype._createBanner =
@@ -1301,11 +1364,12 @@ function() {
 		if (this._TAB_SKIN_ENABLED && (id == ZmAppChooser.SPACER || id == ZmAppChooser.B_HELP || id == ZmAppChooser.B_LOGOUT)) {
 			continue;
 		}
-		var setting = id ? ZmApp.SETTING[id] : null;
-		if (setting && !this._appCtxt.get(setting)) {
-			continue;
+
+		var setting = ZmApp.SETTING[id];
+		var upsellSetting = ZmApp.UPSELL_SETTING[id];
+		if ((setting && this._appCtxt.get(setting)) || (upsellSetting && this._appCtxt.get(upsellSetting))) {
+			buttons.push(id);
 		}
-		buttons.push(id);
 	}
 	buttons.sort(function(a, b) {
 		return ZmZimbraMail.hashSortCompare(ZmApp.CHOOSER_SORT, a, b);
@@ -1324,16 +1388,6 @@ function() {
 	return appChooser;
 };
 
-ZmZimbraMail.prototype.setStatusMsg =
-function(msg, level, detail, delay, transition) {
-	this._statusView.setStatusMsg(msg, level, detail, delay, transition);
-};
-
-ZmZimbraMail.prototype.setStatusIconVisible =
-function(icon, visible) {
-	this._statusView.setIconVisible(icon, visible);
-};
-
 ZmZimbraMail.prototype._appButtonListener =
 function(ev) {
 	try {
@@ -1349,6 +1403,16 @@ function(ev) {
 	} catch (ex) {
 		this._handleException(ex, this._appButtonListener, ev, false);
 	}
+};
+
+ZmZimbraMail.prototype.getAppChooser =
+function() {
+	return this._appChooser;
+};
+
+ZmZimbraMail.prototype.setStatusMsg =
+function(msg, level, detail) {
+	this._statusView.setStatusMsg(msg, level, detail);
 };
 
 ZmZimbraMail.prototype.getKeyMapName =
@@ -1450,6 +1514,31 @@ function() {
 	if (content) {
 		this._appCtxt.getKeyboardMgr().grabFocus(content);
 	}
+};
+
+/**
+ * Creates an "upsell view", which is a placeholder view for an app that's not
+ * enabled but which has a button so that it can be promoted. The app will have
+ * a URL for its upsell content, which we put into an IFRAME.
+ * 
+ * @param appName	[constant]		name of app
+ */
+ZmZimbraMail.prototype._createUpsellView =
+function(appName) {
+	var upsellView = this._upsellView[appName] = new DwtControl(this._shell, null, Dwt.ABSOLUTE_STYLE);
+	var upsellUrl = this._appCtxt.get(ZmApp.UPSELL_URL[appName]);
+	var el = upsellView.getHtmlElement();
+	var htmlArr = [];
+	var idx = 0;
+	htmlArr[idx++] = "<iframe width='100%' height='100%' src='";
+	htmlArr[idx++] = upsellUrl;
+	htmlArr[idx++] = "'>";
+	el.innerHTML = htmlArr.join("");
+	var elements = {};
+	elements[ZmAppViewMgr.C_APP_CONTENT] = upsellView;
+	var viewName = [appName, "upsell"].join("_");
+	this._appViewMgr.createView(viewName, appName, elements, null, true);
+	this._appViewMgr.pushView(viewName);
 };
 
 /**

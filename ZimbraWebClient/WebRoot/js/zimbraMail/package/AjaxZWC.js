@@ -10,6 +10,7 @@ AjxPackage.require("ajax.util.AjxBuffer");
 AjxPackage.require("ajax.util.AjxCache");
 AjxPackage.require("ajax.util.AjxTimezoneData");
 AjxPackage.require("ajax.util.AjxTimezone");
+AjxPackage.require("ajax.util.AjxHistoryMgr");
 
 AjxPackage.require("ajax.net.AjxInclude");
 AjxPackage.require("ajax.net.AjxPost");
@@ -74,6 +75,7 @@ AjxPackage.require("ajax.dwt.widgets.DwtMessageDialog");
 AjxPackage.require("ajax.dwt.widgets.DwtHtmlEditor");
 AjxPackage.require("ajax.dwt.widgets.DwtGridSizePicker");
 AjxPackage.require("ajax.dwt.widgets.DwtInputField");
+AjxPackage.require("ajax.dwt.widgets.DwtPasswordField");
 AjxPackage.require("ajax.dwt.widgets.DwtSash");
 AjxPackage.require("ajax.dwt.widgets.DwtToolBar");
 AjxPackage.require("ajax.dwt.widgets.DwtToolTip");

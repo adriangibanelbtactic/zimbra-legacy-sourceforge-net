@@ -95,6 +95,7 @@ function(mode, convert) {
 	DwtHtmlEditor.prototype.setMode.call(this, mode, convert);
 
 	if (mode == DwtHtmlEditor.HTML) {
+		this._createToolbars();
 		this._resetFormatControls();
 	}
 
@@ -551,8 +552,9 @@ function(x, y) {
 
 ZmHtmlEditor.prototype._initialize =
 function() {
-	// Bug #4920: optimization breaks height computation. Always create toolbars for now.
-	this._createToolbars();
+	if (this._mode == DwtHtmlEditor.HTML) {
+		this._createToolbars();
+	}
 	DwtHtmlEditor.prototype._initialize.call(this);
 };
 
@@ -616,7 +618,7 @@ ZmHtmlEditor.prototype._createToolbars =
 function() {
 	// NOTE: overload this method to place toolbars differently.
 	if (!this._toolbar1) {
-		var tb = this._toolbar1 = new DwtToolBar(this, "ZToolbar", DwtControl.RELATIVE_STYLE, 2);
+		var tb = this._toolbar1 = new DwtToolBar(this, "ZToolbar", DwtControl.RELATIVE_STYLE, 2, null, null, null, 0);
 		tb.setVisible(this._mode == DwtHtmlEditor.HTML);
 
 		// Default is to have ONE toolbar now
@@ -1161,18 +1163,18 @@ function(fontSize) {
 ZmHtmlEditor.prototype._rteStateChangeListener =
 function(ev) {
 
-	this._boldButton.setToggled(ev.isBold);
-	this._underlineButton.setToggled(ev.isUnderline);
-	this._italicButton.setToggled(ev.isItalic);
+	this._boldButton.setSelected(ev.isBold);
+	this._underlineButton.setSelected(ev.isUnderline);
+	this._italicButton.setSelected(ev.isItalic);
 	if (this._strikeThruButton)
-		this._strikeThruButton.setToggled(ev.isStrikeThru);
+		this._strikeThruButton.setSelected(ev.isStrikeThru);
 	if (this._subscriptButton)
-		this._subscriptButton.setToggled(ev.isSubscript);
+		this._subscriptButton.setSelected(ev.isSubscript);
 	if (this._superscriptButton)
-		this._superscriptButton.setToggled(ev.isSuperscript);
+		this._superscriptButton.setSelected(ev.isSuperscript);
 
-	this._numberedListButton.setToggled(ev.isOrderedList);
-	this._listButton.setToggled(ev.isUnorderedList);
+	this._numberedListButton.setSelected(ev.isOrderedList);
+	this._listButton.setSelected(ev.isUnorderedList);
 
 	if (ev.color)
 		this._fontColorButton.setColor(ev.color);

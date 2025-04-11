@@ -34,16 +34,15 @@
  * 
  * @param appCtxt		[ZmAppCtxt]		the app context
  * @param controller	[ZmController]	main controller
- * @param domain		[string]		current domain
  */
-ZmRequestMgr = function(appCtxt, controller, domain) {
+ZmRequestMgr = function(appCtxt, controller) {
 
 	this._appCtxt = appCtxt;
 	this._controller = controller;
 	
 	this._appCtxt.setRequestMgr(this);
 
-	ZmCsfeCommand.setServerUri(location.protocol + "//" + domain + appCtxt.get(ZmSetting.CSFE_SERVER_URI));
+	ZmCsfeCommand.setServerUri(appCtxt.get(ZmSetting.CSFE_SERVER_URI));
 	var cv = appCtxt.get(ZmSetting.CLIENT_VERSION);
 	ZmCsfeCommand.clientVersion = (!cv || cv.indexOf('@') == 0) ? "dev build" : cv;
 	
@@ -110,7 +109,7 @@ function(params) {
 	var accountName = params.accountName;
 	if (!accountName) {
 		var acct = this._appCtxt.getActiveAccount();
-		accountName = (acct && acct.id != ZmAccount.DEFAULT_ID) ? acct.name : null;
+		accountName = (acct && acct.id != ZmZimbraAccount.DEFAULT_ID) ? acct.name : null;
 	}
 	var changeToken = accountName ? null : this._changeToken;
 	var cmdParams = {soapDoc:params.soapDoc, accountName:accountName, useXml:this._useXml,
@@ -308,16 +307,14 @@ function(refresh) {
 	var unread = {};
 	this._loadTree(ZmOrganizer.TAG, unread, refresh.tags);
 	this._loadTree(ZmOrganizer.FOLDER, unread, refresh.folder[0], "folder");
-	
-	var inbox = this._appCtxt.getById(ZmFolder.ID_INBOX);
-	if (inbox) {
-		this._controller._statusView.setIconVisible(ZmStatusView.ICON_INBOX, inbox.numUnread > 0);
-	}
 
 	// XXX: temp, get additional share info (see bug #4434)
 	if (refresh.folder) {
 		var respCallback = new AjxCallback(this, this._handleResponseRefreshHandler, [refresh]);
-		this._appCtxt.getFolderTree().getPermissions(null, respCallback, true);
+		var folderTree = this._appCtxt.getFolderTree();
+		if (folderTree) {
+			folderTree.getPermissions(null, respCallback, true);
+		}
 	} else {
 		this._handleResponseRefreshHandler(refresh);
 	}
@@ -508,9 +505,11 @@ function(ev) {
 			var search = this._appCtxt.getCurrentSearch();
 			if (search && id && (id == search.folderId || id == search.tagId))
 				Dwt.setTitle(search.getTitle());
-			if (id == ZmFolder.ID_INBOX) {
-				this._controller._statusView.setIconVisible(ZmStatusView.ICON_INBOX,  organizer.numUnread > 0);
+
+			var mailApp = this._appCtxt.getApp(ZmApp.MAIL);
+			if (mailApp) {
+				mailApp.setNewMailNotice(organizer);
 			}
-		}		
+		}
 	}
 };

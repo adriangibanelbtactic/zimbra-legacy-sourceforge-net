@@ -34,6 +34,7 @@ import com.zimbra.cs.mailbox.CalendarItem.ReplyInfo;
 import com.zimbra.cs.mailbox.calendar.Alarm;
 import com.zimbra.cs.mailbox.calendar.ICalTimeZone;
 import com.zimbra.cs.mailbox.calendar.ICalTimeZone.SimpleOnset;
+import com.zimbra.cs.mailbox.calendar.CalendarMailSender;
 import com.zimbra.cs.mailbox.calendar.IcalXmlStrMap;
 import com.zimbra.cs.mailbox.calendar.Invite;
 import com.zimbra.cs.mailbox.calendar.ParsedDateTime;
@@ -53,6 +54,8 @@ import com.zimbra.cs.mailbox.calendar.ZCalendar.ZProperty;
 import com.zimbra.cs.mailbox.calendar.ZCalendar.ZVCalendar;
 import com.zimbra.cs.mailbox.calendar.ZOrganizer;
 import com.zimbra.cs.mailbox.calendar.ZRecur;
+import com.zimbra.cs.util.L10nUtil;
+import com.zimbra.cs.util.L10nUtil.MsgKey;
 
 import java.io.StringReader;
 import java.text.ParseException;
@@ -60,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 
 public class CalendarUtils {
     /**
@@ -143,6 +147,45 @@ public class CalendarUtils {
         return toRet;
     }
 
+    static ParseMimeMessage.InviteParserResult parseInviteForCreateException(
+            Account account, byte itemType, Element inviteElem, TimeZoneMap tzMap, String uid,
+            Invite defaultInv)
+    throws ServiceException {
+        if (tzMap == null) {
+            tzMap = new TimeZoneMap(ICalTimeZone.getAccountTimeZone(account));
+        }
+        Invite create = new Invite(ICalTok.PUBLISH.toString(), tzMap, false);
+
+        CalendarUtils.parseInviteElementCommon(
+                account, itemType, inviteElem, create, true, false);
+
+        // DTSTAMP
+        if (create.getDTStamp() == 0) { //zdsync
+            create.setDtStamp(new Date().getTime());
+        }
+
+        // UID
+        if (uid != null && uid.length() > 0)
+            create.setUid(uid);
+
+        // Don't allow changing organizer in an exception instance.
+        create.setOrganizer(defaultInv.hasOrganizer()
+                            ? new ZOrganizer(defaultInv.getOrganizer()) : null);
+        create.setIsOrganizer(account);
+
+        ZVCalendar iCal = create.newToICalendar();
+
+        String summaryStr = create.getName() != null ? create.getName() : "";
+
+        ParseMimeMessage.InviteParserResult toRet = new ParseMimeMessage.InviteParserResult();
+        toRet.mCal = iCal;
+        toRet.mUid = create.getUid();
+        toRet.mSummary = summaryStr;
+        toRet.mInvite = create;
+
+        return toRet;
+    }
+
     /**
      * Parse an <inv> element in a Modify context -- existing UID, etc
      * 
@@ -175,6 +218,10 @@ public class CalendarUtils {
         }
 
         attendeesToCancel.addAll(getRemovedAttendees(oldInv, mod));
+
+        // Don't allow changing organizer in modify request.
+        mod.setOrganizer(oldInv.hasOrganizer() ? new ZOrganizer(oldInv.getOrganizer()) : null);
+        mod.setIsOrganizer(account);
 
         ZVCalendar iCal = mod.newToICalendar();
 
@@ -350,7 +397,7 @@ public class CalendarUtils {
                 exclude = true;
             } else {
                 if (!e.getName().equals(MailConstants.E_CAL_ADD)) {
-                    throw ServiceException.INVALID_REQUEST("<add> or <exclude> expected inside <recur>", null);
+                    continue;
                 }
             }
             
@@ -769,9 +816,13 @@ public class CalendarUtils {
         // STATUS
         String status = element.getAttribute(MailConstants.A_CAL_STATUS,
                 newInv.isEvent() ? IcalXmlStrMap.STATUS_CONFIRMED : IcalXmlStrMap.STATUS_NEEDS_ACTION);
-        validateAttr(IcalXmlStrMap.sStatusMap, MailConstants.A_CAL_STATUS,
-                status);
+        validateAttr(IcalXmlStrMap.sStatusMap, MailConstants.A_CAL_STATUS, status);
         newInv.setStatus(status);
+
+        // CLASS
+        String classProp = element.getAttribute(MailConstants.A_CAL_CLASS, IcalXmlStrMap.CLASS_PUBLIC);
+        validateAttr(IcalXmlStrMap.sClassMap, MailConstants.A_CAL_CLASS, classProp);
+        newInv.setClassProp(classProp);
 
         // PRIORITY
         String priority = element.getAttribute(MailConstants.A_CAL_PRIORITY, null);
@@ -829,7 +880,14 @@ public class CalendarUtils {
                 throw ServiceException.INVALID_REQUEST(
                         "missing organizer when attendees are present", null);
         } else {
-            String address = orgElt.getAttribute(MailConstants.A_ADDRESS);
+            String address = orgElt.getAttribute(MailConstants.A_ADDRESS, null);
+            if (address == null) {
+            	address = orgElt.getAttribute(MailConstants.A_URL, null); //4.5 back compat
+            	if (address == null) {
+                    throw ServiceException.INVALID_REQUEST(
+                            "missing organizer address", null);
+            	}
+            }
             String cn = orgElt.getAttribute(MailConstants.A_DISPLAY, null);
             String sentBy = orgElt.getAttribute(MailConstants.A_CAL_SENTBY, null);
             String dir = orgElt.getAttribute(MailConstants.A_CAL_DIR, null);
@@ -871,7 +929,12 @@ public class CalendarUtils {
     	
         //zdsync: must set this only after recur is processed
     	if (invId != null) {
-    		newInv.setInviteId(Integer.parseInt(invId));
+    	    try {
+        	    int invIdInt = Integer.parseInt(invId);
+        	    newInv.setInviteId(invIdInt);
+    	    } catch (NumberFormatException e) {
+    	        // ignore if invId is not a number, e.g. refers to a remote account
+    	    }
     	}
     	if (dts != null) {
     		newInv.setDtStamp(Long.parseLong(dts));
@@ -1020,9 +1083,20 @@ public class CalendarUtils {
         for (ZAttendee a : attendees)
             cancel.addAttendee(a);
 
-        // COMMENT
-        if (comment != null && !comment.equals("")) {
-            cancel.setComment(comment);
+        cancel.setClassProp(inv.getClassProp());
+        boolean hidePrivate = onBehalfOf && !inv.isPublic();
+        Locale locale = acct.getLocale();
+        if (hidePrivate) {
+            // SUMMARY
+            String sbj = L10nUtil.getMessage(MsgKey.calendarSubjectWithheld, locale);
+            cancel.setName(CalendarMailSender.getCancelSubject(sbj, locale));
+        } else {
+            // SUMMARY
+            cancel.setName(CalendarMailSender.getCancelSubject(inv.getName(), locale));
+
+            // COMMENT
+            if (comment != null && !comment.equals(""))
+                cancel.setComment(comment);
         }
 
         // UID
@@ -1066,9 +1140,6 @@ public class CalendarUtils {
 
         // DTSTAMP
         cancel.setDtStamp(new Date().getTime());
-
-        // SUMMARY
-        cancel.setName("CANCELLED: " + inv.getName());
 
         return cancel;
     }

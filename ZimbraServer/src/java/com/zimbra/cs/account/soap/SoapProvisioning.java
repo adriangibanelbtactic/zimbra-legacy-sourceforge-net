@@ -51,6 +51,8 @@ import com.zimbra.cs.account.GalContact;
 import com.zimbra.cs.account.Identity;
 import com.zimbra.cs.account.NamedEntry;
 import com.zimbra.cs.account.NamedEntry.Visitor;
+import com.zimbra.cs.account.Provisioning.CacheEntry;
+import com.zimbra.cs.account.Provisioning.CacheEntryType;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Server;
 import com.zimbra.cs.account.Signature;
@@ -182,7 +184,7 @@ public class SoapProvisioning extends Provisioning {
         }
     }
 
-    synchronized Element invokeOnTargetAccount(Element request, String targetId) throws ServiceException {
+    protected synchronized Element invokeOnTargetAccount(Element request, String targetId) throws ServiceException {
         String oldTarget = mTransport.getTargetAcctId();
         try {
             mTransport.setTargetAcctId(targetId);
@@ -767,6 +769,17 @@ public class SoapProvisioning extends Provisioning {
                 throw e;
         }
     }
+    
+    @Override
+    public void modifyDomainStatus(Domain domain, String newStatus)
+            throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.MODIFY_DOMAIN_STATUS_REQUEST);
+        Element eId = req.addElement(AccountConstants.E_ID);
+        eId.setText(domain.getId());
+        Element eStatus = req.addElement(AdminConstants.E_STATUS);
+        eStatus.setText(newStatus);
+        invoke(req);
+    }
 
     @Override
     public Domain get(DomainBy keyType, String key) throws ServiceException {
@@ -1072,7 +1085,7 @@ public class SoapProvisioning extends Provisioning {
         XMLElement req = new XMLElement(AdminConstants.GET_ALL_ACCOUNTS_REQUEST);
         if (d != null && d.getId() != null) {
         	Element domainEl = req.addElement(AdminConstants.E_DOMAIN);
-        	domainEl.addAttribute(AdminConstants.A_BY, AccountBy.id.name());
+        	domainEl.addAttribute(AdminConstants.A_BY, DomainBy.id.name());
         	domainEl.setText(d.getId());
         }
         Element resp = invoke(req);
@@ -1401,7 +1414,7 @@ public class SoapProvisioning extends Provisioning {
         ds.addAttribute(AccountConstants.A_TYPE, dsType.name());
         addAttrElements(ds, attrs);
         Element response = invoke(req).getElement(AccountConstants.E_DATA_SOURCE);
-        return new SoapDataSource(response);
+        return new SoapDataSource(account, response);
     }
 
     @Override
@@ -1425,7 +1438,7 @@ public class SoapProvisioning extends Provisioning {
         req.addElement(AdminConstants.E_ID).setText(account.getId());
         Element resp = invoke(req);
         for (Element dataSource: resp.listElements(AccountConstants.E_DATA_SOURCE)) {
-            result.add(new SoapDataSource(dataSource));
+            result.add(new SoapDataSource(account, dataSource));
         }
         return result;        
     }
@@ -1504,5 +1517,26 @@ public class SoapProvisioning extends Provisioning {
         XMLElement req = new XMLElement(AdminConstants.DELETE_MAILBOX_REQUEST);
         req.addElement(AdminConstants.E_MAILBOX).addAttribute(AdminConstants.A_ACCOUNTID, accountId);
         Element resp = invoke(req);
+    }
+
+    
+    public void flushCache(CacheEntryType type, CacheEntry[] entries) throws ServiceException {
+        flushCache(type.name(), entries);
+    }
+    
+    /*
+     * invoked from ProvUtil, as it has to support skin and locale caches, which are not 
+     * managed by Provisioning.
+     */
+    public void flushCache(String type, CacheEntry[] entries) throws ServiceException {
+        XMLElement req = new XMLElement(AdminConstants.FLUSH_CACHE_REQUEST);
+        Element eCache = req.addElement(AdminConstants.E_CACHE).addAttribute(AdminConstants.A_TYPE, type);
+
+        if (entries != null) {
+            for (CacheEntry entry : entries) {
+                eCache.addElement(AdminConstants.E_ENTRY).addAttribute(AdminConstants.A_BY, entry.mEntryBy.name()).addText(entry.mEntryIdentity);
+            }
+        }
+        invoke(req);
     }
 }

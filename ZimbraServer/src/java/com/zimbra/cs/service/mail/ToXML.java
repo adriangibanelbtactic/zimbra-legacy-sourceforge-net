@@ -113,13 +113,13 @@ public class ToXML {
         else if (item instanceof Contact)
             encodeContact(parent, ifmt, (Contact) item, false, null, fields);
         else if (item instanceof CalendarItem) 
-            encodeCalendarItemSummary(parent, ifmt, (CalendarItem) item, fields, true);
+            encodeCalendarItemSummary(parent, ifmt, octxt, (CalendarItem) item, fields, true);
         else if (item instanceof Conversation)
             encodeConversationSummary(parent, ifmt, octxt, (Conversation) item, fields);
         else if (item instanceof WikiItem)
-            encodeWiki(parent, ifmt, (WikiItem) item, fields, -1);
+            encodeWiki(parent, ifmt, octxt, (WikiItem) item, fields, -1);
         else if (item instanceof Document)
-            encodeDocument(parent, ifmt, (Document) item, fields, -1);
+            encodeDocument(parent, ifmt, octxt, (Document) item, fields, -1);
         else if (item instanceof Message) {
             OutputParticipants output = (fields == NOTIFY_FIELDS ? OutputParticipants.PUT_BOTH : OutputParticipants.PUT_SENDERS);
             encodeMessageSummary(parent, ifmt, octxt, (Message) item, output, fields);
@@ -737,12 +737,9 @@ public class ToXML {
      * @param fields
      * @throws ServiceException
      */
-    public static void setCalendarItemFields(Element calItemElem,
-                                             ItemIdFormatter ifmt,
-                                             CalendarItem calItem,
-                                             int fields,
-                                             boolean encodeInvites,
-                                             boolean includeContent)
+    public static void setCalendarItemFields(Element calItemElem, ItemIdFormatter ifmt,
+                                             OperationContext octxt, CalendarItem calItem,
+                                             int fields, boolean encodeInvites, boolean includeContent)
     throws ServiceException {
         recordItemTags(calItemElem, calItem, fields);
 
@@ -764,33 +761,33 @@ public class ToXML {
         }
 
         if (needToOutput(fields, Change.MODIFIED_CONTENT) && encodeInvites) {
-            for (int i = 0; i < calItem.numInvites(); i++)
-                encodeInvite(calItemElem, ifmt, calItem, calItem.getInvite(i), includeContent);
-            encodeReplies(calItemElem, calItem, null);
+            boolean isPublic = true;
+            for (int i = 0; i < calItem.numInvites(); i++) {
+                Invite inv = calItem.getInvite(i);
+                encodeInvite(calItemElem, ifmt, octxt, calItem, calItem.getInvite(i), includeContent);
+                if (!inv.isPublic())
+                    isPublic = false;
+            }
+            if (isPublic || isCalendarItemOwner(octxt, calItem))
+                encodeCalendarReplies(calItemElem, calItem, null);
         }
     }
 
-    public static void setCalendarItemFields(Element calItemElem,
-                                             ItemIdFormatter ifmt,
-                                             CalendarItem calItem,
-                                             int fields,
-                                             boolean encodeInvites)
+    public static void setCalendarItemFields(Element calItemElem, ItemIdFormatter ifmt,
+                                             OperationContext octxt, CalendarItem calItem,
+                                             int fields, boolean encodeInvites)
     throws ServiceException {
-        setCalendarItemFields(calItemElem, ifmt, calItem, fields, encodeInvites, false);
+        setCalendarItemFields(calItemElem, ifmt, octxt, calItem, fields, encodeInvites, false);
     }
 
-    public static Element encodeInvite(Element parent,
-                                       ItemIdFormatter ifmt,
-                                       CalendarItem cal,
-                                       Invite inv)
+    public static Element encodeInvite(Element parent, ItemIdFormatter ifmt,
+                                       OperationContext octxt, CalendarItem cal, Invite inv)
     throws ServiceException {
-        return encodeInvite(parent, ifmt, cal, inv, false);
+        return encodeInvite(parent, ifmt, octxt, cal, inv, false);
     }
 
-    public static Element encodeInvite(Element parent,
-                                       ItemIdFormatter ifmt,
-                                       CalendarItem cal,
-                                       Invite inv,
+    public static Element encodeInvite(Element parent, ItemIdFormatter ifmt,
+                                       OperationContext octxt, CalendarItem cal, Invite inv,
                                        boolean includeContent)
     throws ServiceException {
         Element ie = parent.addElement(MailConstants.E_INVITE);
@@ -803,9 +800,9 @@ public class ToXML {
         if (inv.hasRecurId())
             ie.addAttribute(MailConstants.A_CAL_RECURRENCE_ID, inv.getRecurId().toString());
 
-        encodeInviteComponent(ie, ifmt, cal, inv, NOTIFY_FIELDS);
+        encodeInviteComponent(ie, ifmt, octxt, cal, inv, NOTIFY_FIELDS);
 
-        if (includeContent) {
+        if (includeContent && (inv.isPublic() || isCalendarItemOwner(octxt, cal))) {
             int invId = inv.getMailItemId();
             MimeMessage mm = cal.getSubpartMessage(invId);
             if (mm == null)
@@ -848,12 +845,9 @@ public class ToXML {
      * 
      * @return
      */
-    public static Element encodeCalendarItemSummary(Element parent,
-                                                    ItemIdFormatter ifmt,
-                                                    CalendarItem calItem,
-                                                    int fields,
-                                                    boolean includeInvites,
-                                                    boolean includeContent)
+    public static Element encodeCalendarItemSummary(Element parent, ItemIdFormatter ifmt,
+                                                    OperationContext octxt, CalendarItem calItem,
+                                                    int fields, boolean includeInvites, boolean includeContent)
     throws ServiceException {
         Element calItemElem;
         if (calItem instanceof Appointment)
@@ -861,23 +855,19 @@ public class ToXML {
         else
             calItemElem = parent.addElement(MailConstants.E_TASK);
         
-        setCalendarItemFields(calItemElem, ifmt, calItem, fields,
-                              includeInvites, includeContent);
+        setCalendarItemFields(calItemElem, ifmt, octxt, calItem, fields, includeInvites, includeContent);
         
         return calItemElem;
     }
 
-    public static Element encodeCalendarItemSummary(Element parent,
-            ItemIdFormatter ifmt,
-            CalendarItem calItem,
-            int fields,
-            boolean includeInvites)
+    public static Element encodeCalendarItemSummary(Element parent, ItemIdFormatter ifmt,
+                                                    OperationContext octxt, CalendarItem calItem,
+                                                    int fields, boolean includeInvites)
     throws ServiceException {
-        return encodeCalendarItemSummary(parent, ifmt, calItem, fields,
-                                         includeInvites, false);
+        return encodeCalendarItemSummary(parent, ifmt, octxt, calItem, fields, includeInvites, false);
     }
 
-    private static void encodeReplies(Element parent, CalendarItem calItem, Invite inv) {
+    public static void encodeCalendarReplies(Element parent, CalendarItem calItem, Invite inv) {
         Element repliesElt = parent.addElement(MailConstants.E_CAL_REPLIES);
         List<CalendarItem.ReplyInfo> replies = calItem.getReplyInfo(inv);
         for (CalendarItem.ReplyInfo repInfo : replies) {
@@ -915,10 +905,28 @@ public class ToXML {
      * @return The newly-created <tt>&lt;m></tt> Element, which has already
      *         been added as a child to the passed-in <tt>parent</tt>.
      * @throws ServiceException */
-    public static Element encodeInviteAsMP(Element parent, ItemIdFormatter ifmt, CalendarItem calItem, ItemId iid, String part,
+    public static Element encodeInviteAsMP(Element parent, ItemIdFormatter ifmt, OperationContext octxt,
+                                           CalendarItem calItem, ItemId iid, String part,
                                            boolean wantHTML, boolean neuter, Set<String> headers, boolean serializeType)
     throws ServiceException {
         int invId = iid.getSubpartId();
+
+        // calItem is public is all its invites are public.
+        Invite[] invites = calItem.getInvites(invId);
+        boolean isPublic;
+        if (invites.length > 0) {
+            isPublic = true;
+            for (Invite inv : invites) {
+                if (!inv.isPublic()) {
+                    isPublic = false;
+                    break;
+                }
+            }
+        } else
+            isPublic = false;
+
+        boolean showAll = isPublic || isCalendarItemOwner(octxt, calItem);
+
         boolean wholeMessage = (part == null || part.trim().equals(""));
 
         Element m;
@@ -946,51 +954,55 @@ public class ToXML {
             } else
                 part = "";
 
-            addEmails(m, Mime.parseAddressHeader(mm, "From"), EmailType.FROM);
-            addEmails(m, Mime.parseAddressHeader(mm, "Sender"), EmailType.SENDER);
-            addEmails(m, Mime.parseAddressHeader(mm, "Reply-To"), EmailType.REPLY_TO);
-            addEmails(m, Mime.parseAddressHeader(mm, "To"), EmailType.TO);
-            addEmails(m, Mime.parseAddressHeader(mm, "Cc"), EmailType.CC);
-            addEmails(m, Mime.parseAddressHeader(mm, "Bcc"), EmailType.BCC);
-
-            String subject = mm.getSubject();
-            if (subject != null)
-                m.addAttribute(MailConstants.E_SUBJECT, StringUtil.stripControlCharacters(subject), Element.Disposition.CONTENT);
-            String messageID = mm.getMessageID();
-            if (messageID != null && !messageID.trim().equals(""))
-                m.addAttribute(MailConstants.E_MSG_ID_HDR, StringUtil.stripControlCharacters(messageID), Element.Disposition.CONTENT);
-
-            if (!wholeMessage)
-                m.addAttribute(MailConstants.A_SIZE, mm.getSize());
-
-            java.util.Date sent = mm.getSentDate();
-            if (sent != null)
-                m.addAttribute(MailConstants.A_SENT_DATE, sent.getTime());
+            if (showAll) {
+                addEmails(m, Mime.parseAddressHeader(mm, "From"), EmailType.FROM);
+                addEmails(m, Mime.parseAddressHeader(mm, "Sender"), EmailType.SENDER);
+                addEmails(m, Mime.parseAddressHeader(mm, "Reply-To"), EmailType.REPLY_TO);
+                addEmails(m, Mime.parseAddressHeader(mm, "To"), EmailType.TO);
+                addEmails(m, Mime.parseAddressHeader(mm, "Cc"), EmailType.CC);
+                addEmails(m, Mime.parseAddressHeader(mm, "Bcc"), EmailType.BCC);
+    
+                String subject = mm.getSubject();
+                if (subject != null)
+                    m.addAttribute(MailConstants.E_SUBJECT, StringUtil.stripControlCharacters(subject), Element.Disposition.CONTENT);
+                String messageID = mm.getMessageID();
+                if (messageID != null && !messageID.trim().equals(""))
+                    m.addAttribute(MailConstants.E_MSG_ID_HDR, StringUtil.stripControlCharacters(messageID), Element.Disposition.CONTENT);
+    
+                if (!wholeMessage)
+                    m.addAttribute(MailConstants.A_SIZE, mm.getSize());
+    
+                java.util.Date sent = mm.getSentDate();
+                if (sent != null)
+                    m.addAttribute(MailConstants.A_SENT_DATE, sent.getTime());
+            }
 
             Element invElt = m.addElement(MailConstants.E_INVITE);
             setCalendarItemType(invElt, calItem);
             encodeTimeZoneMap(invElt, calItem.getTimeZoneMap());
-            Invite[] invites = calItem.getInvites(invId);
             if (invites.length > 0) {
-                encodeReplies(invElt, calItem, invites[0]);
+                if (showAll)
+                    encodeCalendarReplies(invElt, calItem, invites[0]);
                 for (Invite inv : invites)
-                    encodeInviteComponent(invElt, ifmt, calItem, inv, NOTIFY_FIELDS);
+                    encodeInviteComponent(invElt, ifmt, octxt, calItem, inv, NOTIFY_FIELDS);
             }
 
-            if (headers != null) {
-                for (String name : headers) {
-                    String[] values = mm.getHeader(name);
-                    if (values == null)
-                        continue;
-                    for (int i = 0; i < values.length; i++)
-                        m.addKeyValuePair(name, values[i], MailConstants.A_HEADER, MailConstants.A_ATTRIBUTE_NAME);
+            if (showAll) {
+                if (headers != null) {
+                    for (String name : headers) {
+                        String[] values = mm.getHeader(name);
+                        if (values == null)
+                            continue;
+                        for (int i = 0; i < values.length; i++)
+                            m.addKeyValuePair(name, values[i], MailConstants.A_HEADER, MailConstants.A_ATTRIBUTE_NAME);
+                    }
                 }
-            }
-
-            List<MPartInfo> parts = Mime.getParts(mm);
-            if (parts != null && !parts.isEmpty()) {
-                Set<MPartInfo> bodies = Mime.getBody(parts, wantHTML);
-                addParts(m, parts.get(0), bodies, part, neuter, true);
+    
+                List<MPartInfo> parts = Mime.getParts(mm);
+                if (parts != null && !parts.isEmpty()) {
+                    Set<MPartInfo> bodies = Mime.getBody(parts, wantHTML);
+                    addParts(m, parts.get(0), bodies, part, neuter, true);
+                }
             }
         } catch (IOException ex) {
             throw ServiceException.FAILURE(ex.getMessage(), ex);
@@ -1050,11 +1062,13 @@ public class ToXML {
 
     public static enum OutputParticipants { PUT_SENDERS, PUT_RECIPIENTS, PUT_BOTH }
 
-    public static Element encodeMessageSummary(Element parent, ItemIdFormatter ifmt, OperationContext octxt, Message msg, OutputParticipants output) {
+    public static Element encodeMessageSummary(Element parent, ItemIdFormatter ifmt, OperationContext octxt,
+                                               Message msg, OutputParticipants output) {
         return encodeMessageSummary(parent, ifmt, octxt, msg, output, NOTIFY_FIELDS);
     }
 
-    public static Element encodeMessageSummary(Element parent, ItemIdFormatter ifmt, OperationContext octxt, Message msg, OutputParticipants output, int fields) {
+    public static Element encodeMessageSummary(Element parent, ItemIdFormatter ifmt, OperationContext octxt,
+                                               Message msg, OutputParticipants output, int fields) {
         Element e = encodeMessageCommon(parent, ifmt, msg, fields, true);
         e.addAttribute(MailConstants.A_ID, ifmt.formatItemId(msg));
 
@@ -1160,8 +1174,13 @@ public class ToXML {
         }
     }
 
+    private static boolean isCalendarItemOwner(OperationContext octxt, CalendarItem calItem) {
+        return octxt != null ? !octxt.isDelegatedRequest(calItem.getMailbox()) : false;
+    }
+
     public static Element encodeInviteComponent(Element parent,
                                                 ItemIdFormatter ifmt,
+                                                OperationContext octxt,
                                                 CalendarItem calItem,
                                                 Invite invite,
                                                 int fields)
@@ -1175,6 +1194,7 @@ public class ToXML {
             }
         }
 
+        boolean isOwner = isCalendarItemOwner(octxt, calItem);
         Element e = parent.addElement(MailConstants.E_INVITE_COMPONENT);
 
         e.addAttribute(MailConstants.A_CAL_COMPONENT_NUM, invite.getComponentNum());
@@ -1182,49 +1202,110 @@ public class ToXML {
         e.addAttribute(MailConstants.A_CAL_RSVP, invite.getRsvp());
         
         if (allFields) {
-            boolean isRecurring = false;
-                e.addAttribute("x_uid", invite.getUid());
-                e.addAttribute(MailConstants.A_CAL_SEQUENCE, invite.getSeqNo());
-                e.addAttribute(MailConstants.A_CAL_DATETIME, invite.getDTStamp()); //zdsync
+            if (isOwner || invite.isPublic()) {
+                String priority = invite.getPriority();
+                if (priority != null)
+                    e.addAttribute(MailConstants.A_CAL_PRIORITY, priority);
 
-                String itemId = ifmt.formatItemId(calItem);
-                e.addAttribute(MailConstants.A_CAL_ID, itemId);
-                if (invite.isEvent())
-                    e.addAttribute(MailConstants.A_APPT_ID_DEPRECATE_ME, itemId);  // for backward compat
+                e.addAttribute(MailConstants.A_NAME, invite.getName());
+                e.addAttribute(MailConstants.A_CAL_LOCATION, invite.getLocation());
 
-            if (invite.isOrganizer())
-                    e.addAttribute(MailConstants.A_CAL_ISORG, true);
-
-                Recurrence.IRecurrence recur = invite.getRecurrence();
-                if (recur != null) {
-                    isRecurring = true;
-                    Element recurElt = e.addElement(MailConstants.E_CAL_RECUR);
-                    recur.toXml(recurElt);
+                // Percent Complete (VTODO)
+                if (invite.isTodo()) {
+                    String pct = invite.getPercentComplete();
+                    if (pct != null)
+                        e.addAttribute(MailConstants.A_TASK_PERCENT_COMPLETE, pct);
+                    long completed = invite.getCompleted();
+                    if (completed != 0) {
+                        ParsedDateTime c = ParsedDateTime.fromUTCTime(completed);
+                        e.addAttribute(MailConstants.A_TASK_COMPLETED, c.getDateTimePartString());
+                    }
                 }
 
-            e.addAttribute(MailConstants.A_CAL_STATUS, invite.getStatus());
-
-            String priority = invite.getPriority();
-            if (priority != null)
-                e.addAttribute(MailConstants.A_CAL_PRIORITY, priority);
-
-            if (invite.isEvent()) {
-                e.addAttribute(MailConstants.A_APPT_FREEBUSY, invite.getFreeBusy());
-    
-                Instance inst = Instance.fromInvite(calItem, invite);
-                if (calItem instanceof Appointment) {
-                    Appointment appt = (Appointment) calItem;
-                    e.addAttribute(MailConstants.A_APPT_FREEBUSY_ACTUAL,
-                                appt.getEffectiveFreeBusyActual(invite, inst));
+                // Attendee(s)
+                List<ZAttendee> attendees = invite.getAttendees();
+                for (ZAttendee at : attendees) {
+                    at.toXml(e);
                 }
-    
-                e.addAttribute(MailConstants.A_APPT_TRANSPARENCY, invite.getTransparency());
-    
+
+                // Alarms
+                Iterator<Alarm> alarmsIter = invite.alarmsIterator();
+                while (alarmsIter.hasNext()) {
+                    Alarm alarm = alarmsIter.next();
+                    alarm.toXml(e);
+                }
+
+                // x-prop
+                encodeXProps(e, invite.xpropsIterator());
+                
+                String fragment = invite.getFragment();
+                if (fragment != null && fragment.length() > 0) {
+                    e.addAttribute(MailConstants.E_FRAG, fragment, Element.Disposition.CONTENT);
+                }
+
+                if (invite.isEvent()) {
+                    Instance inst = Instance.fromInvite(calItem, invite);
+                    if (calItem instanceof Appointment) {
+                        Appointment appt = (Appointment) calItem;
+                        e.addAttribute(MailConstants.A_APPT_FREEBUSY_ACTUAL,
+                                    appt.getEffectiveFreeBusyActual(invite, inst));
+                    }
+                    e.addAttribute(MailConstants.A_APPT_FREEBUSY, invite.getFreeBusy());
+                    e.addAttribute(MailConstants.A_APPT_TRANSPARENCY, invite.getTransparency());
+                }
             }
 
+            if (invite.isOrganizer())
+                e.addAttribute(MailConstants.A_CAL_ISORG, true);
+
+            // Organizer
+            if (invite.hasOrganizer()) {
+                ZOrganizer org = invite.getOrganizer();
+                Element orgElt = e.addUniqueElement(MailConstants.E_CAL_ORGANIZER);
+                String str = org.getAddress();
+                orgElt.addAttribute(MailConstants.A_ADDRESS, str);
+                orgElt.addAttribute(MailConstants.A_URL, str);  // for backward compatibility
+                if (org.hasCn())
+                    orgElt.addAttribute(MailConstants.A_DISPLAY, org.getCn());
+                if (org.hasSentBy())
+                    orgElt.addAttribute(MailConstants.A_CAL_SENTBY, org.getSentBy());
+                if (org.hasDir())
+                    orgElt.addAttribute(MailConstants.A_CAL_DIR, org.getDir());
+                if (org.hasLanguage())
+                    orgElt.addAttribute(MailConstants.A_CAL_LANGUAGE, org.getLanguage());
+            }
+
+            boolean isRecurring = false;
+            e.addAttribute("x_uid", invite.getUid());
+            e.addAttribute(MailConstants.A_UID, invite.getUid());
+            e.addAttribute(MailConstants.A_CAL_SEQUENCE, invite.getSeqNo());
+            e.addAttribute(MailConstants.A_CAL_DATETIME, invite.getDTStamp()); //zdsync
+
+            String itemId = ifmt.formatItemId(calItem);
+            e.addAttribute(MailConstants.A_CAL_ID, itemId);
+            if (invite.isEvent())
+                e.addAttribute(MailConstants.A_APPT_ID_DEPRECATE_ME, itemId);  // for backward compat
+
+            Recurrence.IRecurrence recur = invite.getRecurrence();
+            if (recur != null) {
+                isRecurring = true;
+                Element recurElt = e.addElement(MailConstants.E_CAL_RECUR);
+                recur.toXml(recurElt);
+            }
+
+            e.addAttribute(MailConstants.A_CAL_STATUS, invite.getStatus());
+            e.addAttribute(MailConstants.A_CAL_CLASS, invite.getClassProp());
+
             boolean isException = invite.hasRecurId();
-            if (isException)
+            if (isException) {
                 e.addAttribute(MailConstants.A_CAL_IS_EXCEPTION, true);
+                Element ridElem = e.addElement(MailConstants.E_CAL_EXCEPTION_ID);
+                RecurId rid = invite.getRecurId();
+                ParsedDateTime ridDt = rid.getDt();
+                ridElem.addAttribute(MailConstants.A_CAL_DATETIME, ridDt.getDateTimePartString());
+                ridElem.addAttribute(MailConstants.A_CAL_TIMEZONE, ridDt.getTZName());
+                ridElem.addAttribute(MailConstants.A_CAL_RECURRENCE_RANGE_TYPE, rid.getRange());
+            }
 
             boolean allDay = invite.isAllDayEvent();
             if (allDay)
@@ -1268,59 +1349,6 @@ public class ToXML {
             if (dur != null) {
                 dur.toXml(e);
             }
-
-            e.addAttribute(MailConstants.A_NAME, invite.getName());
-            e.addAttribute(MailConstants.A_CAL_LOCATION, invite.getLocation());
-
-            // Percent Complete (VTODO)
-            if (invite.isTodo()) {
-                String pct = invite.getPercentComplete();
-                if (pct != null)
-                    e.addAttribute(MailConstants.A_TASK_PERCENT_COMPLETE, pct);
-                long completed = invite.getCompleted();
-                if (completed != 0) {
-                    ParsedDateTime c = ParsedDateTime.fromUTCTime(completed);
-                    e.addAttribute(MailConstants.A_TASK_COMPLETED, c.getDateTimePartString());
-                }
-            }
-
-            // Organizer
-            if (invite.hasOrganizer()) {
-                ZOrganizer org = invite.getOrganizer();
-                Element orgElt = e.addUniqueElement(MailConstants.E_CAL_ORGANIZER);
-                String str = org.getAddress();
-                orgElt.addAttribute(MailConstants.A_ADDRESS, str);
-                orgElt.addAttribute(MailConstants.A_URL, str);  // for backward compatibility
-                if (org.hasCn())
-                    orgElt.addAttribute(MailConstants.A_DISPLAY, org.getCn());
-                if (org.hasSentBy())
-                    orgElt.addAttribute(MailConstants.A_CAL_SENTBY, org.getSentBy());
-                if (org.hasDir())
-                    orgElt.addAttribute(MailConstants.A_CAL_DIR, org.getDir());
-                if (org.hasLanguage())
-                    orgElt.addAttribute(MailConstants.A_CAL_LANGUAGE, org.getLanguage());
-            }
-
-            // Attendee(s)
-            List<ZAttendee> attendees = invite.getAttendees();
-            for (ZAttendee at : attendees) {
-                at.toXml(e);
-            }
-
-            // Alarms
-            Iterator<Alarm> alarmsIter = invite.alarmsIterator();
-            while (alarmsIter.hasNext()) {
-                Alarm alarm = alarmsIter.next();
-                alarm.toXml(e);
-            }
-
-            // x-prop
-            encodeXProps(e, invite.xpropsIterator());
-            
-            String fragment = invite.getFragment();
-            if (fragment != null && fragment.length() > 0) {
-            	e.addAttribute(MailConstants.E_FRAG, fragment, Element.Disposition.CONTENT);
-            }
         }
 
         return e;
@@ -1349,7 +1377,8 @@ public class ToXML {
         }
     }
 
-    private static Element encodeInvitesForMessage(Element parent, ItemIdFormatter ifmt, OperationContext octxt, Message msg, int fields)
+    private static Element encodeInvitesForMessage(Element parent, ItemIdFormatter ifmt,
+                                                   OperationContext octxt, Message msg, int fields)
     throws ServiceException {
         if (fields != NOTIFY_FIELDS)
             if (!needToOutput(fields, Change.MODIFIED_INVITE))
@@ -1384,7 +1413,7 @@ public class ToXML {
                         addedMethod = true;
                     }
                     encodeTimeZoneMap(ie, calItem.getTimeZoneMap());
-                    encodeInviteComponent(ie, ifmt, calItem, inv, fields);
+                    encodeInviteComponent(ie, ifmt, octxt, calItem, inv, fields);
                 } else {
                     // invite not in this appointment anymore
                 }
@@ -1542,35 +1571,25 @@ public class ToXML {
         String data = null;
         if (ctype.equals(Mime.CT_TEXT_HTML)) {
             String charset = mpi.getContentTypeParameter(Mime.P_CHARSET);
-            if (charset != null && charset.trim().length() > 0) {
-                InputStream stream = null;
-                try {
+            InputStream stream = null;
+            try {
+                if (charset != null && !charset.trim().equals("")) {
                     stream = mp.getInputStream();
                     Reader reader = new InputStreamReader(stream, charset);
                     data = HtmlDefang.defang(reader, neuter);
-                }
-                finally {
-                    if (stream != null) {
-                        stream.close();
-                    }
-                }
-            }
-            else {
-                if (mp.getHeader("Content-Transfer-Encoding", null) != null) {
-                    InputStream stream = null;
-                    try {
+                } else {
+                    String cte = mp.getEncoding();
+                    if (cte != null && !cte.trim().toLowerCase().equals(Mime.ET_7BIT)) {
                         stream = mp.getInputStream();
                         data = HtmlDefang.defang(stream, neuter);
-                    } finally {
-                        if (stream != null) {
-                            stream.close();
-                        }
+                    } else {
+                        data = Mime.getStringContent(mp);
+                        data = HtmlDefang.defang(data, neuter);
                     }
                 }
-                else {
-                    data = Mime.getStringContent(mp);
-                    data = HtmlDefang.defang(data, neuter);
-                }
+            } finally {
+                if (stream != null)
+                    stream.close();
             }
         } else if (ctype.equals(Mime.CT_TEXT_ENRICHED)) {
             data = TextEnrichedHandler.convertToHTML(Mime.getStringContent(mp));
@@ -1622,28 +1641,28 @@ public class ToXML {
         return elem;
     }
 
-    public static Element encodeWiki(Element parent, ItemIdFormatter ifmt, WikiItem wiki, int rev) {
-        return encodeWiki(parent, ifmt, wiki, NOTIFY_FIELDS, rev);
+    public static Element encodeWiki(Element parent, ItemIdFormatter ifmt, OperationContext octxt, WikiItem wiki, int rev) {
+        return encodeWiki(parent, ifmt, octxt, wiki, NOTIFY_FIELDS, rev);
     }
 
-    public static Element encodeWiki(Element parent, ItemIdFormatter ifmt, WikiItem wiki, int fields, int rev) {
+    public static Element encodeWiki(Element parent, ItemIdFormatter ifmt, OperationContext octxt, WikiItem wiki, int fields, int rev) {
         Element m = parent.addElement(MailConstants.E_WIKIWORD);
-        encodeDocumentCommon(m, ifmt, wiki, fields, rev);
+        encodeDocumentCommon(m, ifmt, octxt, wiki, fields, rev);
         return m;
     }
 
-    public static Element encodeDocument(Element parent, ItemIdFormatter ifmt, Document doc, int rev) {
-        return encodeDocument(parent, ifmt, doc, NOTIFY_FIELDS, rev);
+    public static Element encodeDocument(Element parent, ItemIdFormatter ifmt, OperationContext octxt, Document doc, int rev) {
+        return encodeDocument(parent, ifmt, octxt, doc, NOTIFY_FIELDS, rev);
     }
 
-    public static Element encodeDocument(Element parent, ItemIdFormatter ifmt, Document doc, int fields, int rev) {
+    public static Element encodeDocument(Element parent, ItemIdFormatter ifmt, OperationContext octxt, Document doc, int fields, int rev) {
         Element m = parent.addElement(MailConstants.E_DOC);
-        encodeDocumentCommon(m, ifmt, doc, fields, rev);
+        encodeDocumentCommon(m, ifmt, octxt, doc, fields, rev);
         m.addAttribute(MailConstants.A_CONTENT_TYPE, doc.getContentType());
         return m;
     }
 
-    public static Element encodeDocumentCommon(Element m, ItemIdFormatter ifmt, Document doc, int fields, int rev) {
+    public static Element encodeDocumentCommon(Element m, ItemIdFormatter ifmt, OperationContext octxt, Document doc, int fields, int version) {
         m.addAttribute(MailConstants.A_ID, ifmt.formatItemId(doc));
         if (needToOutput(fields, Change.MODIFIED_NAME)) {
         	m.addAttribute(MailConstants.A_NAME, doc.getName());
@@ -1658,19 +1677,19 @@ public class ToXML {
         recordItemTags(m, doc, fields);
 
         if (needToOutput(fields, Change.MODIFIED_CONTENT)) {
-
             try {
-                Document.DocumentRevision revision = doc.getRevision(1);
-                m.addAttribute(MailConstants.A_CREATOR, revision.getCreator());
-                m.addAttribute(MailConstants.A_CREATED_DATE, revision.getRevDate());
+                m.addAttribute(MailConstants.A_VERSION, doc.getVersion());
+                m.addAttribute(MailConstants.A_LAST_EDITED_BY, doc.getCreator());
+                m.addAttribute(MailConstants.A_MODIFIED_DATE, doc.getDate());
+                String fragment = doc.getFragment();
+                if (fragment != null && !fragment.equals(""))
+                    m.addAttribute(MailConstants.E_FRAG, fragment, Element.Disposition.CONTENT);
 
-                revision = (rev > 0) ? doc.getRevision(rev) : doc.getLastRevision(); 
-                m.addAttribute(MailConstants.A_VERSION, revision.getVersion());
-                m.addAttribute(MailConstants.A_LAST_EDITED_BY, revision.getCreator());
-                m.addAttribute(MailConstants.A_MODIFIED_DATE, revision.getRevDate());
-                String frag = revision.getFragment();
-                if (frag != null && !frag.equals(""))
-                    m.addAttribute(MailConstants.E_FRAG, frag, Element.Disposition.CONTENT);
+                Document revision = (Document) doc.getMailbox().getItemRevision(octxt, doc.getId(), doc.getType(), 1);
+                if (revision != null) {
+                    m.addAttribute(MailConstants.A_CREATOR, revision.getCreator());
+                    m.addAttribute(MailConstants.A_CREATED_DATE, revision.getDate());
+                }
             } catch (Exception ex) {
                 mLog.warn("ignoring exception while fetching revision for document " + doc.getSubject(), ex);
             }
@@ -1687,7 +1706,7 @@ public class ToXML {
         //m.addAttribute(MailService.A_SIZE, page.getSize());
         m.addAttribute(MailConstants.A_DATE, page.getModifiedDate());
         m.addAttribute(MailConstants.A_FOLDER, page.getFolderId());
-        m.addAttribute(MailConstants.A_VERSION, page.getLastRevision());
+        m.addAttribute(MailConstants.A_VERSION, page.getLastVersion());
         m.addAttribute(MailConstants.A_CREATOR, page.getCreator());
         m.addAttribute(MailConstants.A_CREATED_DATE, page.getCreatedDate());
         m.addAttribute(MailConstants.A_LAST_EDITED_BY, page.getLastEditor());
@@ -1726,9 +1745,14 @@ public class ToXML {
         if (ds.getUsername() != null) {
             m.addAttribute(MailConstants.A_DS_USERNAME, ds.getUsername());
         }
-        if (ds.getPollingInterval() > 0) {
-            m.addAttribute(MailConstants.A_DS_POLLING_INTERVAL,
-                ds.getAttr(Provisioning.A_zimbraDataSourcePollingInterval));
+        
+        try {
+            if (ds.getPollingInterval() > 0) {
+                m.addAttribute(MailConstants.A_DS_POLLING_INTERVAL,
+                    ds.getAttr(Provisioning.A_zimbraDataSourcePollingInterval));
+            }
+        } catch (ServiceException e) {
+            mLog.warn("Unable to get polling interval from %s", ds, e);
         }
         
         m.addAttribute(MailConstants.A_DS_EMAIL_ADDRESS, ds.getEmailAddress());

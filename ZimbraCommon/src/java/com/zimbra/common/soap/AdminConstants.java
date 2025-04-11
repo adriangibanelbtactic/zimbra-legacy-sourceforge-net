@@ -81,6 +81,8 @@ public class AdminConstants {
     public static final QName GET_DOMAIN_INFO_RESPONSE = QName.get("GetDomainInfoResponse", NAMESPACE);
     public static final QName MODIFY_DOMAIN_REQUEST = QName.get("ModifyDomainRequest", NAMESPACE);
     public static final QName MODIFY_DOMAIN_RESPONSE = QName.get("ModifyDomainResponse", NAMESPACE);
+    public static final QName MODIFY_DOMAIN_STATUS_REQUEST = QName.get("ModifyDomainStatusRequest", NAMESPACE);
+    public static final QName MODIFY_DOMAIN_STATUS_RESPONSE = QName.get("ModifyDomainStatusResponse", NAMESPACE);
     public static final QName DELETE_DOMAIN_REQUEST = QName.get("DeleteDomainRequest", NAMESPACE);
     public static final QName DELETE_DOMAIN_RESPONSE = QName.get("DeleteDomainResponse", NAMESPACE);
     public static final QName GET_ALL_DOMAINS_REQUEST = QName.get("GetAllDomainsRequest", NAMESPACE);
@@ -283,6 +285,9 @@ public class AdminConstants {
 
     public static final QName CHECK_DIRECTORY_REQUEST = QName.get("CheckDirectoryRequest", NAMESPACE);
     public static final QName CHECK_DIRECTORY_RESPONSE = QName.get("CheckDirectoryResponse", NAMESPACE);
+    
+    public static final QName FLUSH_CACHE_REQUEST = QName.get("FlushCacheRequest", NAMESPACE);
+    public static final QName FLUSH_CACHE_RESPONSE = QName.get("FlushCacheResponse", NAMESPACE);
 
     // Account loggers
     public static final QName ADD_ACCOUNT_LOGGER_REQUEST = QName.get("AddAccountLoggerRequest", NAMESPACE);
@@ -312,6 +317,7 @@ public class AdminConstants {
     public static final String E_NAME = "name";
     public static final String E_NEW_NAME = "newName";
     public static final String E_BINDDN = "bindDn";
+    public static final String E_CACHE = "cache";
     public static final String E_CODE = "code";
     public static final String E_COS = "cos";
     public static final String A_COS = "cos";
@@ -319,6 +325,7 @@ public class AdminConstants {
     public static final String E_DOMAIN = "domain";
     public static final String E_DL = "dl";
     public static final String E_DLM = "dlm";
+    public static final String E_ENTRY = "entry";
     public static final String E_HOSTNAME = "hostname";
     public static final String E_LIFETIME = "lifetime";
     public static final String E_MESSAGE = "message";
@@ -465,4 +472,5 @@ public class AdminConstants {
     public static final String E_ACCOUNT_LOGGER = "accountLogger";
     public static final String A_CATEGORY = "category";
     public static final String A_LEVEL = "level";
+
 }

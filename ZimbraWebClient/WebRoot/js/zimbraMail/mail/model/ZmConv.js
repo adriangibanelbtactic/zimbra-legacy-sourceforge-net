@@ -24,16 +24,15 @@
  */
 
 /**
-* Creates a conversation.
-* @constructor
-* @class
-* This class represents a conversation, which is a collection of mail messages
-* which have the same subject.
-*
-* @param appCtxt	[ZmAppCtxt]		the app context
-* @param id			[int]			unique ID
-* @param list		[ZmMailList]	list that contains this conversation
-*/
+ * Creates a conversation.
+ * @constructor
+ * @class
+ * This class represents a conversation, which is a collection of mail messages
+ * which have the same subject.
+ *
+ * @param id		[int]			unique ID
+ * @param list		[ZmMailList]	list that contains this conversation
+ */
 ZmConv = function(appCtxt, id, list) {
 
 	ZmMailItem.call(this, appCtxt, ZmItem.CONV, id, list);
@@ -56,14 +55,16 @@ function() {
 
 ZmConv.createFromDom =
 function(node, args) {
-	var conv = new ZmConv(args.appCtxt, node.id, args.list);
+	var appCtxt = ZmAppCtxt.getFromShell(DwtShell.getShell(window));
+	var conv = new ZmConv(appCtxt, node.id, args.list);
 	conv._loadFromDom(node);
 	return conv;
 };
 
 ZmConv.createFromMsg =
 function(msg, args) {
-	var conv = new ZmConv(args.appCtxt, msg.cid, args.list);
+	var appCtxt = ZmAppCtxt.getFromShell(DwtShell.getShell(window));
+	var conv = new ZmConv(appCtxt, msg.cid, args.list);
 	conv._loadFromMsg(msg);
 	return conv;
 };
@@ -86,7 +87,7 @@ function(params) {
 
 	var sortBy = params.sortBy ? params.sortBy : ZmSearch.DATE_DESC;
 	var offset = params.offset ? params.offset : 0;
-	var limit = params.limit ? params.limit : this.list._appCtxt.get(ZmSetting.PAGE_SIZE);
+	var limit = params.limit ? params.limit : this._appCtxt.get(ZmSetting.PAGE_SIZE);
 	
 	if (this.msgs) {
 		if (this._sortBy != sortBy) {
@@ -112,7 +113,7 @@ function(params) {
 	
 	var types = AjxVector.fromArray([ZmItem.MSG]);
 	var searchParams = {query:params.query, types:types, sortBy:sortBy, offset:offset, limit:limit};
-	var search = new ZmSearch(this.list._appCtxt, searchParams);
+	var search = new ZmSearch(this._appCtxt, searchParams);
 	var respCallback = new AjxCallback(this, this._handleResponseLoad, params);
 	search.getConv(this.id, respCallback, params.getFirstMsg);
 };
@@ -147,6 +148,13 @@ function(callback, errorCallback, batchCmd) {
 	var soapDoc = AjxSoapDoc.create("GetConvRequest", "urn:zimbraMail");
 	var msgNode = soapDoc.set("c");
 	msgNode.setAttribute("id", this.id);
+
+	// Request additional headers
+	for (var hdr in ZmMailMsg.getAdditionalHeaders()) {
+		var headerNode = soapDoc.set('header', null, msgNode);
+		headerNode.setAttribute('n', hdr);
+	}
+
 	var respCallback = new AjxCallback(this, this._handleResponseLoadMsgIds, callback);
 
 	if (batchCmd) {
@@ -167,7 +175,7 @@ function(callback, result) {
 		this.msgIds.push(msgNode.id);
 		msgNode.su = resp.su;
 		// construct ZmMailMsg's so they get cached
-		ZmMailMsg.createFromDom(msgNode, {appCtxt:this._appCtxt});
+		ZmMailMsg.createFromDom(msgNode);
 	}
 
 	if (callback) { callback.run(result); }
@@ -222,7 +230,7 @@ function(obj) {
 
 ZmConv.prototype.getPrintHtml =
 function(preferHtml, callback) {
-	ZmConvListView.getPrintHtml(this, preferHtml, callback, this._appCtxt);
+	ZmConvListView.getPrintHtml(this, preferHtml, callback);
 };
 
 ZmConv.prototype._checkFlags = 
@@ -264,13 +272,15 @@ function(flags) {
 */
 ZmConv.prototype._checkTags = 
 function() {
-	newTags = {};
-	allTags = {};
+	var newTags = {};
+	var allTags = {};
 	
-	for (var tagId in this.tagHash)
+	for (var tagId in this.tagHash) {
 		allTags[tagId] = true;
+	}
 
 	var msgs = this.msgs.getArray();
+	if (!(msgs && msgs.length)) { return; }
 	for (var i = 0; i < msgs.length; i++) {
 		for (var tagId in msgs[i].tagHash) {
 			newTags[tagId] = true;
@@ -281,32 +291,36 @@ function() {
 	var notify = false;
 	for (var tagId in allTags) {
 		if (!this.tagHash[tagId] && newTags[tagId]) {
-			if (this.tagLocal(tagId, true))
+			if (this.tagLocal(tagId, true)) {
 				notify = true;
+			}
 		} else if (this.tagHash[tagId] && !newTags[tagId]) {
-			if (this.tagLocal(tagId, false))
+			if (this.tagLocal(tagId, false)) {
 				notify = true;
+			}
 		}
 	}
 
-	if (notify)
+	if (notify) {
 		this._notify(ZmEvent.E_TAGS);
+	}
 };
 
 ZmConv.prototype.checkMoved = 
 function(folderId) {
 	var msgs = this.msgs.getArray();
-	var bNotify = true;
+	var doNotify = true;
 	for (var i = 0; i < msgs.length; i++) {
 		if (msgs[i].folderId == folderId) {
-			bNotify = false;
+			doNotify = false;
 			break;
 		}
 	}
-	if (bNotify)
+	if (doNotify) {
 		this._notify(ZmEvent.E_MOVE);
+	}
 	
-	return bNotify;
+	return doNotify;
 };
 
 ZmConv.prototype.moveLocal =
@@ -328,25 +342,26 @@ function(offset, limit) {
 	var numMsgs = this.msgs.size();
 
 	// normalize offset/limit if necessary
-	if (offset >= numMsgs || offset < 0)
-		return;
+	if (offset >= numMsgs || offset < 0) { return; }
 	
-	var end = offset + limit > numMsgs ? numMsgs : offset+limit;
+	var end = (offset + limit > numMsgs) ? numMsgs : offset + limit;
 	var list = this.msgs.getArray();
 	
 	var msg;
 	for (var i = offset; i < end; i++) {
 		if (list[i].isInHitList()) {
-			if (msg == null || msg.date < list[i].date)
+			if (msg == null || msg.date < list[i].date) {
 				msg = list[i];
+			}
 		}
 	}
 
 	// no hot messages, find the most recent message
 	if (msg == null) {
 		for (var i = offset; i < end; i++) {
-			if (msg == null || msg.date < list[i].date)
+			if (msg == null || msg.date < list[i].date) {
 				msg = list[i];
+			}
 		}
 	}
 	
@@ -365,13 +380,14 @@ function() {
 	} else {
 		// otherwise, create a temp msg w/ the msg op Id
 		msg = new ZmMailMsg(this._appCtxt, this.msgOpId);
-		// bug fix #7016 - only cache if not draft otherwise reopening cached 
-		// draft will not have new changes
-		if (!this.isDraft)
-			this.tempMsg = msg;
+		msg.cid = this.id;
+		this.tempMsg = msg;
 	}
 	
-	msg.list = this.msgs || new ZmMailList(ZmItem.MSG, this._appCtxt);
+	if (!this.msgs) {
+		this.msgs = msg.list = new ZmMailList(ZmItem.MSG);
+		this.msgs.addChangeListener(this._listChangeListener);
+	}
 	
 	return msg;
 };
@@ -421,11 +437,13 @@ function(msg) {
 
 ZmConv.prototype._msgListChangeListener =
 function(ev) {
-	if (ev.type != ZmEvent.S_MSG)
-		return;
+	if (ev.type != ZmEvent.S_MSG) {	return; }
 	if (ev.event == ZmEvent.E_TAGS || ev.event == ZmEvent.E_REMOVE_ALL) {
 		this._checkTags();
 	} else if (ev.event == ZmEvent.E_FLAGS) {
 		this._checkFlags(ev.getDetail("flags"));
+	} else 	if (ev.event == ZmEvent.E_DELETE || ev.event == ZmEvent.E_MOVE) {
+		// a msg was moved or deleted, see if this conv's row should remain
+		this.checkMoved();
 	}
 };

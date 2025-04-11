@@ -25,6 +25,7 @@
 package com.zimbra.cs.imap;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -129,8 +130,7 @@ public class ImapFlagCache implements Iterable<ImapFlagCache.ImapFlag> {
 
 
     ImapFlag getByName(String name) {
-        ImapFlag i4flag = mNames.get(name.toUpperCase());
-        return (i4flag == null || i4flag.mListed == ImapFlag.HIDDEN ? null : i4flag);
+        return mNames.get(name.toUpperCase());
     }
 
     ImapFlag getByMask(long mask) {
@@ -138,6 +138,9 @@ public class ImapFlagCache implements Iterable<ImapFlagCache.ImapFlag> {
     }
 
     List<String> listNames(boolean permanentOnly) {
+        if (mNames.isEmpty())
+            return Collections.emptyList();
+
         List<String> names = new ArrayList<String>();
         for (Map.Entry<String, ImapFlag> entry : mNames.entrySet()) {
             ImapFlag i4flag = entry.getValue();
@@ -170,13 +173,13 @@ public class ImapFlagCache implements Iterable<ImapFlagCache.ImapFlag> {
             Tag ltag = mMailbox.createTag(octxt, name, MailItem.DEFAULT_COLOR);
             newTags.add(ltag);
             i4flag = getByName(name);
-            if (i4flag != null)
+            if (i4flag == null)
                 return cache(i4flag = new ImapFlag(name, ltag, true));
         } catch (ServiceException e) {
             if (!e.getCode().equals(ServiceException.PERM_DENIED) && !e.getCode().equals(MailServiceException.TOO_MANY_TAGS))
                 throw e;
         }
-        return null;
+        return i4flag;
     }
 
 

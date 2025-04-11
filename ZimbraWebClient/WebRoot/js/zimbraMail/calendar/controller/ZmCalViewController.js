@@ -43,9 +43,6 @@ ZmCalViewController = function(appCtxt, container, calApp) {
 	var apptEditListener = new AjxListener(this, this._handleApptEditRespondAction);
 	var calViewListener = new AjxListener(this, this._calViewButtonListener);
 
-	ZmCalViewController.OPS = [ZmOperation.DAY_VIEW, ZmOperation.WORK_WEEK_VIEW, ZmOperation.WEEK_VIEW,
-							   ZmOperation.MONTH_VIEW, ZmOperation.SCHEDULE_VIEW];
-	
 	// get view based on op
 	ZmCalViewController.OP_TO_VIEW = {};
 	ZmCalViewController.OP_TO_VIEW[ZmOperation.DAY_VIEW]		= ZmController.CAL_DAY_VIEW;
@@ -100,22 +97,6 @@ ZmCalViewController = function(appCtxt, container, calApp) {
 ZmCalViewController.prototype = new ZmListController();
 ZmCalViewController.prototype.constructor = ZmCalViewController;
 
-ZmCalViewController.ICON = {};
-ZmCalViewController.ICON[ZmController.CAL_DAY_VIEW]				= "DayView";
-ZmCalViewController.ICON[ZmController.CAL_WORK_WEEK_VIEW]		= "WorkWeekView";
-ZmCalViewController.ICON[ZmController.CAL_WEEK_VIEW]			= "WeekView";
-ZmCalViewController.ICON[ZmController.CAL_MONTH_VIEW]			= "MonthView";
-ZmCalViewController.ICON[ZmController.CAL_SCHEDULE_VIEW]		= "GroupSchedule";
-
-ZmCalViewController.MSG_KEY = {};
-ZmCalViewController.MSG_KEY[ZmController.CAL_DAY_VIEW]			= "viewDay";
-ZmCalViewController.MSG_KEY[ZmController.CAL_WORK_WEEK_VIEW]	= "viewWorkWeek";
-ZmCalViewController.MSG_KEY[ZmController.CAL_WEEK_VIEW]			= "viewWeek";
-ZmCalViewController.MSG_KEY[ZmController.CAL_MONTH_VIEW]		= "viewMonth";
-ZmCalViewController.MSG_KEY[ZmController.CAL_SCHEDULE_VIEW]		= "viewSchedule";
-
-ZmCalViewController.VIEWS = [ZmController.CAL_DAY_VIEW, ZmController.CAL_WORK_WEEK_VIEW, ZmController.CAL_WEEK_VIEW,
-							 ZmController.CAL_MONTH_VIEW, ZmController.CAL_SCHEDULE_VIEW];
 ZmCalViewController.DEFAULT_APPOINTMENT_DURATION = 3600000;
 
 // maintenance needed on views and/or minical
@@ -217,7 +198,6 @@ function(viewId, startDate) {
 	var elements = {};
 	elements[ZmAppViewMgr.C_TOOLBAR_TOP] = this._toolbar[ZmController.CAL_VIEW];
 	elements[ZmAppViewMgr.C_APP_CONTENT] = this._viewMgr;
-	this._appCtxt.getCurrentAppToolbar().setSubView(ZmController.CAL_VIEW, viewId);
 	this._setView(ZmController.CAL_VIEW, elements, true);
 	this._currentView = this._viewMgr.getCurrentViewName();
 	this._listView[this._currentView] = this._viewMgr.getCurrentView();
@@ -386,8 +366,6 @@ function(viewId) {
 
 	ZmListController.prototype._initializeToolBar.call(this, ZmController.CAL_DAY_VIEW);
 
-	this._setupViewMenu(ZmController.CAL_VIEW);
-
 	// NOTE: bug 5720
 	if (AjxEnv.is800x600orLower) {
 		var toolbar = this._toolbar[ZmController.CAL_DAY_VIEW];
@@ -418,27 +396,6 @@ function(viewId) {
 	this._setNewButtonProps(viewId, ZmMsg.createNewAppt, "NewAppointment", "NewAppointmentDis", ZmOperation.NEW_APPT);
 };
 
-// Create menu for View button and add listeners.
-ZmCalViewController.prototype._setupViewMenu =
-function(view) {
-	var appToolbar = this._appCtxt.getCurrentAppToolbar();
-	var menu = appToolbar.getViewMenu(view);
-	if (!menu) {
-		menu = new ZmPopupMenu(appToolbar.getViewButton());
-		this._view_menu_listener = new AjxListener(this, this._viewMenuListener);
-		for (var i = 0; i < ZmCalViewController.VIEWS.length; i++) {
-			var id = ZmCalViewController.VIEWS[i];
-			var mi = menu.createMenuItem(id, {image:ZmCalViewController.ICON[id], text:ZmMsg[ZmCalViewController.MSG_KEY[id]],
-											  style:DwtMenuItem.RADIO_STYLE});
-			mi.setData(ZmOperation.KEY_ID, ZmCalViewController.OPS[i]);
-			mi.setData(ZmOperation.MENUITEM_ID, id);
-			mi.addSelectionListener(this._view_menu_listener);
-		}
-		appToolbar.setViewMenu(view, menu);
-	}
-	return menu;
-};
-
 ZmCalViewController.prototype._setViewContents =
 function(viewId) {
 	// Ignore since this will always be ZmController.CAL_VIEW as we are fooling
@@ -450,6 +407,11 @@ function(viewId) {
 	return this._viewMgr.createView(viewId);
 };
 
+/**
+ * Creates the mini-calendar widget that sits below the overview.
+ * 
+ * @param date		[Date]*		date to highlight (defaults to today)
+ */
 ZmCalViewController.prototype._createMiniCalendar =
 function(date) {
 	date = date ? date : new Date();
@@ -625,16 +587,11 @@ function(emailAddr, date) {
 
 
 ZmCalViewController.prototype.getMiniCalendar =
-function() {
-	if (!this._miniCalendar)
-		this._createMiniCalendar();
+function(delay) {
+	if (!this._miniCalendar) {
+		this._createMiniCalendar(null, delay);
+	}
 	return this._miniCalendar;
-};
-
-ZmCalViewController.prototype._viewMenuListener =
-function(ev) {
-	if (ev.detail == DwtMenuItem.CHECKED)
-		this._calViewButtonListener(ev);
 };
 
 ZmCalViewController.prototype._calViewButtonListener =
@@ -997,7 +954,7 @@ function(startDate, endDate, folderId, shiftKey) {
 	if (endDate)
 		appt.setEndDate(endDate);
 	appt.setAllDayEvent(true);
-	appt.setFreeBusy("F");
+	appt.freeBusy = "F";
 	this._showQuickAddDialog(appt, shiftKey);
 };
 
@@ -1039,7 +996,7 @@ function(appt) {
 	try {
 		// if we have an appointment, go get all the details.
 		if (!appt.__creating) {
-			var calendar = this._appCtxt.getById(appt.folderId);
+			var calendar = appt.getFolder();
 			var isSynced = Boolean(calendar.url);
 			if (appt.isReadOnly() || isSynced) {
 				var mode = appt.isException ? ZmCalItem.MODE_EDIT_SINGLE_INSTANCE : ZmCalItem.MODE_EDIT_SERIES;
@@ -1313,19 +1270,23 @@ function(parent, num) {
 	ZmListController.prototype._resetOperations.call(this, parent, num);
 	parent.enableAll(true);
 	var currViewName = this._viewMgr.getCurrentViewName();
-	if (currViewName == ZmController.CAL_APPT_VIEW) {
+	if (currViewName == ZmController.CAL_APPT_VIEW)
+	{
 		// disable DELETE since CAL_APPT_VIEW is a read-only view
 		parent.enable([ZmOperation.DELETE, ZmOperation.CAL_REFRESH, ZmOperation.TODAY], false);
 	}
-	else {
+	else
+	{
 		this._navToolBar[ZmController.CAL_VIEW].setVisible(true);
 		var currView = this._viewMgr.getCurrentView();
 		var appt = currView ? currView.getSelection()[0] : null;
 		var isReadOnly = appt ? appt.isReadOnly() : false;
-		var calendar = appt && this._appCtxt.getById(appt.folderId);
+		var calendar = appt && appt.getFolder();
 		var isSynced = Boolean(calendar && calendar.url);
 		var disabled = isSynced || isReadOnly;
+		var isPrivate = appt && appt.isPrivate() && calendar.isRemote();
 		parent.enable(ZmOperation.DELETE, !disabled);
+		parent.enable(ZmOperation.VIEW_APPOINTMENT, !isPrivate);
 	}
 	// disable button for current view
 	var op = ZmCalViewController.VIEW_TO_OP[currViewName];
@@ -1340,10 +1301,17 @@ function(ev) {
 	if (ev.detail == DwtListView.ITEM_SELECTED) {
 		this._viewMgr.getCurrentView()._apptSelected();
 	} else if (ev.detail == DwtListView.ITEM_DBL_CLICKED) {
-		// open a appointment view
-		this._apptIndexShowing = this._list.indexOf(ev.item);
-		this._apptFromView = this._viewMgr.getCurrentView();
-		this._showAppointmentDetails(ev.item);
+		var appt = ev.item;
+		if (appt.isPrivate() && appt.getFolder().isRemote()) {
+			var msgDialog = this._appCtxt.getMsgDialog();
+			msgDialog.setMessage(ZmMsg.apptIsPrivate, DwtMessageDialog.INFO_STYLE);
+			msgDialog.popup();
+		} else {
+			// open a appointment view
+			this._apptIndexShowing = this._list.indexOf(appt);
+			this._apptFromView = this._viewMgr.getCurrentView();
+			this._showAppointmentDetails(ev.item);
+		}
 	}
 };
 
@@ -1353,7 +1321,7 @@ function(ev) {
 	var appt = actionMenu.__appt;
 	delete actionMenu.__appt;
 
-	var calendar = this._appCtxt.getById(appt.folderId);
+	var calendar = appt.getFolder();
 	var isSynced = Boolean(calendar.url);
 	if (appt.isReadOnly() || isSynced) {
 		// always get details on appt as if we're editing series (since its read only)
@@ -1553,7 +1521,8 @@ function(appt, actionMenu) {
 	var calendar = this.getCheckedCalendar(appt.getLocalFolderId());
 	var share = calendar && calendar.link ? calendar.shares[0] : null;
 	var workflow = share ? share.isWorkflow() : true;
-	var enabled = !isOrganizer && workflow;
+	var isPrivate = appt.isPrivate() && calendar.isRemote();
+	var enabled = !isOrganizer && workflow && !isPrivate;
 
 	// reply action menu
 	actionMenu.enable(ZmOperation.REPLY_ACCEPT, enabled && appt.ptst != ZmCalItem.PSTATUS_ACCEPT);

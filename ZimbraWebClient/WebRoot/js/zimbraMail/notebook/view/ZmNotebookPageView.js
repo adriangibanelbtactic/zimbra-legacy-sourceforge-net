@@ -96,17 +96,13 @@ function(page) {
 
 ZmNotebookPageView.getPrintHtml =
 function(page, appCtxt) {
-	if (!ZmNotebookPageView._objectMgr) {
-		ZmNotebookPageView._objectMgr = new ZmObjectManager(null, appCtxt, null, true);
-		var handler = new ZmNotebookObjectHandler(this._appCtxt);
-		ZmNotebookPageView._objectMgr.addHandler(handler, ZmNotebookObjectHandler.TYPE, 1);
-		ZmNotebookPageView._objectMgr.sortHandlers();
+	var nbController = appCtxt.getApp(ZmApp.NOTEBOOK).getNotebookController();
+	if( nbController._getViewType()  == ZmController.NOTEBOOK_PAGE_VIEW ) {
+		var view = nbController._getViewType();
+		if(nbController._listView[view] && nbController._listView[view]._iframe){
+			return nbController._listView[view]._iframe.contentWindow.document.documentElement.innerHTML;
+		}
 	}
-	var html = ZmNotebookPageView._generateContent(page, appCtxt);
-	var node = Dwt.parseHtmlFragment("<div>" + html + "</div>");
-	ZmNotebookPageView._fixLinks(node);
-	ZmNotebookPageView._findObjects(ZmNotebookPageView._objectMgr, node);
-	return node.innerHTML;
 };
 
 ZmNotebookPageView.prototype.getTitle =
@@ -195,7 +191,19 @@ ZmNotebookPageView.prototype._createHtml = function() {
 	var element = this.getHtmlElement();
 	Dwt.setScrollStyle(element, Dwt.SCROLL);
 
-	if (this._USE_IFRAME) {
+	if(!AjxEnv.isSafari) {		
+		var params = {parent: this, className: "ZmNotebookIframe", hidden: false, html: '<body></body>',
+		      	  	  posStyle: DwtControl.STATIC_STYLE,useKbMgmt: true, onload: "ZmNotebookPageView._iframeOnLoad(this)"};
+		this._diframe = new DwtIframe(params);
+		this._iframe = this._diframe.getIframe();
+		var params1 = {parent: this, hidden: true, html: '<body></body>', onload: "ZmNotebookPageView._iframeOnLoad1(this)"};
+		this._diframe1 = new DwtIframe(params1);
+		this._diframe1.setVisible(false);
+		this._iframe1 = this._diframe1.getIframe();	
+		Dwt.associateElementWithObject(this._iframe, this);
+		Dwt.associateElementWithObject(this._iframe1, this);
+		window.wikiFrame = this._iframe;
+	}else{		
 		var iframeId = this._htmlElId+"_iframe";
 		var iframeId1 = this._htmlElId+"_iframe_hidden";
 		element.innerHTML = [
@@ -211,7 +219,7 @@ ZmNotebookPageView.prototype._createHtml = function() {
 		this._iframe1 = document.getElementById(iframeId1);
 		Dwt.associateElementWithObject(this._iframe, this);
 		Dwt.associateElementWithObject(this._iframe1, this);
-		window.wikiFrame = this._iframe;
+		window.wikiFrame = this._iframe;				
 	}
 };
 
@@ -229,6 +237,7 @@ function() {
 ZmNotebookPageView._iframeOnLoad = function(iframe) {
 
 	var view = Dwt.getObjectFromElement(iframe);	
+	if(!view) { return; }
 	try{
 	view.mutateLinks(iframe.contentWindow.document);
 	
@@ -364,6 +373,9 @@ ZmNotebookPageView.prototype.mutateLink = function(linkNode,doc,linkPrefix){
 			if(thref == (window.location.href +"#")){
 			linkNode.href= "javascript:;";		
 			}
+			if(thref.match(/\.txt$/i) || thref.match(/\.html$/i)) {
+				target = "_new";
+			}			
 		}else{						
 			target = "_new";
 		}
@@ -538,6 +550,7 @@ ZmNotebookPageView.prototype.onDelete = function(){
 ZmNotebookPageView._iframeOnLoad1 = function(iframe) {
 
 	var view = Dwt.getObjectFromElement(iframe);
+	if(!view) { return; }
 	// TODO: hook in navigation control
 	var iSrc = iframe.contentWindow.location.href;
 
@@ -572,6 +585,10 @@ ZmNotebookPageView._iframeOnLoad1 = function(iframe) {
 	}else{		
 		DBG.println(AjxDebug.DBG3,"Missing Page:"+iSrc);
 		view.createNewPage(cwin.location.pathname);	
+	}
+
+	if(view._diframe) {
+		view._diframe._resetEventHandlers();
 	}
 
 	}catch(ex){

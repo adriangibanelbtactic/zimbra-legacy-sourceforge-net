@@ -45,6 +45,7 @@ import javax.activation.DataHandler;
 import javax.activation.DataSource;
 import javax.mail.Address;
 import javax.mail.MessagingException;
+import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
@@ -110,15 +111,65 @@ public class CalendarMailSender {
                                                null);
     }
 
-    public static String getReplySubject(Verb verb, Invite inv, Locale lc) {
+    public static String getReplySubject(Verb verb, String subject, Locale lc) {
         MsgKey key = sVerbMsgKeys.get(verb);
         String prefix = L10nUtil.getMessage(key, lc);
-        return prefix + ": " + inv.getName();
+        return prefix + ": " + subject;
     }
 
-    public static String getCancelSubject(Invite inv, Locale lc) {
-        String prefix = L10nUtil.getMessage(MsgKey.calendarSubjectCancelled, lc);
-        return prefix + ": " + inv.getName();
+    public static String getCancelSubject(String subject, Locale lc) {
+        String prefix = L10nUtil.getMessage(MsgKey.calendarSubjectCancelled, lc) + ": ";
+        if (subject != null && subject.startsWith(prefix))
+            return subject;
+        else
+            return prefix + subject;
+    }
+
+    public static MimeMessage createOrganizerChangeMessage(Account fromAccount,
+                                                           CalendarItem calItem,
+                                                           Invite inv,
+                                                           List<Address> rcpts)
+    throws ServiceException {
+        ZOrganizer organizer = inv.getOrganizer();
+        assert(organizer != null);
+        boolean onBehalfOf = organizer.hasSentBy();
+        String senderAddr = onBehalfOf ? organizer.getSentBy() : organizer.getAddress();
+
+        Locale locale = fromAccount.getLocale();
+
+        boolean hidePrivate = onBehalfOf && !calItem.isPublic();
+        String subject;
+        if (hidePrivate)
+            subject = L10nUtil.getMessage(MsgKey.calendarSubjectWithheld, locale);
+        else
+            subject = inv.getName();
+        StringBuilder sb = new StringBuilder("Organizer has been changed to " + fromAccount.getName());
+        sb.append("\r\n\r\n");
+
+        if (!hidePrivate) {
+            MimeMessage mmInv = inv.getMimeMessage();
+            if (mmInv != null)
+                attachInviteSummary(sb, mmInv, locale);
+        }
+
+        ZVCalendar iCal = inv.newToICalendar();
+
+        Address from;
+        try {
+            from = AccountUtil.getFriendlyEmailAddress(fromAccount);
+        } catch (UnsupportedEncodingException e) {
+            throw MailServiceException.ADDRESS_PARSE_ERROR(e);
+        }
+        Address sender = null;
+        if (onBehalfOf) {
+            try {
+                sender = new InternetAddress(senderAddr);
+            } catch (AddressException e) {
+                throw MailServiceException.ADDRESS_PARSE_ERROR(e);
+            }
+        }
+        return createCalendarMessage(
+                from, sender, rcpts, subject, sb.toString(), inv.getUid(), iCal);
     }
 
     public static MimeMessage createDefaultReply(Account fromAccount,
@@ -184,7 +235,8 @@ public class CalendarMailSender {
                 replyText.append(additionalMsgBody).append("\r\n");
             }
 
-            if (mmInv != null)
+            boolean hidePrivate = onBehalfOf && !inv.isPublic();
+            if (!hidePrivate && mmInv != null)
                 attachInviteSummary(replyText, mmInv, lc);
 
             List<Address> toList = new ArrayList<Address>(1);
@@ -266,7 +318,13 @@ public class CalendarMailSender {
         Locale locale = !onBehalfOf ? fromAccount.getLocale() : senderAccount.getLocale();
         Invite defaultInv = calItem.getDefaultInviteOrNull();
 
-        String sbj = defaultInv != null ? getCancelSubject(defaultInv, locale) : "";
+        boolean hidePrivate = onBehalfOf && !calItem.isPublic();
+        String defaultSubject;
+        if (hidePrivate)
+            defaultSubject = L10nUtil.getMessage(MsgKey.calendarSubjectWithheld, locale);
+        else
+            defaultSubject = defaultInv != null ? defaultInv.getName() : "";
+        String sbj = getCancelSubject(defaultSubject, locale);
         StringBuilder sb = new StringBuilder(text);
         sb.append("\r\n\r\n");
 
@@ -280,11 +338,13 @@ public class CalendarMailSender {
             sb.append("\r\n\r\n");
         }
 
-        MimeMessage mmInv = inv.getMimeMessage();
-        if (mmInv == null && defaultInv != null)
-            mmInv = defaultInv.getMimeMessage();
-        if (mmInv != null)
-            attachInviteSummary(sb, mmInv, locale);
+        if (!hidePrivate) {
+            MimeMessage mmInv = inv.getMimeMessage();
+            if (mmInv == null && defaultInv != null)
+                mmInv = defaultInv.getMimeMessage();
+            if (mmInv != null)
+                attachInviteSummary(sb, mmInv, locale);
+        }
         
         Address from;
         try {
@@ -438,11 +498,17 @@ public class CalendarMailSender {
             reply.addAttendee(meReply);
         }
 
+        boolean hidePrivate = onBehalfOf && !oldInv.isPublic();
+        reply.setClassProp(oldInv.getClassProp());
+
         // DTSTART, DTEND, LOCATION (outlook seems to require these,
         // even though it shouldn't)
         reply.setDtStart(oldInv.getStartTime());
         reply.setDtEnd(oldInv.getEffectiveEndTime());
-        reply.setLocation(oldInv.getLocation());
+        if (!hidePrivate)
+            reply.setLocation(oldInv.getLocation());
+        else
+            reply.setLocation("");
 
         // ORGANIZER
         if (oldInv.hasOrganizer())
@@ -515,7 +581,13 @@ public class CalendarMailSender {
             lc = organizer.getLocale();
         else
             lc = authAcct.getLocale();
-        String replySubject = getReplySubject(verb, inv, lc);
+        boolean hidePrivate = onBehalfOf && !inv.isPublic();
+        String subject;
+        if (hidePrivate)
+            subject = L10nUtil.getMessage(MsgKey.calendarSubjectWithheld, lc);
+        else
+            subject = inv.getName();
+        String replySubject = getReplySubject(verb, subject, lc);
 
         String replyType = MailSender.MSGTYPE_REPLY;
         // TODO: Handle Exception ID. (last arg of replyToInvite)

@@ -46,6 +46,14 @@ function() {
 	return "ZmVoicemailListController";
 };
 
+ZmVoicemailListController.prototype.show =
+function(searchResult, folder) {
+	if (this._folder && (folder != this._folder)) {
+		this._getView().stopPlaying(true);
+	}
+	ZmVoiceListController.prototype.show.call(this, searchResult, folder)
+};
+
 ZmVoicemailListController.prototype._defaultView =
 function() {
 	return ZmController.VOICEMAIL_VIEW;
@@ -238,6 +246,7 @@ function() {
 	// This scary looking piece of code does not change the page that the browser is
 	// pointing at. Because the server will send back a "Content-Disposition:attachment"
 	// header for this url, the browser opens a dialog to let the user save the file.
+	ZmZimbraMail.unloadHackCallback();
 	var voicemail = this._getView().getSelection()[0];
 	document.location = this._getAttachmentUrl(voicemail);
 };
@@ -293,13 +302,20 @@ function(inNewWindow, subject, to, response) {
 	mailMsg.hasAttach = true;
 	var id = response._data.UploadVoiceMailResponse.upload[0].id;
 	mailMsg.addAttachmentId(id);
+	var duration = AjxDateUtil.computeDuration(voicemail.duration);
+    var date = AjxDateUtil.computeDateStr(new Date(), voicemail.date);
+    var callingParty = voicemail.getCallingParty(ZmVoiceItem.FROM);
+    var phoneNumber = callingParty.getDisplay();
+    var format = this._appCtxt.get(ZmSetting.COMPOSE_AS_FORMAT);
+    var message = format == ZmSetting.COMPOSE_HTML ? ZmMsg.voicemailBodyHtml : ZmMsg.voicemailBodyText;
+    var body = AjxMessageFormat.format(message, [phoneNumber, duration, date]);
 	var params = {
 		action: ZmOperation.NEW_MESSAGE, 
 		inNewWindow: inNewWindow, 
 		msg: mailMsg,
 		toOverride: to,
 		subjOverride: subject,
-		extraBodyText: ""
+        extraBodyText: body
 	};
 	AjxDispatcher.run("Compose", params);
 };
@@ -373,6 +389,9 @@ function(event) {
 		if (playing) {
 			this._markHeard([playing], true);
 		}
+	}
+	if (event.status == DwtSoundPlugin.ERROR) {
+		this._appCtxt.setStatusMsg(event.errorDetail, ZmStatusView.LEVEL_CRITICAL);
 	}
 };
 

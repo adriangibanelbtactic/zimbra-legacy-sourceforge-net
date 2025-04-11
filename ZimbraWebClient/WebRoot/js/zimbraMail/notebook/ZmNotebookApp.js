@@ -149,9 +149,15 @@ function() {
 	ZmSearchToolBar.addMenuItem(ZmItem.PAGE,
 								{msgKey:		"searchNotebooks",
 								 tooltipKey:	"searchForPages",
-								 icon:			"SearchNotes",
+								 icon:			"Notebook",
+								 shareIcon:		"SharedNotebook",
 								 setting:		ZmSetting.NOTEBOOK_ENABLED								 
 								});
+};
+
+ZmNotebookApp.prototype._setupCurrentAppToolbar =
+function() {
+	ZmCurrentAppToolBar.registerApp(this.getName(), ZmOperation.NEW_NOTEBOOK, ZmOrganizer.NOTEBOOK);
 };
 
 ZmNotebookApp.prototype._registerApp =
@@ -168,7 +174,7 @@ function() {
 
 	ZmApp.registerApp(ZmApp.NOTEBOOK,
 							 {mainPkg:				"Notebook",
-							  nameKey:				"BETA_documents",
+							  nameKey:				"documents",
 							  icon:					"NoteApp",
 							  chooserTooltipKey:	"goToDocuments",
 							  defaultSearch:		ZmItem.PAGE,

@@ -32,6 +32,9 @@ import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.CliUtil;
 import com.zimbra.common.soap.Element;
 import com.zimbra.cs.account.Provisioning.AccountBy;
+import com.zimbra.cs.account.Provisioning.CacheEntry;
+import com.zimbra.cs.account.Provisioning.CacheEntryBy;
+import com.zimbra.cs.account.Provisioning.CacheEntryType;
 import com.zimbra.cs.account.Provisioning.CalendarResourceBy;
 import com.zimbra.cs.account.Provisioning.CosBy;
 import com.zimbra.cs.account.Provisioning.DataSourceBy;
@@ -40,6 +43,7 @@ import com.zimbra.cs.account.Provisioning.DomainBy;
 import com.zimbra.cs.account.Provisioning.SearchGalResult;
 import com.zimbra.cs.account.Provisioning.ServerBy;
 import com.zimbra.cs.account.Provisioning.SignatureBy;
+import com.zimbra.cs.account.ldap.LdapProvisioning;
 import com.zimbra.cs.account.soap.SoapProvisioning;
 import com.zimbra.cs.account.soap.SoapProvisioning.MailboxInfo;
 import com.zimbra.cs.account.soap.SoapProvisioning.ReIndexBy;
@@ -54,7 +58,7 @@ import com.zimbra.cs.zclient.ZMailboxUtil;
 import com.zimbra.common.soap.SoapTransport.DebugListener;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.PosixParser;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
@@ -190,12 +194,13 @@ public class ProvUtil implements DebugListener {
         DELETE_SIGNATURE("deleteSignature", "dsig", "{name@domain|id} {signature-name}", Category.ACCOUNT, 2, 2),
         DELETE_SERVER("deleteServer", "ds", "{name|id}", Category.SERVER, 1, 1),
         EXIT("exit", "quit", "", Category.MISC, 0, 0),
+        FLUSH_CACHE("flushCache", "fc", "{skin|locale|account|cos|domain|server|zimlet} [name1|id1 [name2|id2...]]", Category.MISC, 1, Integer.MAX_VALUE),
         GENERATE_DOMAIN_PRE_AUTH("generateDomainPreAuth", "gdpa", "{domain|id} {name} {name|id|foreignPrincipal} {timestamp|0} {expires|0}", Category.MISC, 5, 5),
         GENERATE_DOMAIN_PRE_AUTH_KEY("generateDomainPreAuthKey", "gdpak", "{domain|id}", Category.MISC, 1, 1),
         GET_ACCOUNT("getAccount", "ga", "{name@domain|id} [attr1 [attr2...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
         GET_DATA_SOURCES("getDataSources", "gds", "{name@domain|id} [arg1 [arg2...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),                
         GET_IDENTITIES("getIdentities", "gid", "{name@domain|id} [arg1 [arg...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
-        GET_SIGNATURES("getSingatures", "gsig", "{name@domain|id} [arg1 [arg...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
+        GET_SIGNATURES("getSignatures", "gsig", "{name@domain|id} [arg1 [arg...]]", Category.ACCOUNT, 1, Integer.MAX_VALUE),
         GET_ACCOUNT_MEMBERSHIP("getAccountMembership", "gam", "{name@domain|id}", Category.ACCOUNT, 1, 2),
         GET_ALL_ACCOUNTS("getAllAccounts","gaa", "[-v] [{domain}]", Category.ACCOUNT, 0, 2),
         GET_ACCOUNT_LOGGERS("getAccountLoggers", "gal", "{name@domain|id}", Category.MISC, 1, 1),
@@ -240,6 +245,7 @@ public class ProvUtil implements DebugListener {
         RENAME_CALENDAR_RESOURCE("renameCalendarResource",  "rcr", "{name@domain|id} {newName@domain}", Category.CALENDAR, 2, 2),
         RENAME_COS("renameCos", "rc", "{name|id} {newName}", Category.COS, 2, 2),
         RENAME_DISTRIBUTION_LIST("renameDistributionList", "rdl", "{list@domain|id} {newName@domain}", Category.LIST, 2, 2),
+        RENAME_DOMAIN("renameDomain", "rd", "{domain|id} {newDomain}", Category.DOMAIN, 2, 2),
         REINDEX_MAILBOX("reIndexMailbox", "rim", "{name@domain|id} {action} [{reindex-by} {value1} [value2...]]", Category.MAILBOX, 2, Integer.MAX_VALUE),
         SEARCH_ACCOUNTS("searchAccounts", "sa", "[-v] {ldap-query} [limit {limit}] [offset {offset}] [sortBy {attr}] [attrs {a1,a2...}] [sortAscending 0|1*] [domain {domain}]", Category.SEARCH, 1, Integer.MAX_VALUE),
         SEARCH_CALENDAR_RESOURCES("searchCalendarResources", "scr", "[-v] domain attr op value [attr op value...]", Category.SEARCH),
@@ -383,6 +389,9 @@ public class ProvUtil implements DebugListener {
         case EXIT:
             System.exit(0);
             break;
+        case FLUSH_CACHE:
+            doFlushCache(args);
+            break;
         case GENERATE_DOMAIN_PRE_AUTH_KEY:
             doGenerateDomainPreAuthKey(args);
             break;
@@ -509,7 +518,10 @@ public class ProvUtil implements DebugListener {
             break;                        
         case RENAME_COS:
             mProv.renameCos(lookupCos(args[1]).getId(), args[2]);            
-            break;                                    
+            break; 
+        case RENAME_DOMAIN:
+            doRenameDomain(args);            
+            break;
         case SET_ACCOUNT_COS:
             mProv.setCOS(lookupAccount(args[1]),lookupCos(args[2])); 
             break;                        
@@ -655,6 +667,15 @@ public class ProvUtil implements DebugListener {
         SoapProvisioning sp = (SoapProvisioning) mProv;
         DomainBy by = DomainBy.fromString(args[1]);
         dumpDomain(sp.getDomainInfo(by, args[2]), getArgNameSet(args, 3));
+    }
+    
+    private void doRenameDomain(String[] args) throws ServiceException {
+        if (!(mProv instanceof LdapProvisioning))
+            throw ServiceException.INVALID_REQUEST("can only be used via LDAP", null);
+        
+        LdapProvisioning lp = (LdapProvisioning) mProv;
+        Domain domain = lookupDomain(args[1]);
+        lp.renameDomain(domain.getId(), args[2]);
     }
 
     private void doGetQuotaUsage(String[] args) throws ServiceException {
@@ -1575,7 +1596,7 @@ public class ProvUtil implements DebugListener {
         CliUtil.toolSetup();
         
         ProvUtil pu = new ProvUtil();
-        CommandLineParser parser = new GnuParser();
+        CommandLineParser parser = new PosixParser();
         Options options = new Options();
         options.addOption("h", "help", false, "display usage");
         options.addOption("f", "file", true, "use file as input stream");
@@ -1646,6 +1667,34 @@ public class ProvUtil implements DebugListener {
         }
     }
     
+    private void doFlushCache(String[] args) throws ServiceException {
+        CacheEntry[] entries = null;
+        
+        if (args.length > 2) {
+            entries = new CacheEntry[args.length - 2];
+            for (int i=2; i<args.length; i++) {
+                CacheEntryBy entryBy;
+                if (isUUID(args[i]))
+                    entryBy = CacheEntryBy.id;
+                else
+                    entryBy = CacheEntryBy.name;
+                
+                entries[i-2] = new CacheEntry(entryBy, args[i]);
+            }
+        }
+        
+        if (mProv instanceof SoapProvisioning) {
+            SoapProvisioning sp = (SoapProvisioning)mProv;
+            
+            // use this interface to accomadate skin and locale caches
+            sp.flushCache(args[1], entries);
+        } else {
+            if (args[1].equals("skin") || args[1].equals("locale"))
+                throw ServiceException.INVALID_REQUEST("cache type "+args[1]+" is only supported via SOAP", null);
+            // this interface only allows ldap caches, or should we just disallow this?? 
+            mProv.flushCache(CacheEntryType.fromString(args[1]), entries);
+        }
+    }
 
     private void doGenerateDomainPreAuthKey(String[] args) throws ServiceException {
         String key = args[1];

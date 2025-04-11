@@ -10,6 +10,7 @@
 	response.setHeader("Pragma", "no-cache");
 %><!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <!--
+ launchNewWindow.jsp
  * ***** BEGIN LICENSE BLOCK *****
  * Version: ZPL 1.2
  *
@@ -71,7 +72,7 @@
 
 <jsp:include page="Boot.jsp"/>
 <%
-    String packages = "AjaxLogin,AjaxZWC,ZimbraLogin,ZimbraZWC,ZimbraCore,CalendarCore,ContactsCore,PreferencesCore,Mail";
+    String packages = "AjaxLogin,AjaxZWC,ZimbraLogin,ZimbraZWC,ZimbraCore,CalendarCore,ContactsCore,PreferencesCore,MailCore,Mail";
 
     String extraPackages = request.getParameter("packages");
     if (extraPackages != null) packages += ","+extraPackages;

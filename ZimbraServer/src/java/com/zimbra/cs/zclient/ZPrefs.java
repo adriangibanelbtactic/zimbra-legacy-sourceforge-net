@@ -95,6 +95,12 @@ public class ZPrefs {
 
     public boolean getUseKeyboardShortcuts() { return getBool(Provisioning.A_zimbraPrefUseKeyboardShortcuts); }
 
+    public boolean getSignatureEnabled() { return getBool(Provisioning.A_zimbraPrefMailSignatureEnabled); }
+
+    public String getClientType() { return get(Provisioning.A_zimbraPrefClientType); }
+    public boolean getIsAdvancedClient() { return "advanced".equals(getClientType()); }
+    public boolean getIsStandardClient() { return "standard".equals(getClientType()); }
+    
     public String getSignatureStyle() { return get(Provisioning.A_zimbraPrefMailSignatureStyle); }
     public boolean getSignatureStyleTop() { return "outlook".equals(getSignatureStyle()); }
     public boolean getSignatureStyleBottom() { return "internet".equals(getSignatureStyle()); }
@@ -129,6 +135,8 @@ public class ZPrefs {
     public long getMailItemsPerPage() { return getLong(Provisioning.A_zimbraPrefMailItemsPerPage); }
 
     public long getContactsPerPage() { return getLong(Provisioning.A_zimbraPrefContactsPerPage); }
+
+	public long getVoiceItemsPerPage() { return getLong(Provisioning.A_zimbraPrefVoiceItemsPerPage); }
 
     public long getCalendarFirstDayOfWeek() { return getLong(Provisioning.A_zimbraPrefCalendarFirstDayOfWeek); }
 

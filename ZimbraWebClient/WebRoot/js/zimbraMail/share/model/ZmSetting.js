@@ -66,18 +66,19 @@ ZmSetting.prototype = new ZmModel;
 ZmSetting.prototype.constructor = ZmSetting;
 
 // setting types
-ZmSetting.T_CONFIG		= 1;
-ZmSetting.T_PREF		= 2;
-ZmSetting.T_COS			= 3;
+ZmSetting.T_CONFIG		= "config";
+ZmSetting.T_PREF		= "pref";
+ZmSetting.T_COS			= "cos";
+ZmSetting.T_PSEUDO		= "pseudo";
 
 // setting data types
-ZmSetting.D_STRING		= 1; // default type
-ZmSetting.D_INT			= 2;
-ZmSetting.D_BOOLEAN		= 3;
-ZmSetting.D_LDAP_TIME 	= 4;
-ZmSetting.D_HASH 		= 5;
-ZmSetting.D_LIST		= 6;
-ZmSetting.D_NONE		= 7;	// placeholder setting
+ZmSetting.D_STRING		= "string"; // default type
+ZmSetting.D_INT			= "int";
+ZmSetting.D_BOOLEAN		= "boolean";
+ZmSetting.D_LDAP_TIME 	= "ldap_time";
+ZmSetting.D_HASH 		= "hash";
+ZmSetting.D_LIST		= "list";
+ZmSetting.D_NONE		= "NONE";	// placeholder setting
 
 // constants used as setting values
 ZmSetting.CAL_DAY			= "day";
@@ -85,6 +86,8 @@ ZmSetting.CAL_MONTH			= "month";
 ZmSetting.CAL_WEEK			= "week";
 ZmSetting.CAL_WORK_WEEK		= "workWeek";
 ZmSetting.CAL_SCHEDULE		= "schedule";
+ZmSetting.CLIENT_ADVANCED	= "advanced";				// zimbraPrefClientType
+ZmSetting.CLIENT_STANDARD	= "standard";
 ZmSetting.COMPOSE_FONT_COLOR= "#000000";	 			// zimbraPrefHtmlEditorDefaultFontColor
 ZmSetting.COMPOSE_FONT_FAM 	= "Times New Roman";		// zimbraPrefHtmlEditorDefaultFontFamily
 ZmSetting.COMPOSE_FONT_SIZE = "12pt"; 					// zimbraPrefHtmlEditorDefaultFontSize
@@ -106,6 +109,9 @@ ZmSetting.INCLUDE_SMART		= "includeSmart";
 ZmSetting.LICENSE_BAD		= "bad";					// license status (network only)
 ZmSetting.LICENSE_GOOD		= "good";
 ZmSetting.LICENSE_GRACE		= "inGracePeriod";
+ZmSetting.PROTO_HTTP		= "http:";
+ZmSetting.PROTO_HTTPS		= "https:";
+ZmSetting.PROTO_MIXED		= "mixed";
 ZmSetting.SIG_INTERNET		= "internet";				// zimbraPrefMailSignatureStyle
 ZmSetting.SIG_OUTLOOK		= "outlook";
 
@@ -179,6 +185,9 @@ function(value, key, setDefault, skipNotify) {
 	} else if (this.dataType == ZmSetting.D_HASH) {
 		if (key) {
 			this.value[key] = value;
+		}
+		else {
+			this.value = value;
 		}
 	} else if (this.dataType == ZmSetting.D_LIST) {
 		if (value instanceof Array) {

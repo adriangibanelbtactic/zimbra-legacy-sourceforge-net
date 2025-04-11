@@ -41,14 +41,16 @@ ZmItem.RESOURCE				= ZmEvent.S_RESOURCE;
 ZmOrganizer.CALENDAR		= "CALENDAR";
 
 // App-related constants
-ZmApp.CALENDAR					= "Calendar";
-ZmApp.CLASS[ZmApp.CALENDAR]		= "ZmCalendarApp";
-ZmApp.SETTING[ZmApp.CALENDAR]	= ZmSetting.CALENDAR_ENABLED;
-ZmApp.LOAD_SORT[ZmApp.CALENDAR]	= 40;
-ZmApp.QS_ARG[ZmApp.CALENDAR]	= "calendar";
+ZmApp.CALENDAR							= "Calendar";
+ZmApp.CLASS[ZmApp.CALENDAR]				= "ZmCalendarApp";
+ZmApp.SETTING[ZmApp.CALENDAR]			= ZmSetting.CALENDAR_ENABLED;
+ZmApp.UPSELL_SETTING[ZmApp.CALENDAR]	= ZmSetting.CALENDAR_UPSELL_ENABLED;
+ZmApp.LOAD_SORT[ZmApp.CALENDAR]			= 40;
+ZmApp.QS_ARG[ZmApp.CALENDAR]			= "calendar";
 
 // ms to wait before fetching reminders
 ZmCalendarApp.REMINDER_START_DELAY = 30000;
+ZmCalendarApp.MINICAL_DELAY = 20000;
 
 ZmCalendarApp.COLORS = [];
 // these need to match CSS rules
@@ -263,6 +265,11 @@ function() {
 							});
 };
 
+ZmCalendarApp.prototype._setupCurrentAppToolbar =
+function() {
+	ZmCurrentAppToolBar.registerApp(this.getName(), ZmOperation.NEW_CALENDAR, ZmOrganizer.CALENDAR);
+};
+
 ZmCalendarApp.prototype._registerApp =
 function() {
 	var newItemOps = {};
@@ -293,7 +300,8 @@ function() {
 							  gotoActionCode:		ZmKeyMap.GOTO_CALENDAR,
 							  newActionCode:		ZmKeyMap.NEW_APPT,
 							  chooserSort:			30,
-							  defaultSort:			20
+							  defaultSort:			20,
+							  upsellUrl:			ZmSetting.CALENDAR_UPSELL_URL
 							  });
 };
 
@@ -302,14 +310,16 @@ function() {
 ZmCalendarApp.prototype.startup =
 function(result) {
 	if (this._appCtxt.get(ZmSetting.CAL_ALWAYS_SHOW_MINI_CAL)) {
-		AjxDispatcher.run("ShowMiniCalendar");
-		AjxDispatcher.run("GetReminderController").refresh();
-	} else {
-		var refreshAction = new AjxTimedAction(this, function() {
-				AjxDispatcher.run("GetReminderController").refresh();
+		var miniCalAction = new AjxTimedAction(this, function() {
+				AjxDispatcher.run("ShowMiniCalendar", true);
 			});
-		AjxTimedAction.scheduleAction(refreshAction, ZmCalendarApp.REMINDER_START_DELAY);
+		AjxTimedAction.scheduleAction(miniCalAction, ZmCalendarApp.MINICAL_DELAY);
 	}
+
+	var refreshAction = new AjxTimedAction(this, function() {
+			AjxDispatcher.run("GetReminderController").refresh();
+		});
+	AjxTimedAction.scheduleAction(refreshAction, ZmCalendarApp.REMINDER_START_DELAY);
 };
 
 ZmCalendarApp.prototype.refresh =
@@ -457,10 +467,12 @@ function(active, view, date) {
 };
 
 ZmCalendarApp.prototype.showMiniCalendar =
-function(show) {
-	var mc = this.getCalController().getMiniCalendar();
-	mc.setSkipNotifyOnPage(show && !this._active);	
-	if (!this._active) mc.setSelectionMode(DwtCalendar.DAY);
+function(show, delay) {
+	var mc = this.getCalController().getMiniCalendar(delay);
+	mc.setSkipNotifyOnPage(show && !this._active);
+	if (!this._active) {
+		mc.setSelectionMode(DwtCalendar.DAY);
+	}
 	this._appCtxt.getAppViewMgr().showTreeFooter(show);
 };
 

@@ -487,6 +487,7 @@ sub setLdapDefaults {
 
   my $mailmode=getLdapServerValue("zimbraMailMode");
 
+
   $config{HTTPPORT} = $mailport;
   $config{HTTPSPORT} = $sslport;
   $config{MODE} = $mailmode;
@@ -548,6 +549,8 @@ sub setLdapDefaults {
   if ($config{NOTEBOOKACCOUNT} eq "");
 
   $config{USEKBSHORTCUTS} = getLdapCOSValue("default", "zimbraPrefUseKeyboardShortcuts");
+
+  $config{zimbraPrefTimeZoneId}=getLdapServerValue("zimbraPrefTimeZoneId");
 
   my $smtphost=getLdapServerValue("zimbraSmtpHostname");
   if ( $smtphost ne "") {
@@ -620,6 +623,8 @@ sub setDefaults {
   } elsif ( -f "/opt/zimbra/tomcat/bin/startup.sh" ) {
     $config{mailboxd_keystore} = "$config{mailboxd_directory}/conf/keystore";
     $config{mailboxd_server} = "tomcat";
+  } else {
+    $config{mailboxd_keystore} = "/opt/zimbra/conf/keystore";
   }
   print "DEBUG: \$config{mailboxd_directory}=$config{mailboxd_directory}\n" if $debug;
 
@@ -664,6 +669,7 @@ sub setDefaults {
     progress "setting defaults for zimbra-ldap.\n" if $options{d};
     $config{DOCREATEDOMAIN} = "yes" if $newinstall;
     $config{LDAPPASS} = genRandomPass();
+    $config{zimbraPrefTimeZoneId} = "(GMT-08.00) Pacific Time (US & Canada)";
   }
   $config{CREATEADMIN} = "admin\@$config{CREATEDOMAIN}";
 
@@ -1282,9 +1288,9 @@ sub setUseImapProxy {
 sub setStoreMode {
   while (1) {
     my $m = 
-      askNonBlank("Please enter the web server mode (http,https,both,mixed)",
+      askNonBlank("Please enter the web server mode (http,https,both,mixed,redirect)",
         $config{MODE});
-    if ($m eq "http" || $m eq "https" || $m eq "mixed" || $m eq "both") {
+    if ($m eq "http" || $m eq "https" || $m eq "mixed" || $m eq "both" || $m eq "redirect" ) {
       $config{MODE} = $m;
       return;
     }
@@ -1468,6 +1474,35 @@ sub setLicenseFile {
     if ($config{LICENSEFILE} ne "/opt/zimbra/conf/ZCSLicense.xml");
 }
 
+sub setTimeZone {
+  my $timezones="/opt/zimbra/conf/timezones.ics";
+  if (-f $timezones) {
+    detail ("DEBUG: Checking for timezones in $timezones\n");
+    open (ICS, "$timezones");
+    my %TZID;
+    my $i=0;
+    foreach my $tz (grep(/^TZID/, <ICS>)) {
+      chomp $tz;
+      $tz =~ s/^TZID://;
+      $i++;
+      $TZID{$tz} = $i;
+    }
+    my %RTZID = reverse %TZID;
+    close(ICS);
+    my $new;
+    my $default = $TZID{$config{zimbraPrefTimeZoneId}} || "5";
+    while ($new eq "") {
+      foreach (sort {$TZID{$a} <=> $TZID{$b}} keys %TZID) {
+        print "$TZID{$_} $_\n";
+      }
+      my $ans=askNum("Enter the number for the local timezone:", $default);
+      $new = $RTZID{$ans};
+    }
+    $config{zimbraPrefTimeZoneId} = $new;
+    
+  }
+}
+
 sub configurePackage {
   my $package = shift;
   if ($package eq "zimbra-logger") {
@@ -1569,7 +1604,6 @@ sub createPackageMenu {
     return createStoreMenu($package);
   }
 }
-
 sub createLdapMenu {
   my $package = shift;
   my $lm = genPackageMenu($package);
@@ -2175,6 +2209,12 @@ sub createMainMenu {
     "callback" => \&setLdapPass
     };
   $i++;
+  $mm{menuitems}{$i} = { 
+    "prompt" => "TimeZone:", 
+    "var" => \$config{zimbraPrefTimeZoneId},
+    "callback" => \&setTimeZone
+  };
+  $i++;
   foreach (@packageList) {
     if ($_ eq "zimbra-core") {next;}
     if ($_ eq "zimbra-apache") {next;}
@@ -2525,7 +2565,7 @@ sub configSetupLdap {
     if ($ldapPassChanged) {
       progress ( "Setting ldap password..." );
       runAsZimbra 
-        ("/opt/zimbra/openldap/sbin/slapindex -q -f /opt/zimbra/conf/slapd.conf");
+        ("/opt/zimbra/openldap/sbin/slapindex -b '' -q -f /opt/zimbra/conf/slapd.conf");
       runAsZimbra ("/opt/zimbra/bin/zmldappasswd --root $config{LDAPPASS}");
       runAsZimbra ("/opt/zimbra/bin/zmldappasswd $config{LDAPPASS}");
       progress ( "Done\n" );
@@ -2595,7 +2635,7 @@ sub configCreateCert {
 
     if (!-f "$config{mailboxd_keystore}" || 
       !-f "/opt/zimbra/conf/smtpd.crt" ||
-      !-f "/opt/zimbra/conf/slapd.crt") {
+      !-f "/opt/zimbra/conf/slapd.crt" ) {
       progress ( "Creating SSL certificate..." );
       if (-f "$config{JAVAHOME}/lib/security/cacerts") {
         `chmod 777 $config{JAVAHOME}/lib/security/cacerts >> $logfile 2>&1`;
@@ -2639,6 +2679,14 @@ sub configInstallCert {
       if (! (-f "/opt/zimbra/conf/smtpd.key" || 
         -f "/opt/zimbra/conf/smtpd.crt")) {
         runAsZimbra("cd /opt/zimbra; zmcertinstall mta ".
+          "/opt/zimbra/ssl/ssl/server/server.crt ".
+          "/opt/zimbra/ssl/ssl/server/server.key");
+      }
+    }
+    if (isEnabled("zimbra-proxy")) {
+      if (! (-f "/opt/zimbra/conf/nginx.key" || 
+        -f "/opt/zimbra/conf/nginx.crt")) {
+        runAsZimbra("cd /opt/zimbra; zmcertinstall proxy ".
           "/opt/zimbra/ssl/ssl/server/server.crt ".
           "/opt/zimbra/ssl/ssl/server/server.key");
       }
@@ -2762,6 +2810,17 @@ sub configSetKeyboardShortcutsPref {
   runAsZimbra("$ZMPROV mc default zimbraPrefUseKeyboardShortcuts $config{USEKBSHORTCUTS}");
   progress ( "done.\n" );
   configLog("zimbraPrefUseKeyboardShortcuts");
+}
+
+sub configSetTimeZonePref {
+  if ($configStatus{zimbraPrefTimeZoneId} eq "CONFIGURED") {
+    configLog("zimbraPrefTimeZoneId");
+    return 0;
+  }
+  progress ( "Setting TimeZone Preference...");
+  runAsZimbra("$ZMPROV mc default zimbraPrefTimeZoneId \'$config{zimbraPrefTimeZoneId}\'");
+  progress ( "done.\n" );
+  configLog("zimbraPrefTimeZoneId");
 }
 
 sub configInitBackupPrefs {
@@ -3159,13 +3218,16 @@ sub applyConfig {
     configSetInstalledSkins();
 
     configSetKeyboardShortcutsPref() if (!$newinstall);
-  
-    configInitBackupPrefs();
 
+    configInitBackupPrefs();
   }
 
   if (isEnabled("zimbra-mta")) {
     configSetMtaAuthHost();
+  }
+
+  if (isEnabled("zimbra-ldap")) {
+    configSetTimeZonePref();
   }
 
   configCreateDomain();
@@ -3401,7 +3463,7 @@ sub startLdap {
   my $rc = runAsZimbra("/opt/zimbra/bin/ldap status");
   if ($rc) { 
     main::progress("Starting ldap\n");
-    $rc = runAsZimbra ("/opt/zimbra/openldap/sbin/slapindex -q -f /opt/zimbra/conf/slapd.conf");
+    $rc = runAsZimbra ("/opt/zimbra/openldap/sbin/slapindex -b '' -q -f /opt/zimbra/conf/slapd.conf");
     $rc = runAsZimbra ("/opt/zimbra/libexec/zmldapapplyldif");
     $rc = runAsZimbra ("/opt/zimbra/bin/ldap status");
     if ($rc) {

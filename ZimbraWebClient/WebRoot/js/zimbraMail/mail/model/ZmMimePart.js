@@ -101,8 +101,20 @@ ZmMimePart.prototype.isIgnoredPart =
 function(parentNode) {
 	// bug fix #5889 - if parent node was multipart/appledouble,
 	// ignore all application/applefile attachments - YUCK
-	return parentNode && parentNode.ct == ZmMimeTable.MULTI_APPLE_DBL &&
-		   this.node.ct == ZmMimeTable.APP_APPLE_DOUBLE;
+	if (parentNode && parentNode.ct == ZmMimeTable.MULTI_APPLE_DBL &&
+		this.node.ct == ZmMimeTable.APP_APPLE_DOUBLE)
+	{
+		return true;
+	}
+
+	// bug fix #7271 - dont show renderable body parts as attachments anymore
+	if (this.node.body &&
+		(this.node.ct == ZmMimeTable.TEXT_HTML || this.node.ct == ZmMimeTable.TEXT_PLAIN))
+	{
+		return true;
+	}
+
+	return false;
 };
 
 ZmMimePart.prototype._loadFromDom =
@@ -127,9 +139,6 @@ function(partNode, attachments, bodyParts, parentNode) {
 		if (this.node.body &&
 			(this.node.ct == ZmMimeTable.TEXT_HTML || this.node.ct == ZmMimeTable.TEXT_PLAIN))
 		{
-			// add subsequent body parts as attachments if already found
-			if (ZmMimePart._contentTypeFound(bodyParts, this.node))
-				attachments.push(this.node);
 			bodyParts.push(this.node);
 		}
 
@@ -139,13 +148,4 @@ function(partNode, attachments, bodyParts, parentNode) {
 			this.children.add(ZmMimePart.createFromDom(this.node.mp, params));
 		}
 	}
-};
-
-ZmMimePart._contentTypeFound =
-function(bodyParts, node) {
-	for (var i = 0; i < bodyParts.length; i++) {
-		if (bodyParts[i].ct == node.ct)
-			return true;
-	}
-	return false;
 };

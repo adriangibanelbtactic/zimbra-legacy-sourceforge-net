@@ -12,11 +12,11 @@ AjxPackage.require("ajax.util.AjxPluginDetector");
 
 AjxPackage.require("ajax.dwt.core.DwtDragTracker");
 
+AjxPackage.require("ajax.dwt.widgets.DwtBorderlessButton");
 AjxPackage.require("ajax.dwt.widgets.DwtSlider");
 AjxPackage.require("ajax.dwt.widgets.DwtSoundPlugin");
 
-AjxPackage.require("zimbraMail.prefs.view.ZmPrefListView");
-AjxPackage.require("zimbraMail.prefs.controller.ZmPrefListController");
+AjxPackage.require("zimbraMail.abook.model.ZmContact");
 
 AjxPackage.require("zimbraMail.voicemail.model.ZmCallFeature");
 AjxPackage.require("zimbraMail.voicemail.model.ZmPhone");

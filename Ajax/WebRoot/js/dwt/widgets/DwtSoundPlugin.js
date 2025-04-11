@@ -73,6 +73,7 @@ DwtSoundPlugin.ERROR = 4;
 DwtSoundPlugin.create =
 function(params) {
 	var pluginClass = this._getPluginClass();
+	DBG.println("DwtSoundPlugin.create class= " + pluginClass.prototype.toString() + " url=" + params.url);
 	return new pluginClass(params);
 };
 
@@ -96,16 +97,23 @@ function() {
 		} else {
 			var version = AjxPluginDetector.getQuickTimeVersion();
 			if (version) {
+				DBG.println("DwtSoundPlugin: QuickTime version=" + version);
 				if (DwtQTSoundPlugin.checkVersion(version) && DwtQTSoundPlugin.checkScripting()) {
 					DwtSoundPlugin._pluginClass = DwtQTSoundPlugin;
 				} else {
 					DwtSoundPlugin._pluginClass = DwtQTBrokenSoundPlugin;
+				}
+			} else {
+				if (!DBG.isDisabled()) {
+					DBG.println("DwtSoundPlugin: unable to get QuickTime version. Checking if QuickTime is installed at all...");
+					AjxPluginDetector.detectQuickTime(); // Called only for logging purposes.
 				}
 			}
 		}
 		if (!DwtSoundPlugin._pluginClass) {
 			DwtSoundPlugin._pluginClass = DwtMissingSoundPlugin;
 		}
+		DBG.println("DwtSoundPlugin: plugin class = " + DwtSoundPlugin._pluginClass.prototype.toString());
 	}
 	return DwtSoundPlugin._pluginClass;
 };
@@ -513,7 +521,7 @@ function(event) {
 	var error = player.currentMedia.error;
 	if (error) {
 		event.status = DwtSoundPlugin.ERROR;
-		event.errorDetail = errorDescription;
+		event.errorDetail = error.errorDescription;
 		keepChecking = false;
 	} else if (!player.controls.isAvailable("currentPosition")) { // if (!is loaded)
 		// Whatever....fake data.

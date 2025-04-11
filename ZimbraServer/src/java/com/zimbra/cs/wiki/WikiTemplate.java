@@ -88,7 +88,7 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 	
 	public String toString(WikiContext ctxt, MailItem item)
 	throws ServiceException, IOException {
-		return toString(new Context(ctxt, item));
+		return toString(new Context(ctxt, item, this));
 	}
 	
 	public String toString(Context ctxt) throws ServiceException, IOException {
@@ -115,7 +115,7 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 	
 	public String getComposedPage(WikiContext ctxt, MailItem item, String chrome)
 	throws ServiceException, IOException {
-		return getComposedPage(new Context(ctxt, item), chrome);
+		return getComposedPage(new Context(ctxt, item, this), chrome);
 	}
 	
 	public String getComposedPage(Context ctxt, String chrome)
@@ -335,13 +335,14 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 	
 	public static class Context {
 		public Context(Context copy) {
-			this(copy.wctxt, copy.item);
+			this(copy.wctxt, copy.item, copy.itemTemplate);
 		}
-		public Context(WikiContext wc, MailItem it) {
-			wctxt = wc; item = it; content = null;
+		public Context(WikiContext wc, MailItem it, WikiTemplate itt) {
+			wctxt = wc; item = it; itemTemplate = itt; content = null;
 		}
 		public WikiContext wctxt;
 		public MailItem item;
+		public WikiTemplate itemTemplate;
 		public Token token;
 		public String content;
 	}
@@ -688,10 +689,10 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 		   if (ctxt.item instanceof Folder) {
                //notebook folder
 			   return ctxt.item.getMailbox().getAccount().getName();        
-           }
-           else if (ctxt.item instanceof Document) {
-        	   Document doc = (Document) ctxt.item;
-        	   return doc.getRevision(1).getCreator();        	   
+           } else if (ctxt.item instanceof Document) {
+        	   Document doc = (Document) ctxt.item.getMailbox().getItemRevision(ctxt.wctxt.octxt, ctxt.item.getId(), ctxt.item.getType(), 1);
+        	   if (doc != null)
+                   return doc.getCreator();
            }
 
            return "";
@@ -744,11 +745,11 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 		public WikiTemplate findInclusion(Context ctxt) {
 			return null;
 		}
-		public String apply(Context ctxt) throws ServiceException {
+		public String apply(Context ctxt) {
 			if (!(ctxt.item instanceof Document)) 
 				return "";
 			Document doc = (Document) ctxt.item;
-			return doc.getLastRevision().getCreator();
+			return doc.getCreator();
 		}
 	}
 	public static abstract class DateTimeWiklet extends Wiklet {
@@ -810,12 +811,8 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 			return "CREATEDATE";
 		}
 		public String apply(Context ctxt) throws ServiceException {
-			Date createDate;
-			if (ctxt.item instanceof Document) {
-				Document doc = (Document) ctxt.item;
-				createDate = new Date(doc.getLastRevision().getRevDate());
-			} else
-				createDate = new Date(ctxt.item.getDate());
+            MailItem item = ctxt.item.getMailbox().getItemRevision(ctxt.wctxt.octxt, ctxt.item.getId(), ctxt.item.getType(), 1);
+			Date createDate = new Date((item == null ? ctxt.item : item).getDate());
 			return formatDate(ctxt, createDate);
 		}
 	}
@@ -826,13 +823,8 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 		public String getPattern() {
 			return "MODIFYDATE";
 		}
-		public String apply(Context ctxt) throws ServiceException {
-			Date modifyDate;
-			if (ctxt.item instanceof Document) {
-				Document doc = (Document) ctxt.item;
-				modifyDate = new Date(doc.getLastRevision().getRevDate());
-			} else
-				modifyDate = new Date(ctxt.item.getDate());
+		public String apply(Context ctxt) {
+			Date modifyDate = new Date(ctxt.item.getDate());
 			return formatDate(ctxt, modifyDate);
 		}
 	}
@@ -869,8 +861,11 @@ public class WikiTemplate implements Comparable<WikiTemplate> {
 				return ctxt.content;
 			if (!(ctxt.item instanceof WikiItem))
 				return "<!-- cotent wiklet on non-wiki item -->";
-			WikiItem wiki = (WikiItem) ctxt.item;
-			WikiTemplate template = WikiTemplate.findTemplate(ctxt, wiki.getWikiWord());
+			WikiTemplate template = ctxt.itemTemplate;
+			if (template == null) {
+			    WikiItem wiki = (WikiItem) ctxt.item;
+			    template = WikiTemplate.findTemplate(ctxt, wiki.getWikiWord());
+			}
 			return template.toString(ctxt);
 		}
 	}

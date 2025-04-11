@@ -140,7 +140,7 @@ public class Note extends MailItem {
         data.volumeId    = volumeId;
         data.date        = mbox.getOperationTimestamp();
         data.subject     = content;
-        data.metadata    = encodeMetadata(color, location);
+        data.metadata    = encodeMetadata(color, 1, location);
         data.contentChanged(mbox);
         DbMailItem.create(mbox, data);
         
@@ -161,16 +161,19 @@ public class Note extends MailItem {
             throw MailServiceException.IMMUTABLE_OBJECT(mId);
         if (!canAccess(ACL.RIGHT_WRITE))
             throw ServiceException.PERM_DENIED("you do not have sufficient permissions on the note");
+
         content = StringUtil.stripControlCharacters(content);
         if (content == null || content.equals(""))
             throw ServiceException.INVALID_REQUEST("notes may not be empty", null);
         if (content.equals(mData.subject))
             return;
+
+        addRevision(false);
         markItemModified(Change.MODIFIED_CONTENT | Change.MODIFIED_DATE);
         // XXX: should probably update both mData.size and the Mailbox's size
         mData.subject = content;
         mData.date    = mMailbox.getOperationTimestamp();
-        saveSubject();
+        saveData(null);
     }
 
     protected void saveSubject() throws ServiceException {
@@ -193,20 +196,23 @@ public class Note extends MailItem {
         saveMetadata();
     }
 
+
     void decodeMetadata(Metadata meta) throws ServiceException {
         super.decodeMetadata(meta);
         mBounds = new Rectangle(meta.get(Metadata.FN_BOUNDS, null));
     }
 
     Metadata encodeMetadata(Metadata meta) {
-        return encodeMetadata(meta, mColor, mBounds);
+        return encodeMetadata(meta, mColor, mVersion, mBounds);
     }
-    private static String encodeMetadata(byte color, Rectangle bounds) {
-        return encodeMetadata(new Metadata(), color, bounds).toString();
+
+    private static String encodeMetadata(byte color, int version, Rectangle bounds) {
+        return encodeMetadata(new Metadata(), color, version, bounds).toString();
     }
-    static Metadata encodeMetadata(Metadata meta, byte color, Rectangle bounds) {
+
+    static Metadata encodeMetadata(Metadata meta, byte color, int version, Rectangle bounds) {
         meta.put(Metadata.FN_BOUNDS, bounds);
-        return MailItem.encodeMetadata(meta, color);
+        return MailItem.encodeMetadata(meta, color, version);
     }
 
 

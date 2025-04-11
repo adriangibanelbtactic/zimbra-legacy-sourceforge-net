@@ -27,10 +27,13 @@ ZmRoster = function(appCtxt, imApp) {
 	ZmModel.call(this, ZmEvent.S_ROSTER);
 
 	this._appCtxt = appCtxt;
+        this._notificationBuffer = [];
 	this._newRosterItemtoastFormatter = new AjxMessageFormat(ZmMsg.imNewRosterItemToast);
 	this._presenceToastFormatter = new AjxMessageFormat(ZmMsg.imStatusToast);
 	this._leftChatFormatter = new AjxMessageFormat(ZmMsg.imLeftChat);
 	this._imApp = imApp;
+
+        this._requestGateways();
 
 	this.reload();
 };
@@ -170,10 +173,17 @@ function(subscribed) {
 				var item = new ZmRosterItem(sub.to, list, this._appCtxt, sub.name, null, sub.groups);
 				list.addItem(item);
 				var toast = this._newRosterItemtoastFormatter.format([item.getDisplayName()]);
-				this._appCtxt.setStatusMsg(toast, null, null, null, ZmStatusView.TRANSITION_SLIDE_LEFT);
+				this._appCtxt.setStatusMsg(toast);
 			}
 		}
 	}
+};
+
+ZmRoster.prototype.pushNotification = function(im) {
+        if (!this._gateways) {
+                this._notificationBuffer.push(im);
+        } else
+                this.handleNotification(im);
 };
 
 /**
@@ -184,6 +194,7 @@ function(subscribed) {
 ZmRoster.prototype.handleNotification =
 function(im) {
 	if (im.n) {
+		// console.log(im.n);
 		var notifications = !this.__avoidNotifyTimeout ||
 			(new Date().getTime() - this.__avoidNotifyTimeout > ZmRoster.NOTIFICATION_FOO_TIMEOUT);
 		var cl = this.getChatList();
@@ -223,7 +234,7 @@ function(im) {
 						list.addItem(item);
 						if (notifications) {
 							var toast = this._newRosterItemtoastFormatter.format([item.getDisplayName()]);
-							this._appCtxt.setStatusMsg(toast, null, null, null, ZmStatusView.TRANSITION_SLIDE_LEFT);
+							this._appCtxt.setStatusMsg(toast);
 						}
 					}
 				} else if (sub.from) {
@@ -251,7 +262,7 @@ function(im) {
 						var is_status = old_pres == ri.getPresence().getShow();
 						if (notifications && ( (!is_status && this._appCtxt.get(ZmSetting.IM_PREF_NOTIFY_PRESENCE)) ||
 								       (is_status && this._appCtxt.get(ZmSetting.IM_PREF_NOTIFY_STATUS)) ) ) {
-							this._appCtxt.setStatusMsg(toast, null, null, null, ZmStatusView.TRANSITION_SLIDE_LEFT);
+							this._appCtxt.setStatusMsg(toast);
 							var chat = cl.getChatByRosterAddr(p.from);
 							if (chat)
 								chat.addMessage(ZmChatMessage.system(toast));
@@ -284,7 +295,6 @@ function(im) {
 					}
 					if (chat) {
 						if (!this._imApp.isActive()) {
-							this._appCtxt.setStatusIconVisible(ZmStatusView.ICON_IM, true);
 							this.startFlashingIcon();
 						}
 						chat.addMessage(chatMessage);
@@ -307,6 +317,8 @@ function(im) {
 				if (not.state == ZmImGateway.STATE.BAD_AUTH) {
 					this._appCtxt.setStatusMsg(ZmMsg.errorNotAuthenticated, ZmStatusView.LEVEL_WARNING);
 				}
+			} else if (not.type == "invited") {
+				// console.log("Found INVITED!");
 			}
 		}
 	}
@@ -319,6 +331,21 @@ ZmRoster.prototype.startFlashingIcon = function() {
 
 ZmRoster.prototype.stopFlashingIcon = function() {
 	this._imApp.stopFlashingIcon();
+};
+
+ZmRoster.prototype.modifyChatRequest = function(thread, op, addr, message) {
+	var sd = AjxSoapDoc.create("IMModifyChatRequest", "urn:zimbraIM");
+	var method = sd.getMethod();
+	method.setAttribute("thread", thread);
+	method.setAttribute("op", op);
+	if (op = "adduser") {
+		method.setAttribute("addr", addr);
+		if (message) {
+			var txt = sd.getDoc().createTextNode(message);
+			method.appendChild(txt);
+		}
+	}
+	this._appCtxt.getAppController().sendRequest({ soapDoc: sd, asyncMode: true });
 };
 
 ZmRoster.prototype.sendSubscribeAuthorization = function(accept, add, addr) {
@@ -368,12 +395,12 @@ ZmRoster.prototype.registerGateway = function(service, screenName, password) {
 
 ZmRoster.prototype._requestGateways = function() {
 	var sd = AjxSoapDoc.create("IMGatewayListRequest", "urn:zimbraIM");
-	this._appCtxt.getAppController().sendRequest(
+	var response = this._appCtxt.getAppController().sendRequest(
 		{ soapDoc   : sd,
-		  asyncMode : true,
-		  callback  : new AjxCallback(this, this._handleRequestGateways)
+		  asyncMode : false
 		}
 	);
+        this._handleRequestGateways(response);
 };
 
 // {"IMGatewayListResponse": {"service": [
@@ -388,11 +415,11 @@ ZmRoster.prototype._requestGateways = function() {
 // 			   "_jsns":"urn:zimbraIM"}
 // };
 
-ZmRoster.prototype._handleRequestGateways = function(args) {
-	var resp = args.getResponse();
-	if (!resp || !resp.IMGatewayListResponse)
-		return;
-	var a = resp.IMGatewayListResponse.service;
+ZmRoster.prototype._handleRequestGateways = function(resp) {
+// 	var resp = resp.getResponse();
+// 	if (!resp || !resp.IMGatewayListResponse)
+// 		return;
+ 	var a = resp.IMGatewayListResponse.service;
 	if (a && a.length) {
 		var defaultGateway = { type   : "XMPP",
 				       domain : "XMPP" };
@@ -409,6 +436,9 @@ ZmRoster.prototype._handleRequestGateways = function(args) {
 				   array     : a
 				 };
 	}
+        for (var i = 0; i < this._notificationBuffer.length; ++i)
+                this.handleNotification(this._notificationBuffer[i]);
+        this._notificationBuffer = [];
 };
 
 ZmRoster.prototype.getGatewayByType = function(type) {

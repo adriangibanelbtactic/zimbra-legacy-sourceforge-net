@@ -144,6 +144,12 @@ public abstract class Provisioning {
      * the addresses to appear as "non-existant" to the MTA.
      */
     public static final String MAIL_STATUS_DISABLED = "disabled";
+    
+    public static final String DOMAIN_STATUS_ACTIVE = "active";
+    public static final String DOMAIN_STATUS_MAINTENANCE = "maintenance";
+    public static final String DOMAIN_STATUS_LOCKED = "locked";
+    public static final String DOMAIN_STATUS_CLOSED = "closed";
+    public static final String DOMAIN_STATUS_SUSPENDED = "suspended";
 
     /**
      * An alias domain is a domain where ALL addresses in the domain
@@ -183,9 +189,10 @@ public abstract class Provisioning {
      * local network we would redirect you to http after login, but if you came
      * externally you would stay in https - one day we will do this.) "both"
      * says to run both https and http, and not do any redirects between the
-     * two.
+     * two.  "redirect" means the web server should listen on both HTTP and HTTPS
+     * but redirect traffic on the HTTP port to HTTPS.
      */
-    public enum MAIL_MODE { http, https, mixed, both }
+    public enum MAIL_MODE { http, https, mixed, both, redirect }
 
     // attributes
 
@@ -405,6 +412,9 @@ public abstract class Provisioning {
      */
     public static final String A_zimbraDomainType = "zimbraDomainType";
     
+    public static final String A_zimbraDomainStatus = "zimbraDomainStatus";
+    public static final String A_zimbraDomainRenameInfo = "zimbraDomainRenameInfo";
+    
     /**
      * Hostname visited by the client to domain name mapping, in order to make
      * virtual hosting work.
@@ -571,6 +581,8 @@ public abstract class Provisioning {
 
     public static final String A_zimbraPrefUseRfc2231 = "zimbraPrefUseRfc2231";
 
+    public static final String A_zimbraPrefClientType = "zimbraPrefClientType";
+    
     public static final String A_zimbraPrefCalendarNotifyDelegatedChanges = "zimbraPrefCalendarNotifyDelegatedChanges";
 
     public static final String A_zimbraPrefCalendarFirstDayOfWeek = "zimbraPrefCalendarFirstDayOfWeek";
@@ -685,6 +697,8 @@ public abstract class Provisioning {
     public static final String A_zimbraFeatureHtmlComposeEnabled = "zimbraFeatureHtmlComposeEnabled";
 
     public static final String A_zimbraFeatureIMEnabled = "zimbraFeatureIMEnabled";
+
+    public static final String A_zimbraFeatureInstantNotify = "zimbraFeatureInstantNotify";
 
     public static final String A_zimbraFeatureViewInHtmlEnabled = "zimbraFeatureViewInHtmlEnabled";
 
@@ -993,9 +1007,18 @@ public abstract class Provisioning {
     public static final String A_zimbraNotifySSLBindAddress = "zimbraNotifySSLBindAddress";
     public static final String A_zimbraNotifySSLBindPort = "zimbraNotifySSLBindPort";
 
+    // Message purging
     public static final String A_zimbraMailTrashLifetime = "zimbraMailTrashLifetime";
     public static final String A_zimbraMailSpamLifetime = "zimbraMailSpamLifetime";
     public static final String A_zimbraMailMessageLifetime = "zimbraMailMessageLifetime";
+    public static final String A_zimbraPrefInboxUnreadLifetime = "zimbraPrefInboxUnreadLifetime";
+    public static final String A_zimbraPrefInboxReadLifetime = "zimbraPrefInboxReadLifetime";
+    public static final String A_zimbraPrefSentLifetime = "zimbraPrefSentLifetime";
+    public static final String A_zimbraPrefJunkLifetime = "zimbraPrefJunkLifetime";
+    public static final String A_zimbraPrefTrashLifetime = "zimbraPrefTrashLifetime";
+    public static final String A_zimbraMailPurgeSleepInterval = "zimbraMailPurgeSleepInterval";
+    public static final String A_zimbraMailLastPurgedMailboxId = "zimbraMailLastPurgedMailboxId";
+    
     public static final String A_zimbraContactMaxNumEntries = "zimbraContactMaxNumEntries";
     public static final String A_zimbraIdentityMaxNumEntries = "zimbraIdentityMaxNumEntries";
     public static final String A_zimbraSignatureMaxNumEntries = "zimbraSignatureMaxNumEntries";
@@ -1167,7 +1190,7 @@ public abstract class Provisioning {
     public static final String A_zimbraNotebookFolderCacheSize = "zimbraNotebookFolderCacheSize";
     public static final String A_zimbraNotebookMaxCachedTemplatesPerFolder = "zimbraNotebookMaxCachedTemplatesPerFolder";
     public static final String A_zimbraIsSystemResource        = "zimbraIsSystemResource";
-    public static final String A_zimbraNotebookMaxNumRevisions = "zimbraNotebookMaxNumRevisions";
+    public static final String A_zimbraNotebookMaxRevisions    = "zimbraNotebookMaxRevisions";
     
     /*
      * data sources
@@ -1184,6 +1207,7 @@ public abstract class Provisioning {
     public static final String A_zimbraDataSourceMaxNumEntries = "zimbraDataSourceMaxNumEntries";    
     public static final String A_zimbraDataSourceLeaveOnServer = "zimbraDataSourceLeaveOnServer";
     public static final String A_zimbraDataSourcePollingInterval = "zimbraDataSourcePollingInterval";
+    public static final String A_zimbraDataSourceMinPollingInterval = "zimbraDataSourceMinPollingInterval";
     public static final String A_zimbraDataSourceEmailAddress = "zimbraDataSourceEmailAddress";
     public static final String A_zimbraDataSourceUseAddressForForwardReply = "zimbraDataSourceUseAddressForForwardReply";
     
@@ -1194,7 +1218,7 @@ public abstract class Provisioning {
     public static final String A_zimbraQuotaWarnMessage = "zimbraQuotaWarnMessage";
     
     // Server/globalconfig
-    public static final String A_zimbraDataSourceNumThreads = "zimbraDataSourceNumThreads";
+    public static final String A_zimbraScheduledTaskNumThreads = "zimbraScheduledTaskNumThreads";
 
     /*
      * Extension Text Analyzer
@@ -1284,7 +1308,12 @@ public abstract class Provisioning {
     /*
      * Cross mailbox search
      */
-    public static final String A_zimbraExcludeFromCMBSearch = "zimbraExcludeFromCMBSearch";  
+    public static final String A_zimbraExcludeFromCMBSearch = "zimbraExcludeFromCMBSearch"; 
+    
+    /*
+     * Voice mail
+     */
+    public static final String A_zimbraPrefVoiceItemsPerPage = "zimbraPrefVoiceItemsPerPage";
     
     private static Provisioning sProvisioning;
 
@@ -1629,6 +1658,8 @@ public abstract class Provisioning {
 
     public abstract void deleteDomain(String zimbraId) throws ServiceException;
 
+    public abstract void modifyDomainStatus(Domain domain, String newStatus) throws ServiceException;
+    
     public abstract Cos createCos(String name, Map<String, Object> attrs) throws ServiceException;
 
     public abstract void renameCos(String zimbraId, String newName) throws ServiceException;
@@ -2132,5 +2163,46 @@ public abstract class Provisioning {
      * @throws ServiceException if the key is malformed
      */
     public abstract DataSource get(Account account, DataSourceBy keyType, String key) throws ServiceException;
+    
+    
+    public static enum CacheEntryType {
+        account,
+        cos,
+        domain,
+        server,
+        zimlet;
+        
+        public static CacheEntryType fromString(String s) throws ServiceException {
+            try {
+                return CacheEntryType.valueOf(s);
+            } catch (IllegalArgumentException e) {
+                throw ServiceException.INVALID_REQUEST("unknown cache type: "+s, e);
+            }
+        }
+    }
+    
+    public static enum CacheEntryBy {
+        
+        // case must match protocol
+        id, name;
+    }
+    
+    public static class CacheEntry {
+        public CacheEntry(CacheEntryBy entryBy, String entryIdentity) {
+            mEntryBy = entryBy;
+            mEntryIdentity = entryIdentity;
+        }
+        public CacheEntryBy mEntryBy;
+        public String mEntryIdentity;
+    }
+    
+    /**
+     * flush cache by entry type and optional specific e
+     * 
+     * @param type
+     * @param entries
+     * @throws ServiceException
+     */
+    public abstract void flushCache(CacheEntryType type, CacheEntry[] entries) throws ServiceException;
     
 }

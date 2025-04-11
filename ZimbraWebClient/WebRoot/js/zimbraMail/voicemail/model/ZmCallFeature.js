@@ -59,7 +59,8 @@ ZmCallFeature.CALL_FEATURES = [ZmCallFeature.ANONYNOUS_REJECTION, ZmCallFeature.
 
 // Voicemail preferences.
 ZmCallFeature.EMAIL_NOTIFICATION = "vmPrefEmailNotifAddress";
-ZmCallFeature.VOICE_FEATURES = [ZmCallFeature.EMAIL_NOTIFICATION];
+ZmCallFeature.NUMBER_PER_PAGE = "zimbraPrefVoiceItemsPerPage";
+ZmCallFeature.VOICE_FEATURES = [ZmCallFeature.EMAIL_NOTIFICATION, ZmCallFeature.NUMBER_PER_PAGE];
 
 
 ZmCallFeature.prototype.createProxy = 
@@ -87,14 +88,16 @@ function(soapDoc, phoneNode) {
 ZmCallFeature.prototype._addNode = 
 function(soapDoc, parentNode, data) {
 	for (var i in data) {
-		var obj = data[i]
-		if (obj instanceof Array) {
-			this._addArrayNode(soapDoc, parentNode, i, obj);
-		} else if (typeof obj == "object") {
-			var child = soapDoc.set(i, null, parentNode);
-			this._addNode(soapDoc, child, obj);
-		} else {
-			parentNode.setAttribute(i, obj);
+		if (i != "_object_") { // Ignore proxy field.
+			var obj = data[i]
+			if (obj instanceof Array) {
+				this._addArrayNode(soapDoc, parentNode, i, obj);
+			} else if (typeof obj == "object") {
+				var child = soapDoc.set(i, null, parentNode);
+				this._addNode(soapDoc, child, obj);
+			} else {
+				parentNode.setAttribute(i, obj);
+			}
 		}
 	}
 };
@@ -113,7 +116,13 @@ function(feature) {
 	this.isActive = feature.isActive;
 	this.data = {};
 	for (var i in feature.data) {
-		this.data[i] = feature.data[i];
+		if (i != "_object_") { // Ignore proxy field.
+			this.data[i] = feature.data[i];
+		}
+	}
+	// For NUMBER_PER_PAGE, update the global setting. 
+	if (this.name == ZmCallFeature.NUMBER_PER_PAGE) {
+		this._appCtxt.set(ZmSetting.VOICE_PAGE_SIZE, this.data.value);
 	}
 };
 

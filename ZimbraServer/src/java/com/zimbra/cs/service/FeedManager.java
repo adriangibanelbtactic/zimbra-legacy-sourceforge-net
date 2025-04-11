@@ -175,7 +175,7 @@ public class FeedManager {
                 case 'B':  case 'b':
                     Reader reader = new InputStreamReader(content, charset.toString());
                     List<ZVCalendar> icals = ZCalendarBuilder.buildMulti(reader);
-                    List<Invite> invites = Invite.createFromCalendar(acct, null, icals, false);
+                    List<Invite> invites = Invite.createFromCalendar(acct, null, icals, true);
                     // handle missing UIDs on remote calendars by generating them as needed
                     for (Invite inv : invites)
                     	if (inv.getUid() == null)
@@ -197,7 +197,8 @@ public class FeedManager {
     }
 
     private static int getLeadingChar(BufferedInputStream is, StringBuilder charset) throws IOException {
-        is.mark(10);
+        is.mark(128);
+        // check for any BOMs that would override the specified charset
         int ch = is.read();
         switch (ch) {
             case 0xEF:
@@ -217,6 +218,10 @@ public class FeedManager {
                 }
                 break;
         }
+        // skip up to 120 bytes of leading whitespace
+        for (int index = 0; index < 120 && (ch == '\0' || Character.isWhitespace(ch)); index++)
+            ch = is.read();
+        // reset to the original state and return the first non-whtespace character
         is.reset();
         return ch;
     }

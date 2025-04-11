@@ -33,6 +33,7 @@ import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.MailConstants;
 import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.Contact;
+import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.service.formatter.ContactCSV;
@@ -60,13 +61,19 @@ public class ExportContacts extends MailDocumentHandler  {
         if (!ct.equals("csv"))
             throw ServiceException.INVALID_REQUEST("unsupported content type: " + ct, null);
         
+        String format = request.getAttribute(MailConstants.A_CSVFORMAT, null);
+        
         List<Contact> contacts = mbox.getContactList(octxt, iidFolder != null ? iidFolder.getId() : -1);
         
         StringBuffer sb = new StringBuffer();
         if (contacts == null)
         	contacts = new ArrayList<Contact>();
         
-        ContactCSV.toCSV(contacts, sb);
+        try {
+            ContactCSV.toCSV(format, contacts.iterator(), sb);
+        } catch (ContactCSV.ParseException e) {
+            throw MailServiceException.UNABLE_TO_EXPORT_CONTACTS(e.getMessage(), e);
+        }
 
         Element response = zsc.createElement(MailConstants.EXPORT_CONTACTS_RESPONSE);
         Element content = response.addElement(MailConstants.E_CONTENT);

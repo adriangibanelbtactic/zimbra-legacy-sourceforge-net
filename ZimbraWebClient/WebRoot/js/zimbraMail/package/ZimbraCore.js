@@ -31,6 +31,7 @@ AjxPackage.require("zimbraMail.share.model.ZmFolderTree");
 AjxPackage.require("zimbraMail.share.model.ZmInvite");
 AjxPackage.require("zimbraMail.share.model.ZmList");
 AjxPackage.require("zimbraMail.share.model.ZmAccount");
+AjxPackage.require("zimbraMail.share.model.ZmZimbraAccount");
 
 AjxPackage.require("zimbraMail.core.ZmApp");
 
@@ -63,7 +64,6 @@ AjxPackage.require("zimbraMail.share.view.dialog.ZmNewSearchDialog");
 AjxPackage.require("zimbraMail.share.view.dialog.ZmNewTagDialog");
 AjxPackage.require("zimbraMail.share.view.dialog.ZmFolderPropsDialog");
 AjxPackage.require("zimbraMail.share.view.dialog.ZmQuickAddDialog");
-AjxPackage.require("zimbraMail.share.view.dialog.ZmStatusHistoryDialog");
 
 AjxPackage.require("zimbraMail.share.controller.ZmController");
 AjxPackage.require("zimbraMail.share.controller.ZmListController");
@@ -77,7 +77,6 @@ AjxPackage.require("zimbraMail.share.controller.ZmSearchController");
 AjxPackage.require("zimbraMail.core.ZmLogin");
 AjxPackage.require("zimbraMail.core.ZmAppViewMgr");
 AjxPackage.require("zimbraMail.core.ZmRequestMgr");
-AjxPackage.require("zimbraMail.core.ZmClientCmdHandler");
 AjxPackage.require("zimbraMail.core.ZmZimbraMail");
 AjxPackage.require("zimbraMail.core.ZmNewWindow");
 

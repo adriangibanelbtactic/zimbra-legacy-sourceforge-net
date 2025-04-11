@@ -304,22 +304,23 @@ ZmPageEditController.prototype._saveResponseHandler = function(content, response
 	if (isRemote) {
 		wiki.l = this._page.folderId;
 		wiki.name = this._page.name;
-
-		var page = cachedPage;		
-		if(page == null){
-		page = new ZmPage(this._appCtxt);
-		}		
-		//page.set(wiki);
-		page.name = this._page.name;
-		page.version = this._page.version;
-		var restUrl = this._page.restUrl;
-		var parts = restUrl.split("/");
-		if(parts && parts[parts.length-1]!=page.name){
-			parts[parts.length-1] =  page.name;
-			page.restUrl = parts.join("/");
-		}
-		cache.putPage(page);
 	}
+	
+	//Temporary Fix: currently we don't get notification header for 
+	//operations on remote folder, this fix will avoid some nasty bugs
+	var item = cache.getItemInfo({id:this._page.id},true);
+	cache.putPage(item);
+	var pageEditor = this._pageEditView.getPageEditor();
+	pageEditor.setFooterInfo(item);	
+
+	if(isRemote){
+		var nbController = this._app.getNotebookController();
+		var vPage = nbController.getPage();
+		if(vPage && (vPage.id == item.id) ){
+			nbController._object = item;
+		}
+	}
+	
 	if (popViewWhenSaved) {
 		this._popViewWhenSaved = false;
 
@@ -416,10 +417,10 @@ function(ev) {
 	}
 };
 ZmPageEditController.prototype.toggleSpellCheckButton =
-function(toggled) {
+function(selected) {
 	var toolbar = this._toolbar[this._currentView];
 	var spellCheckButton = toolbar.getButton(ZmOperation.SPELL_CHECK);
-	spellCheckButton.setToggled((toggled || false));
+	spellCheckButton.setSelected((selected || false));
 };
 
 ZmPageEditController.prototype._formatListener = function(ev) {
@@ -490,4 +491,10 @@ ZmPageEditController.prototype._popShieldDismissCallback =
 function() {
 	this._popShield.popdown();
 	this._appCtxt.getAppViewMgr().showPendingView(false);
+};
+
+ZmPageEditController.prototype.updatePageInfo =
+function(page){
+	var pageEditor = this._pageEditView.getPageEditor();
+	pageEditor.setFooterInfo(page);
 };

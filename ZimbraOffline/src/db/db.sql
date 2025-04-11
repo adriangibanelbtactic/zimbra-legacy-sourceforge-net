@@ -3,7 +3,7 @@
 -- Version: MPL 1.1
 -- 
 -- The contents of this file are subject to the Mozilla Public License
--- Version 1.1 ("License"); you may not use this file except in
+-- Version 1.1 ("License"). You may not use this file except in
 -- compliance with the License. You may obtain a copy of the License at
 -- http://www.zimbra.com/license
 -- 
@@ -15,7 +15,7 @@
 -- The Original Code is: Zimbra Collaboration Suite Server.
 -- 
 -- The Initial Developer of the Original Code is Zimbra, Inc.
--- Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+-- Portions created by Zimbra are Copyright (C) 2005, 2006, 2007 Zimbra, Inc.
 -- All Rights Reserved.
 -- 
 -- Contributor(s):
@@ -85,16 +85,6 @@ CREATE TABLE current_volumes (
               REFERENCES volume(id)
 ) ENGINE = InnoDB;
 
-INSERT INTO volume (id, type, name, path, file_bits, file_group_bits,
-    mailbox_bits, mailbox_group_bits, compress_blobs, compression_threshold)
-  VALUES (1, 1, 'message1', '/opt/zimbra/store', 12, 8, 12, 8, 0, 4096);
-INSERT INTO volume (id, type, name, path, file_bits, file_group_bits,
-    mailbox_bits, mailbox_group_bits, compress_blobs, compression_threshold)
-  VALUES (2, 10, 'index1',   '/opt/zimbra/index', 12, 8, 12, 8, 0, 4096);
-
-INSERT INTO current_volumes (message_volume_id, index_volume_id, next_mailbox_id) VALUES (1, 2, 1);
-COMMIT;
-
 
 -- -----------------------------------------------------------------------
 -- mailbox info
@@ -111,12 +101,27 @@ CREATE TABLE mailbox (
    change_checkpoint  INTEGER UNSIGNED NOT NULL DEFAULT 0,
    tracking_sync      INTEGER UNSIGNED NOT NULL DEFAULT 0,
    tracking_imap      BOOLEAN NOT NULL DEFAULT 0,
+   last_backup_at     INTEGER UNSIGNED,           -- last full backup time, UNIX-style timestamp
    comment            VARCHAR(255),               -- usually the main email address originally associated with the mailbox
+   last_soap_access   INTEGER UNSIGNED NOT NULL DEFAULT 0,
+   new_messages       INTEGER UNSIGNED NOT NULL DEFAULT 0,
 
    UNIQUE INDEX i_account_id (account_id),
    INDEX i_index_volume_id (index_volume_id),
+   INDEX i_last_backup_at (last_backup_at, id),
 
    CONSTRAINT fk_mailbox_index_volume_id FOREIGN KEY (index_volume_id) REFERENCES volume(id)
+) ENGINE = InnoDB;
+
+-- -----------------------------------------------------------------------
+-- deleted accounts
+-- -----------------------------------------------------------------------
+
+CREATE TABLE deleted_account (
+    email VARCHAR(255) NOT NULL PRIMARY KEY,
+    account_id CHAR(36) NOT NULL,
+    mailbox_id INTEGER UNSIGNED NOT NULL,
+    deleted_at INTEGER UNSIGNED NOT NULL      -- UNIX-style timestamp
 ) ENGINE = InnoDB;
 
 -- -----------------------------------------------------------------------
@@ -146,56 +151,6 @@ CREATE TABLE out_of_office (
   INDEX i_sent_on (sent_on),
 
   CONSTRAINT fk_out_of_office_mailbox_id FOREIGN KEY (mailbox_id) REFERENCES mailbox(id) ON DELETE CASCADE
-) ENGINE = InnoDB;
-
-
--- -----------------------------------------------------------------------
--- directory
--- -----------------------------------------------------------------------
-
-CREATE TABLE directory (
-   entry_id    INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   entry_type  CHAR(4) NOT NULL,
-   entry_name  VARCHAR(128) NOT NULL,
-   zimbra_id   CHAR(73),
-
-   UNIQUE INDEX i_zimbra_id (zimbra_id),
-   UNIQUE INDEX i_entry_type_name (entry_type, entry_name)
-) ENGINE = InnoDB;
-
-CREATE TABLE directory_attrs (
-   entry_id    INTEGER UNSIGNED NOT NULL,
-   name        VARCHAR(255) NOT NULL,
-   value       TEXT NOT NULL,
-
-   INDEX i_entry_id_name (entry_id, name),
-   INDEX i_name (name),
-
-   CONSTRAINT fk_directory_entry_id FOREIGN KEY (entry_id) REFERENCES directory(entry_id) ON DELETE CASCADE
-) ENGINE = InnoDB;
-
-CREATE TABLE directory_leaf (
-   entry_id    INTEGER UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   parent_id   INTEGER UNSIGNED NOT NULL,
-   entry_type  CHAR(4) NOT NULL,
-   entry_name  VARCHAR(128) NOT NULL,
-   zimbra_id   CHAR(73),
-
-   UNIQUE INDEX i_zimbra_id (zimbra_id),
-   UNIQUE INDEX i_parent_entry_type_name (parent_id, entry_type, entry_name),
-
-   CONSTRAINT fk_dleaf_entry_id FOREIGN KEY (parent_id) REFERENCES directory(entry_id) ON DELETE CASCADE
-) ENGINE = InnoDB;
-
-CREATE TABLE directory_leaf_attrs (
-   entry_id    INTEGER UNSIGNED NOT NULL,
-   name        VARCHAR(255) NOT NULL,
-   value       TEXT NOT NULL,
-
-   INDEX i_entry_id_name (entry_id, name),
-   INDEX i_name (name),
-
-   CONSTRAINT fk_dleaf_attr_entry_id FOREIGN KEY (entry_id) REFERENCES directory_leaf(entry_id) ON DELETE CASCADE
 ) ENGINE = InnoDB;
 
 
@@ -230,3 +185,17 @@ CREATE TABLE service_status (
   
   UNIQUE INDEX i_server_service (server(100), service(100))
 ) ENGINE = MyISAM;
+
+-- Tracks scheduled tasks
+CREATE TABLE scheduled_task (
+   class_name      VARCHAR(255) BINARY NOT NULL,
+   name            VARCHAR(255) NOT NULL,
+   mailbox_id      INTEGER UNSIGNED NOT NULL,
+   exec_time       DATETIME,
+   interval_millis INTEGER UNSIGNED,
+   metadata        MEDIUMTEXT,
+
+   PRIMARY KEY (name, mailbox_id, class_name),
+   CONSTRAINT fk_st_mailbox_id FOREIGN KEY (mailbox_id)
+      REFERENCES mailbox(id) ON DELETE CASCADE
+) ENGINE = InnoDB;

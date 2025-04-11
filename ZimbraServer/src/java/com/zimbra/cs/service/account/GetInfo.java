@@ -28,7 +28,9 @@
  */
 package com.zimbra.cs.service.account;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,6 +45,7 @@ import com.zimbra.cs.account.AttributeFlag;
 import com.zimbra.cs.account.AttributeManager;
 import com.zimbra.cs.account.DataSource;
 import com.zimbra.cs.account.Identity;
+import com.zimbra.cs.account.NamedEntry;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.account.Signature;
 import com.zimbra.cs.account.Zimlet;
@@ -61,10 +64,36 @@ import com.zimbra.soap.ZimbraSoapContext;
  */
 public class GetInfo extends AccountDocumentHandler  {
 
-	public Element handle(Element request, Map<String, Object> context) throws ServiceException {
-		ZimbraSoapContext zsc = getZimbraSoapContext(context);
+    private enum Section {
+        MBOX, PREFS, ATTRS, ZIMLETS, PROPS, IDENTS, SIGS, DSRCS, CHILDREN;
+
+        static final Set<Section> all = new HashSet<Section>(Arrays.asList(Section.values()));
+
+        static Section lookup(String value) throws ServiceException {
+            try {
+                return Section.valueOf(value.toUpperCase().trim());
+            } catch (IllegalArgumentException iae) {
+                throw ServiceException.INVALID_REQUEST("unknown GetInfo section: " + value.trim(), null);
+            }
+        }
+    }
+
+    public Element handle(Element request, Map<String, Object> context) throws ServiceException {
+        ZimbraSoapContext zsc = getZimbraSoapContext(context);
         Account acct = getRequestedAccount(zsc);
-		
+
+        // figure out the subset of data the caller wants (default to all data)
+        String secstr = request.getAttribute(AccountConstants.A_SECTIONS, null);
+        Set<Section> sections;
+        if (secstr != null) {
+            sections = new HashSet<Section>();
+            for (String sec : secstr.split(","))
+                sections.add(Section.lookup(sec));
+        } else {
+            sections = Section.all;
+        }
+        
+
         Element response = zsc.createElement(AccountConstants.GET_INFO_RESPONSE);
         response.addAttribute(AccountConstants.E_VERSION, BuildInfo.FULL_VERSION, Element.Disposition.CONTENT);
         response.addAttribute(AccountConstants.E_ID, acct.getId(), Element.Disposition.CONTENT);
@@ -72,7 +101,7 @@ public class GetInfo extends AccountDocumentHandler  {
         long lifetime = zsc.getAuthToken().getExpires() - System.currentTimeMillis();
         response.addAttribute(AccountConstants.E_LIFETIME, lifetime, Element.Disposition.CONTENT);
 
-        if (Provisioning.onLocalServer(acct)) {
+        if (sections.contains(Section.MBOX) && Provisioning.onLocalServer(acct)) {
             try {
                 Mailbox mbox = getRequestedMailbox(zsc);
                 response.addAttribute(AccountConstants.E_QUOTA_USED, mbox.getSize(), Element.Disposition.CONTENT);
@@ -80,55 +109,71 @@ public class GetInfo extends AccountDocumentHandler  {
                 Session s = (Session) context.get(SoapEngine.ZIMBRA_SESSION);
                 if (s instanceof SoapSession) {
                     // we have a valid session; get the stats on this session
-                    response.addAttribute(AccountConstants.E_PREVIOUS_SESSION, ((SoapSession) s).getPreviousSessionTime());
-                    response.addAttribute(AccountConstants.E_LAST_ACCESS, ((SoapSession) s).getLastWriteAccessTime());
-                    response.addAttribute(AccountConstants.E_RECENT_MSGS, ((SoapSession) s).getRecentMessageCount());
+                    response.addAttribute(AccountConstants.E_PREVIOUS_SESSION, ((SoapSession) s).getPreviousSessionTime(), Element.Disposition.CONTENT);
+                    response.addAttribute(AccountConstants.E_LAST_ACCESS, ((SoapSession) s).getLastWriteAccessTime(), Element.Disposition.CONTENT);
+                    response.addAttribute(AccountConstants.E_RECENT_MSGS, ((SoapSession) s).getRecentMessageCount(), Element.Disposition.CONTENT);
                 } else {
                     // we have no session; calculate the stats from the mailbox and the other SOAP sessions
                     long lastAccess = mbox.getLastSoapAccessTime();
-                    response.addAttribute(AccountConstants.E_PREVIOUS_SESSION, lastAccess);
-                    response.addAttribute(AccountConstants.E_LAST_ACCESS, lastAccess);
-                    response.addAttribute(AccountConstants.E_RECENT_MSGS, mbox.getRecentMessageCount());
+                    response.addAttribute(AccountConstants.E_PREVIOUS_SESSION, lastAccess, Element.Disposition.CONTENT);
+                    response.addAttribute(AccountConstants.E_LAST_ACCESS, lastAccess, Element.Disposition.CONTENT);
+                    response.addAttribute(AccountConstants.E_RECENT_MSGS, mbox.getRecentMessageCount(), Element.Disposition.CONTENT);
                 }
             } catch (ServiceException e) { }
         }
 
         Map<String, Object> attrMap = acct.getAttrs();
         Locale locale = Provisioning.getInstance().getLocale(acct);
-        
-        Element prefs = response.addUniqueElement(AccountConstants.E_PREFS);
-        GetPrefs.doPrefs(acct, locale.toString(), prefs, attrMap, null);
-        Element attrs = response.addUniqueElement(AccountConstants.E_ATTRS);
-        doAttrs(acct, locale.toString(), attrs, attrMap);
-        Element zimlets = response.addUniqueElement(AccountConstants.E_ZIMLETS);
-        doZimlets(zimlets, acct);
-        Element props = response.addUniqueElement(AccountConstants.E_PROPERTIES);
-        doProperties(props, acct);
-        Element ids = response.addUniqueElement(AccountConstants.E_IDENTITIES);
-        doIdentities(ids, acct);
-        Element sigs = response.addUniqueElement(AccountConstants.E_SIGNATURES);
-        doSignatures(sigs, acct);
-        Element ds = response.addUniqueElement(AccountConstants.E_DATA_SOURCES);
-        doDataSources(ds, acct, zsc);
-        Element ca = response.addUniqueElement(AccountConstants.E_CHILD_ACCOUNTS);
-        doChildAccounts(ca, acct);
+
+        if (sections.contains(Section.PREFS)) {
+            Element prefs = response.addUniqueElement(AccountConstants.E_PREFS);
+            GetPrefs.doPrefs(acct, locale.toString(), prefs, attrMap, null);
+        }
+        if (sections.contains(Section.ATTRS)) {
+            Element attrs = response.addUniqueElement(AccountConstants.E_ATTRS);
+            doAttrs(acct, locale.toString(), attrs, attrMap);
+        }
+        if (sections.contains(Section.ZIMLETS)) {
+            Element zimlets = response.addUniqueElement(AccountConstants.E_ZIMLETS);
+            doZimlets(zimlets, acct);
+        }
+        if (sections.contains(Section.PROPS)) {
+            Element props = response.addUniqueElement(AccountConstants.E_PROPERTIES);
+            doProperties(props, acct);
+        }
+        if (sections.contains(Section.IDENTS)) {
+            Element ids = response.addUniqueElement(AccountConstants.E_IDENTITIES);
+            doIdentities(ids, acct);
+        }
+        if (sections.contains(Section.SIGS)) {
+            Element sigs = response.addUniqueElement(AccountConstants.E_SIGNATURES);
+            doSignatures(sigs, acct);
+        }
+        if (sections.contains(Section.DSRCS)) {
+            Element ds = response.addUniqueElement(AccountConstants.E_DATA_SOURCES);
+            doDataSources(ds, acct, zsc);
+        }
+        if (sections.contains(Section.CHILDREN)) {
+            Element ca = response.addUniqueElement(AccountConstants.E_CHILD_ACCOUNTS);
+            doChildAccounts(ca, acct);
+        }
         
         GetAccountInfo.addUrls(response, acct);
         return response;
     }
 
     static void doAttrs(Account acct, String locale, Element response, Map attrsMap) throws ServiceException {
-		Set<String> attrList = AttributeManager.getInstance().getAttrsWithFlag(AttributeFlag.accountInfo);
+        Set<String> attrList = AttributeManager.getInstance().getAttrsWithFlag(AttributeFlag.accountInfo);
         
-		if (attrList.contains(Provisioning.A_zimbraLocale)) {
-			doAttr(response, Provisioning.A_zimbraLocale, locale);
-		}
-		for (String key : attrList) {
-			Object value = attrsMap.get(key);
-			if (!key.equals(Provisioning.A_zimbraLocale))
-				doAttr(response, key, value);
-		}
-	}
+        if (attrList.contains(Provisioning.A_zimbraLocale)) {
+            doAttr(response, Provisioning.A_zimbraLocale, locale);
+        }
+        for (String key : attrList) {
+            Object value = attrsMap.get(key);
+            if (!key.equals(Provisioning.A_zimbraLocale))
+                doAttr(response, key, value);
+        }
+    }
     
     static void doAttr(Element response, String key, Object value) {
         if (value instanceof String[]) {
@@ -145,38 +190,38 @@ public class GetInfo extends AccountDocumentHandler  {
     }
 
     private static void doZimlets(Element response, Account acct) {
-    	String[] attrList = acct.getMultiAttr(Provisioning.A_zimbraZimletAvailableZimlets);
-    	List<Zimlet> zimletList = ZimletUtil.orderZimletsByPriority(attrList);
-    	int priority = 0;
-    	for (Zimlet z : zimletList) {
-			if (z.isEnabled() && !z.isExtension())
-				ZimletUtil.listZimlet(response, z.getName(), priority);
-    		priority++;
-    	}
+        String[] attrList = acct.getMultiAttr(Provisioning.A_zimbraZimletAvailableZimlets);
+        List<Zimlet> zimletList = ZimletUtil.orderZimletsByPriority(attrList);
+        int priority = 0;
+        for (Zimlet z : zimletList) {
+            if (z.isEnabled() && !z.isExtension())
+                ZimletUtil.listZimlet(response, z, priority);
+            priority++;
+        }
 
-    	// load the zimlets in the dev directory and list them
-    	ZimletUtil.listDevZimlets(response);
+        // load the zimlets in the dev directory and list them
+        ZimletUtil.listDevZimlets(response);
     }
 
     private static void doProperties(Element response, Account acct) {
-    	ZimletUserProperties zp = ZimletUserProperties.getProperties(acct);
-    	Set<? extends ZimletProperty> props = zp.getAllProperties();
+        ZimletUserProperties zp = ZimletUserProperties.getProperties(acct);
+        Set<? extends ZimletProperty> props = zp.getAllProperties();
         for (ZimletProperty prop : props) {
-    		Element elem = response.addElement(AccountConstants.E_PROPERTY);
-    		elem.addAttribute(AccountConstants.A_ZIMLET, prop.getZimletName());
-    		elem.addAttribute(AccountConstants.A_NAME, prop.getKey());
-    		elem.setText(prop.getValue());
-    	}
+            Element elem = response.addElement(AccountConstants.E_PROPERTY);
+            elem.addAttribute(AccountConstants.A_ZIMLET, prop.getZimletName());
+            elem.addAttribute(AccountConstants.A_NAME, prop.getKey());
+            elem.setText(prop.getValue());
+        }
     }
     
     private static void doIdentities(Element response, Account acct) {
-    	try {
-    		List<Identity> identities = Provisioning.getInstance().getAllIdentities(acct);
-    		for (Identity i : identities)
-    			ToXML.encodeIdentity(response, i);
-    	} catch (ServiceException se) {
-    		ZimbraLog.account.error("can't get identities", se);
-    	}
+        try {
+            List<Identity> identities = Provisioning.getInstance().getAllIdentities(acct);
+            for (Identity i : identities)
+                ToXML.encodeIdentity(response, i);
+        } catch (ServiceException se) {
+            ZimbraLog.account.error("can't get identities", se);
+        }
     }
     
     private static void doSignatures(Element response, Account acct) {
@@ -208,6 +253,8 @@ public class GetInfo extends AccountDocumentHandler  {
             class ChildInfo {
                 public boolean mVisible;
                 public String mName;
+                public String mDisplayName;
+                
                 ChildInfo(boolean visible) {
                     mVisible = visible;
                 }
@@ -230,17 +277,19 @@ public class GetInfo extends AccountDocumentHandler  {
                 query.append(String.format("(%s=%s)", Provisioning.A_zimbraId, id));
             query.append(")");
             
-            List accounts = prov.searchAccounts(query.toString(), null, null, true, flags);
-            for (Object obj: accounts) {
+            List<NamedEntry> accounts = prov.searchAccounts(query.toString(), null, null, true, flags);
+            for (NamedEntry obj: accounts) {
                 if (!(obj instanceof Account))
-                    throw ServiceException.FAILURE("child id is not an account", null);
+                    throw ServiceException.FAILURE("child id " + obj.getId() +"is not an account", null);
                 Account childAcct = (Account)obj;
                 String childId = childAcct.getId();
                 String childName = childAcct.getName();
+                String childDisplayName = childAcct.getAttr(Provisioning.A_displayName);
                 
                 ChildInfo ci = children.get(childId);
                 assert(ci.mName == null);
                 ci.mName = childName;
+                ci.mDisplayName = childDisplayName;
             }
 
             for (Map.Entry<String, ChildInfo> child : children.entrySet()) {
@@ -249,6 +298,11 @@ public class GetInfo extends AccountDocumentHandler  {
                 acctElem.addAttribute(AccountConstants.A_ID, child.getKey());
                 acctElem.addAttribute(AccountConstants.A_NAME, ci.mName);
                 acctElem.addAttribute(AccountConstants.A_VISIBLE, ci.mVisible);
+                
+                Element attrsElem = acctElem.addElement(AccountConstants.E_ATTRS);
+                if (ci.mDisplayName != null)
+                    attrsElem.addElement(AccountConstants.E_ATTR).addAttribute(AccountConstants.A_NAME, Provisioning.A_displayName).setText(ci.mDisplayName);
+                
             }
         }
     }

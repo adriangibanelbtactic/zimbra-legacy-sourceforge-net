@@ -47,8 +47,6 @@ ZmDoublePaneController = function(appCtxt, container, mailApp) {
 	this._listeners[ZmOperation.SHOW_ORIG] = new AjxListener(this, this._showOrigListener);
 	this._listeners[ZmOperation.ADD_FILTER_RULE] = new AjxListener(this, this._filterListener);
 	
-	this._viewMenuCallback = new AjxCallback(this, this._checkViewMenu);
-
 	this._listSelectionShortcutDelayAction = new AjxTimedAction(this, this._listSelectionTimedAction);
 };
 
@@ -87,7 +85,6 @@ function(search, item, callback) {
 
 ZmDoublePaneController.prototype._handleResponseShow =
 function(item, callback, results) {
-	this._checkViewMenu();
 	if (callback) {
 		callback.run();
 	}
@@ -111,8 +108,9 @@ function() {
  */
 ZmDoublePaneController.prototype._toggleReadingPane = 
 function(view, toggle) {
-	var appToolbar = this._appCtxt.getCurrentAppToolbar();
-	var menu = appToolbar.getViewButton().getMenu();
+	var viewBtn = this._toolbar[this._currentView].getButton(ZmOperation.VIEW_MENU);
+	var menu = viewBtn.getMenu();
+
 	var mi = menu.getItemById(ZmOperation.MENUITEM_ID, view);
 	if (toggle) {
 		// toggle display of reading pane
@@ -122,12 +120,11 @@ function(view, toggle) {
 	}
 
 	this._readingPaneOn = mi.getChecked();
-	this._checkViewMenu();
 	this._doublePaneView.toggleView();
 
 	// set msg in msg view if reading pane is being shown
 	if (this._readingPaneOn) {
-		this._setSelectedMsg();
+		this._setSelectedItem();
 	}
 
 	// need to reset special dbl-click handling for list view
@@ -170,9 +167,6 @@ function(view) {
 	}
 
 	ZmMailListController.prototype._initialize.call(this, view);
-	if (!this._appCtxt.get(ZmSetting.CONVERSATIONS_ENABLED)) {
-		this._appCtxt.getCurrentAppToolbar().setCallback(ZmController.TRAD_VIEW, this._viewMenuCallback);
-	}
 };
 
 ZmDoublePaneController.prototype._getToolBarOps =
@@ -180,11 +174,14 @@ function() {
 	var list = this._standardToolBarOps();
 	list.push(ZmOperation.SEP);
 	list = list.concat(this._msgOps());
-	list.push(ZmOperation.SEP);
-	list.push(ZmOperation.SPAM);
-	list.push(ZmOperation.SEP);
-	list.push(ZmOperation.TAG_MENU);	
-	list.push(ZmOperation.DETACH);
+	list.push(ZmOperation.SEP,
+				ZmOperation.SPAM,
+				ZmOperation.SEP,
+				ZmOperation.TAG_MENU,
+				ZmOperation.SEP,
+				ZmOperation.DETACH,
+				ZmOperation.SEP,
+				ZmOperation.VIEW_MENU);
 	return list;
 };
 
@@ -231,22 +228,16 @@ function(view) {
 	this._doublePaneView.setItem(this._item);
 };
 
-ZmDoublePaneController.prototype._setSelectedMsg =
-function() {
-	var selCnt = this._listView[this._currentView].getSelectionCount();
-	if (selCnt == 1) {
-		// Check if currently displaying selected element in message view
-		var msg = this._getSelectedMsg();
-		if (!msg) { return; }
-		if (!msg._loaded) {
-			this._appCtxt.getSearchController().setEnabled(false);
-			this._doGetMsg(msg);
-		} else {
-			this._doublePaneView.setMsg(msg);
-			if (msg.isUnread) {
-				// msg was cached, then marked unread
-				this._doMarkRead([msg], true);
-			}
+ZmDoublePaneController.prototype._displayMsg =
+function(msg) {
+	if (!msg._loaded) {
+		this._appCtxt.getSearchController().setEnabled(false);
+		this._doGetMsg(msg);
+	} else {
+		this._doublePaneView.setMsg(msg);
+		if (msg.isUnread) {
+			// msg was cached, then marked unread
+			this._doMarkRead([msg], true);
 		}
 	}
 };
@@ -254,68 +245,60 @@ function() {
 // Adds a "Reading Pane" checked menu item to a view menu
 ZmDoublePaneController.prototype._setupReadingPaneMenuItem =
 function(view, menu, checked, itemId) {
-	var appToolbar = this._appCtxt.getCurrentAppToolbar();
-	var id = itemId || ZmController.READING_PANE_VIEW;
-	var menu = menu ? menu : appToolbar.getViewMenu(view);
+	var viewBtn = this._toolbar[view].getButton(ZmOperation.VIEW_MENU);
 	if (!menu) {
-		// conversations not enabled
-		menu = new ZmPopupMenu(appToolbar.getViewButton());
+		menu = viewBtn.getMenu();
+		// this means conversations not enabled
+		if (!menu) {
+			menu = new ZmPopupMenu(viewBtn);
+		}
+		viewBtn.setMenu(menu);
 	} else if (menu.getItemCount() > 0) {
 		new DwtMenuItem(menu, DwtMenuItem.SEPARATOR_STYLE);
 	}
+
+	var id = itemId || ZmController.READING_PANE_VIEW;
 	if (!menu._menuItems[id]) {
 		var mi = menu.createMenuItem(id, {image:"SplitPane", text:ZmMsg.readingPane, style:DwtMenuItem.CHECK_STYLE});
 		mi.setData(ZmOperation.MENUITEM_ID, id);
 		mi.addSelectionListener(this._listeners[ZmOperation.VIEW]);
 		mi.setChecked(checked, true);
 	}
-	appToolbar.setViewMenu(view, menu);
 	return menu;
 };
 
 // we overload _doAction for bug fix #3623
 ZmDoublePaneController.prototype._doAction =
-function(ev, action, extraBodyText) {
+function(params) {
 	// first find out if the current message is in HTML
 	var msgView = this._doublePaneView.getMsgView();
-	if (action != ZmOperation.DRAFT && msgView.hasHtmlBody()) {
-		// then find out if the user's preference is Text
-		if (this._appCtxt.get(ZmSetting.COMPOSE_AS_FORMAT) == ZmSetting.COMPOSE_TEXT) {
-			// then find out if a text part currently exists for the message
-			var msg = this._getMsg();
-			var textPart = msg.getBodyPart(ZmMimeTable.TEXT_PLAIN);
-			if (!textPart) {
-				// if not, get the DOM tree for the IFRAME create for the HTML message
-				var bodyEl = msgView.getHtmlBodyElement();
-				// and run it thru the HTML stripper
-				textPart = bodyEl ? AjxStringUtil.convertHtml2Text(bodyEl) : null;
-				// set the text part back into the message
-				if (textPart)
-					msg.setTextPart(textPart);
+	var msg = this._getMsg();
+	var msgViewMsg = msgView.getMsg();
+	var format = this._appCtxt.get(ZmSetting.COMPOSE_AS_FORMAT);
+
+	// if msg shown in msgview matches current msg and
+	// we're not processing a draft msg and
+	// msgview has rendered an html msg and
+	// the user's compose pref is in text/plain
+	if (msgViewMsg && msgViewMsg.id == msg.id &&
+		params.action != ZmOperation.DRAFT &&
+		msgView.hasHtmlBody() &&
+		format == ZmSetting.COMPOSE_TEXT)
+	{
+		// find out if a text part exists for msg
+		var textPart = msg.getBodyPart(ZmMimeTable.TEXT_PLAIN);
+		if (!textPart) {
+			// if not, get DOM tree from msgview's IFRAME created for the HTML msg
+			var bodyEl = msgView.getHtmlBodyElement();
+			// run it thru the HTML stripper
+			textPart = bodyEl ? AjxStringUtil.convertHtml2Text(bodyEl) : null;
+			// and set the text part back into the message
+			if (textPart) {
+				msg.setTextPart(textPart);
 			}
 		}
 	}
-	// finally, call the base class last
-	ZmMailListController.prototype._doAction.call(this, ev, action, extraBodyText);
-};
-
-/**
- * Sets the content of the view button if conversations are disabled (in which case
- * "Reading Pane" is the sole menu item).
- */
-ZmDoublePaneController.prototype._checkViewMenu =
-function() {
-	if (this._appCtxt.get(ZmSetting.CONVERSATIONS_ENABLED)) { return; }
-	var appToolbar = this._appCtxt.getCurrentAppToolbar();
-	var menu = appToolbar.getViewButton().getMenu();
-	var mi = menu.getItemById(ZmOperation.MENUITEM_ID, ZmController.READING_PANE_VIEW);
-	var icon = mi ? mi.getImage() : null;
-	if (icon) {
-		appToolbar._viewButton.setImage(icon);
-	}
-	if (appToolbar._viewLabel) {
-		appToolbar._viewButton.setText(this._readingPaneOn ? ZmMsg.readingPaneOn : ZmMsg.readingPaneOff);
-	}
+	ZmMailListController.prototype._doAction.apply(this, arguments);
 };
 
 /*
@@ -372,20 +355,32 @@ function(view) {
 	this._doublePaneView._resetSize(sz.x, sz.y);
 };
 
-// Loads and displays the given message. If the message was unread, it gets marked as
-// read, and the conversation may be marked as read as well.
+/**
+ * Loads and displays the given message. If the message was unread, it gets marked as
+ * read, and the conversation may be marked as read as well. Note that we request no
+ * busy overlay during the SOAP call - that's so that a subsequent click within the
+ * double-click threshold can be processed. Otherwise, it's very difficult to generate
+ * a double click because the first click triggers a SOAP request and the ensuing busy
+ * overlay blocks the receipt of the second click.
+ * 
+ * @param msg	[ZmMailMsg]		msg to load
+ */
 ZmDoublePaneController.prototype._doGetMsg =
 function(msg) {
-	if (msg) {
-		var respCallback = new AjxCallback(this, this._handleResponseDoGetMsg, msg);
-		msg.load(this._appCtxt.get(ZmSetting.VIEW_AS_HTML), false, respCallback);
-	} else {
-		DBG.println("XXX: msg not loaded!");
-	}
+	if (!msg) { return; }
+	if (msg.id == this._pendingMsg) { return; }
+
+	msg._loadPending = true;
+	this._pendingMsg = msg.id;
+	var respCallback = new AjxCallback(this, this._handleResponseDoGetMsg, msg);
+	msg.load(this._appCtxt.get(ZmSetting.VIEW_AS_HTML), false, respCallback, null, true);
 };
 
 ZmDoublePaneController.prototype._handleResponseDoGetMsg =
 function(msg) {
+	if (this._pendingMsg && (msg.id != this._pendingMsg)) { return; }
+	msg._loadPending = false;
+	this._pendingMsg = null;
 	this._doublePaneView.setMsg(msg);
 	this._appCtxt.getSearchController().setEnabled(true);
 };
@@ -443,13 +438,13 @@ function(ev) {
 
 		var respCallback = new AjxCallback(this, this._handleResponseListSelectionListener, item);
 		if (item.isDraft) {
-			this._doAction(ev, ZmOperation.DRAFT);
+			this._doAction({ev:ev, action:ZmOperation.DRAFT});
+			return true;
 		} else if (this._appCtxt.get(ZmSetting.OPEN_MAIL_IN_NEW_WIN)) {
 			this._detachListener(null, respCallback);
-		} else if (item.type == ZmItem.CONV) {
-			AjxDispatcher.run("GetConvController").show(this._activeSearch, item, this, respCallback);
-		} else if (item.type == ZmItem.MSG) {
-			AjxDispatcher.run("GetMsgController").show(item, null, respCallback);
+			return true;
+		} else {
+			return false;
 		}
 	} else {
 		if (this._readingPaneOn) {
@@ -464,7 +459,7 @@ function(ev) {
 				this._listSelectionShortcutDelayActionId = AjxTimedAction.scheduleAction(this._listSelectionShortcutDelayAction,
 																						 ZmDoublePaneController.LIST_SELECTION_SHORTCUT_DELAY);
 			} else {
-				this._setSelectedMsg();
+				this._setSelectedItem();
 			}
 	    } else {
 			var msg = currView.getSelection()[0];
@@ -482,7 +477,7 @@ function(item) {
 		this._list.markRead([item], true);
 	}
 	// make sure correct msg is displayed in msg pane when user returns
-	this._setSelectedMsg();
+	this._setSelectedItem();
 };
 
 ZmDoublePaneController.prototype._listSelectionTimedAction =
@@ -490,7 +485,17 @@ function() {
 	if (this._listSelectionShortcutDelayActionId) {
 		AjxTimedAction.cancelAction(this._listSelectionShortcutDelayActionId);
 	}
-	this._setSelectedMsg();
+	this._setSelectedItem();
+};
+
+ZmDoublePaneController.prototype._setSelectedItem =
+function() {
+	var selCnt = this._listView[this._currentView].getSelectionCount();
+	if (selCnt == 1) {
+		var msg = this._getSelectedMsg();
+		if (!msg) { return; }
+		this._displayMsg(msg);
+	}
 };
 
 ZmDoublePaneController.prototype._listActionListener =
@@ -510,7 +515,7 @@ function(ev) {
 	var msg = this._getSelectedMsg();
 	if (!msg) { return; }
 
-	var msgFetchUrl = this._appCtxt.getCsfeMsgFetcher() + "id=" + msg.id;
+	var msgFetchUrl = this._appCtxt.get(ZmSetting.CSFE_MSG_FETCHER_URI) + "&id=" + msg.id;
 	// create a new window w/ generated msg based on msg id
 	window.open(msgFetchUrl, "_blank", "menubar=yes,resizable=yes,scrollbars=yes");
 };

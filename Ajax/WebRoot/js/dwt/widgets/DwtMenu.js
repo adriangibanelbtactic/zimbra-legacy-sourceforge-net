@@ -180,7 +180,7 @@ function(style) {
 	var a = this._children.getArray();
 	for (var i = 0; i < a.length; i++) {
 		var mi = a[i];
-		if ((!style || (mi._style == style)) && mi.getChecked())
+		if ((style == null || (mi._style & style != 0)) && mi.getChecked())
 			return mi;
 	}
 	return null;
@@ -551,13 +551,13 @@ function(item) {
 }
 
 DwtMenu.prototype._menuItemHasCheck = function(item) {
-    if (!this._menuItemsHaveChecks) {
-        var a = this._children.getArray();
-        for (var i = 0; i < a.length; i++) {
-            if (a[i] != item)
-                a[i]._addCheckCell();
-        }
-    }
+	if (!this._menuItemsHaveChecks) {
+		var a = this._children.getArray();
+		for (var i = 0; i < a.length; i++) {
+			if (a[i] != item)
+				a[i]._addCheckCell();
+		}
+	}
     this._menuItemsHaveChecks = true;
 };
 
@@ -581,6 +581,9 @@ function() {
 			a[i]._submenuItemRemoved();
 	}
 	this._menuItemsWithSubmenus--;
+	if (this._menuItemsWithSubmenus == 0) {
+		Dwt.delClass(this.getHtmlElement(), DwtMenu.HAS_SUBMENU);
+	}
 }
 
 DwtMenu.prototype._popdownSubmenus = function() {

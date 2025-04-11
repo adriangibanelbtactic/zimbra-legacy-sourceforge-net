@@ -85,7 +85,10 @@ public class RssFormatter extends Formatter {
                     break;
                 if (curHit >= offset) {
                     if (itItem instanceof CalendarItem) {
-                        addCalendarItem((CalendarItem) itItem, channel, context);                
+                        // Don't return private appointments/tasks if the requester is not the mailbox owner.
+                        CalendarItem calItem = (CalendarItem) itItem;
+                        if (!context.opContext.isDelegatedRequest(context.targetMailbox) || calItem.isPublic())
+                            addCalendarItem(calItem, channel, context);
                     } else if (itItem instanceof Message) {
                         addMessage((Message) itItem, channel, context);
                     } else if (itItem instanceof Document) {
@@ -146,13 +149,13 @@ public class RssFormatter extends Formatter {
         // guid.addAttribute("isPermaLink", "false");
     }
 
-    private void addDocument(Document doc, Element channel, Context context) throws ServiceException {
+    private void addDocument(Document doc, Element channel, Context context) {
         Element item = channel.addElement("item");
         item.addElement("title").setText(doc.getName() + " ver " + doc.getVersion());
         item.addElement("description").setText(doc.getFragment());
-        item.addElement("author").setText(doc.getLastRevision().getCreator());
-        item.addElement("pubDate").setText(mDateFormat.format(new Date(doc.getLastRevision().getRevDate())));
-        item.addElement("link").setText(context.req.getRequestURL().append("?id="+doc.getId()).toString());
+        item.addElement("author").setText(doc.getCreator());
+        item.addElement("pubDate").setText(mDateFormat.format(new Date(doc.getDate())));
+        item.addElement("link").setText(context.req.getRequestURL().append("?id=" + doc.getId()).toString());
     }
     
     public String getType() {

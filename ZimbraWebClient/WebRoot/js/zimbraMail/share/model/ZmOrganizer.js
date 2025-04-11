@@ -506,7 +506,7 @@ function(color) {
  * 
  * @param appCtxt	[ZmAppCtxt]		the app context
  * @param id		[int]			ID of a system organizer
- * @param account	[ZmAccount]*	an account
+ * @param account	[ZmZimbraAccount]*	an account
  */
 ZmOrganizer.getSystemId =
 function(appCtxt, id, account) {
@@ -580,10 +580,7 @@ ZmOrganizer.prototype.getToolTip =
 function(force) {
 	if (this.numTotal == null) { return ""; }
 	if (!this._tooltip || force) {
-		var subs = {itemText:ZmMsg[ZmOrganizer.ITEMS_KEY[this.type]], numTotal:this.numTotal, sizeTotal:this.sizeTotal};
-		if (!subs.itemText || (this.nId == ZmFolder.ID_TRASH)) {
-			subs.itemText = ZmMsg.items;
-		}
+		var subs = {itemText:this._getItemsText(), numTotal:this.numTotal, sizeTotal:this.sizeTotal};
 		this._tooltip = AjxTemplate.expand("zimbraMail.share.templates.App#FolderTooltip", subs);
 	}
 	return this._tooltip;
@@ -754,16 +751,17 @@ function() {
 
 ZmOrganizer.prototype._empty = 
 function(){
-	var allowEmptyOp = ((this.type == ZmOrganizer.FOLDER || this.type == ZmOrganizer.ADDRBOOK) && 
-					  (this.id == ZmFolder.ID_SPAM || this.id == ZmFolder.ID_TRASH));
-	
-	//make sure we're not emptying a system object (unless it's SPAM or THRASH)
-	if(this.isSystem() && !allowEmptyOp) return;
-	
 	DBG.println(AjxDebug.DBG1, "emptying: " + this.name + ", ID: " + this.id);
+	var isEmptyOp = ((this.type == ZmOrganizer.FOLDER || this.type == ZmOrganizer.ADDRBOOK) &&
+					  (this.id == ZmFolder.ID_SPAM || this.id == ZmFolder.ID_TRASH));
+	// make sure we're not emptying a system object (unless it's SPAM or TRASH)
+	if (this.isSystem() && !isEmptyOp) return;
 	var params = {action:"empty"};
 	if (this.id == ZmFolder.ID_TRASH) {
 		params.attrs = {recursive:"true"};
+	}
+	if (this.isRemote()) {
+		params.id = this.getRemoteId();
 	}
 	this._organizerAction(params);
 };
@@ -771,7 +769,8 @@ function(){
 
 ZmOrganizer.prototype.markAllRead =
 function() {
-	this._organizerAction({action: "read", attrs: {l: this.id}});
+	var id = this.isRemote() ? this.getRemoteId() : null;
+	this._organizerAction({action: "read", id: id, attrs: {l: this.id}});
 };
 
 ZmOrganizer.prototype.sync =
@@ -1206,7 +1205,7 @@ function(params) {
 	var soapDoc = AjxSoapDoc.create(cmd + "Request", "urn:zimbraMail");
 	var actionNode = soapDoc.set("action");
 	actionNode.setAttribute("op", params.action);
-	actionNode.setAttribute("id", this.id);
+	actionNode.setAttribute("id", params.id || this.id);
 	for (var attr in params.attrs) {
 		actionNode.setAttribute(attr, params.attrs[attr]);
 	}
@@ -1324,4 +1323,13 @@ function(name, showUnread, noMarkup) {
 		name = ["<del>", name, "</del>"].join("");
 	}
 	return name;
+};
+
+ZmOrganizer.prototype._getItemsText =
+function() {
+	var result = ZmMsg[ZmOrganizer.ITEMS_KEY[this.type]];
+	if (!result || (this.nId == ZmFolder.ID_TRASH)) {
+		result = ZmMsg.items;
+	}
+	return result;
 };

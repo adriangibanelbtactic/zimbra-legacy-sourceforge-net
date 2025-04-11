@@ -1,10 +1,24 @@
 /*
  * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1
  * 
- * Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+ * The contents of this file are subject to the Mozilla Public License
+ * Version 1.1 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ * 
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * The Original Code is: Zimbra Collaboration Suite Server.
+ * 
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
  * All Rights Reserved.
  * 
- * The Original Code is: Zimbra Network
+ * Contributor(s): 
  * 
  * ***** END LICENSE BLOCK *****
  */
@@ -23,17 +37,20 @@ import com.zimbra.cs.account.Identity;
 import com.zimbra.cs.account.Provisioning;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mime.ParsedAddress;
+import com.zimbra.cs.mime.ParsedContact;
 import com.zimbra.cs.mime.ParsedMessage;
+import com.zimbra.cs.offline.OfflineLog;
 import com.zimbra.cs.service.FileUploadServlet;
 import com.zimbra.cs.service.FileUploadServlet.Upload;
+import com.zimbra.cs.service.util.ItemId;
 
 public class OfflineMailSender extends MailSender {
 
     @Override
-    public int sendMimeMessage(OperationContext octxt, Mailbox mbox, boolean saveToSent, MimeMessage mm,
-                               List<InternetAddress> newContacts, List<Upload> uploads,
-                               int origMsgId, String replyType, Identity identity,
-                               boolean ignoreFailedAddresses, boolean replyToSender)
+    public ItemId sendMimeMessage(OperationContext octxt, Mailbox mbox, boolean saveToSent, MimeMessage mm,
+                                  List<InternetAddress> newContacts, List<Upload> uploads,
+                                  int origMsgId, String replyType, Identity identity,
+                                  boolean ignoreFailedAddresses, boolean replyToSender)
     throws ServiceException {
         try {
             // for messages that aren't actually *sent*, just go down the standard save-to-sent path
@@ -50,7 +67,7 @@ public class OfflineMailSender extends MailSender {
 
         try {
             // set the From, Sender, Date, Reply-To, etc. headers
-            updateHeaders(mm, acct, authuser, null /* don't set originating IP in offline client */, replyToSender);
+            updateHeaders(mm, acct, authuser, octxt, null /* don't set originating IP in offline client */, replyToSender);
 
             // save as a draft for now...
             ParsedMessage pm = new ParsedMessage(mm, mm.getSentDate().getTime(), mbox.attachmentsIndexingEnabled());
@@ -67,19 +84,20 @@ public class OfflineMailSender extends MailSender {
                 for (InternetAddress iaddr : newContacts) {
                     ParsedAddress addr = new ParsedAddress(iaddr);
                     try {
-                        mbox.createContact(octxt, addr.getAttributes(), Mailbox.ID_FOLDER_AUTO_CONTACTS, null);
+                        ParsedContact pc = new ParsedContact(addr.getAttributes());
+                        mbox.createContact(octxt, pc, Mailbox.ID_FOLDER_AUTO_CONTACTS, null);
                     } catch (ServiceException e) {
-                        sLog.warn("ignoring error while auto-adding contact", e);
+                        OfflineLog.offline.warn("ignoring error while auto-adding contact", e);
                     }
                 }
             }
 
-            return draftId;
+            return new ItemId(mbox, draftId);
         } catch (MessagingException me) {
-            sLog.warn("exception occurred during SendMsg", me);
+            OfflineLog.offline.warn("exception occurred during SendMsg", me);
             throw ServiceException.FAILURE("MessagingException", me);
         } catch (IOException ioe) {
-            sLog.warn("exception occured during send msg", ioe);
+            OfflineLog.offline.warn("exception occured during send msg", ioe);
             throw ServiceException.FAILURE("IOException", ioe);
         }
     }

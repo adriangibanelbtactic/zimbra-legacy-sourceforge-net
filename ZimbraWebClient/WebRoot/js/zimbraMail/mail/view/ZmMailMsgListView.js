@@ -97,9 +97,9 @@ function(msg, params) {
 ZmMailMsgListView.prototype._getDivClass =
 function(base, item, params) {
 	var style;
-	if (params.isDnDIcon && params.isMatched) {
-		var one = [base, DwtCssStyle.MATCHED, DwtCssStyle.DND].join("-");
-		var two = [base, DwtCssStyle.DND].join("-");
+	if (params.isDragProxy && params.isMatched) {
+		var one = [base, DwtCssStyle.MATCHED, DwtCssStyle.DRAG_PROXY].join("-");
+		var two = [base, DwtCssStyle.DRAG_PROXY].join("-");
 		style = [one, two].join(" ");							// Row-matched-dnd Row-dnd
 	} else if (params.isMatched) {
 		style = [base, DwtCssStyle.MATCHED].join("-");			// Row-matched
@@ -237,7 +237,7 @@ ZmMailMsgListView.prototype._changeListener =
 function(ev) {
 
 	var msg = ev.item;
-	if (ev.handled || !this._handleEventType[msg.type]) { return; }
+	if (ev.handled || !msg || !this._handleEventType[msg.type]) { return; }
 
 	// only update if we're currently visible or we're the view underneath
 	if (this._mode &&

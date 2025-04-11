@@ -38,7 +38,6 @@ import org.dom4j.QName;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.Element;
 import com.zimbra.common.soap.MailConstants;
-import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.Pair;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
@@ -49,6 +48,7 @@ import com.zimbra.cs.mailbox.*;
 import com.zimbra.cs.mailbox.MailItem.TargetConstraint;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
 import com.zimbra.cs.mailbox.calendar.Invite;
+import com.zimbra.cs.mailbox.calendar.ZOrganizer;
 import com.zimbra.cs.mime.Mime;
 import com.zimbra.cs.service.util.ItemId;
 import com.zimbra.cs.service.util.ItemIdFormatter;
@@ -502,39 +502,51 @@ public class ItemActionHelper {
 
                 case MailItem.TYPE_DOCUMENT:
                     Document doc = (Document) item;
-                    byte[] content = ByteUtil.getContent(doc.getRawDocument(), doc.getSize());
-                    String uploadId = zmbx.uploadAttachment(name, content, doc.getContentType(), 4000);
+                    String uploadId = zmbx.uploadAttachment(name, doc.getContent(), doc.getContentType(), 4000);
                     createdId = zmbx.createDocument(folderStr, name, uploadId);
                     mCreatedIds.add(createdId);
                     break;
 
                 case MailItem.TYPE_WIKI:
-                    createdId = zmbx.createWiki(folderStr, name, new String(((WikiItem) item).getMessageContent(), "utf-8"));
+                    createdId = zmbx.createWiki(folderStr, name, new String(((WikiItem) item).getContent(), "utf-8"));
                     mCreatedIds.add(createdId);
                     break;
 
                 case MailItem.TYPE_APPOINTMENT:
                 case MailItem.TYPE_TASK:
+                    // Move the item to remote mailbox using SetAppointmentRequest/SetTaskRequest.
                     QName qname = (item.getType() == MailItem.TYPE_TASK ? MailConstants.SET_TASK_REQUEST : MailConstants.SET_APPOINTMENT_REQUEST);
                     Element request = new Element.XMLElement(qname).addAttribute(MailConstants.A_FOLDER, folderStr).addAttribute(MailConstants.A_FLAGS, flags);
                     CalendarItem cal = (CalendarItem) item;
 
+                    boolean isOrganizer = false;
                     Invite invDefault = cal.getDefaultInviteOrNull();
-                    if (invDefault == null)
-                        throw ServiceException.FAILURE("cannot copy: no default invite for " + MailItem.getNameForType(item) + " " + item.getId(), null);
-                    addCalendarPart(request.addUniqueElement(MailConstants.A_DEFAULT), cal, invDefault, zmbx, target);
+                    if (invDefault != null) {
+                        if (invDefault.isOrganizer())
+                            isOrganizer = true;
+                        addCalendarPart(request.addUniqueElement(MailConstants.A_DEFAULT), cal, invDefault, zmbx, target);
+                    }
 
                     for (Invite inv : cal.getInvites()) {
                         if (inv == null || inv == invDefault)
                             continue;
-                        else if (inv.isCancel())
-                            addCalendarPart(request.addUniqueElement(MailConstants.E_CAL_CANCEL), cal, inv, zmbx, target);
-                        else
-                            addCalendarPart(request.addUniqueElement(MailConstants.E_CAL_EXCEPT), cal, inv, zmbx, target);
+                        if (inv.isOrganizer())
+                            isOrganizer = true;
+                        String elem = inv.isCancel() ? MailConstants.E_CAL_CANCEL : MailConstants.E_CAL_EXCEPT;
+                        addCalendarPart(request.addElement(elem), cal, inv, zmbx, target);
                     }
+
+                    ToXML.encodeCalendarReplies(request, cal, null);
 
                     createdId = zmbx.invoke(request).getAttribute(MailConstants.A_CAL_ID);
                     mCreatedIds.add(createdId);
+
+                    if (isOrganizer) {
+                        // Announce organizer change to attendees.
+                        request = new Element.XMLElement(MailConstants.ANNOUNCE_ORGANIZER_CHANGE);
+                        request.addAttribute(MailConstants.A_ID, createdId);
+                        zmbx.invoke(request);
+                    }
                     break;
 
                 default:
@@ -553,7 +565,8 @@ public class ItemActionHelper {
         }
     }
 
-    private Element addCalendarPart(Element parent, CalendarItem cal, Invite inv, ZMailbox zmbx, Account target) throws ServiceException {
+    private void addCalendarPart(Element parent, CalendarItem cal, Invite inv, ZMailbox zmbx, Account target) throws ServiceException {
+        parent.addAttribute(MailConstants.A_CAL_PARTSTAT, inv.getPartStat());
         Element m = parent.addUniqueElement(MailConstants.E_MSG);
 
         Pair<MimeMessage, Integer> spinfo = cal.getSubpartMessageData(inv.getMailItemId());
@@ -570,18 +583,20 @@ public class ItemActionHelper {
             }
         }
 
-        // explicitly add the invite metadata here
-        ToXML.encodeInvite(m, mIdFormatter, cal, inv);
-
-        // fix up the Organizer if needed
-        for (Element comp : m.getElement(MailConstants.E_INVITE).listElements(MailConstants.E_INVITE_COMPONENT)) {
-            if (comp.getAttributeBool(MailConstants.A_CAL_ISORG, false) && comp.getOptionalElement(MailConstants.E_CAL_ORGANIZER) != null) {
-                comp.getOptionalElement(MailConstants.E_CAL_ORGANIZER).detach();
-                comp.addUniqueElement(MailConstants.E_CAL_ORGANIZER).addAttribute(MailConstants.A_ADDRESS, target.getName())
-                                                                    .addAttribute(MailConstants.A_DISPLAY, target.getAttr(Provisioning.A_displayName));
-            }
+        if (inv.isOrganizer() && inv.hasOrganizer()) {
+            Invite invCopy = inv.newCopy();
+            invCopy.setInviteId(inv.getMailItemId());
+            // Increment SEQUENCE and bring DTSTAMP current because we're changing organizer.
+            invCopy.setSeqNo(inv.getSeqNo() + 1);
+            invCopy.setDtStamp(System.currentTimeMillis());
+            ZOrganizer org = invCopy.getOrganizer();
+            org.setAddress(target.getName());
+            org.setCn(target.getAttr(Provisioning.A_displayName));
+            // Preserve any SENT-BY on organizer by leaving it alone.
+            inv = invCopy;
         }
 
-        return m;
+        // explicitly add the invite metadata here
+        ToXML.encodeInvite(m, mIdFormatter, getOpCtxt(), cal, inv, true);
     }
 }

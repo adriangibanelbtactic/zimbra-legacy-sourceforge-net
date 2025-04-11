@@ -220,7 +220,7 @@ public class LC {
 
     public static final KnownKey calendar_outlook_compatible_allday_events;
 
-    public static final KnownKey nio_imap_enable;
+    public static final KnownKey nio_imap_enabled;
     public static final KnownKey nio_imap_debug_logging;
     public static final KnownKey nio_imap_write_queue_max_size_unauth;
     public static final KnownKey nio_imap_write_queue_max_size;
@@ -250,10 +250,11 @@ public class LC {
     public static final KnownKey zimbra_noop_default_timeout;
     public static final KnownKey zimbra_noop_min_timeout;
     public static final KnownKey zimbra_noop_max_timeout;
-    
+
     public static final KnownKey zimbra_waitset_default_request_timeout;
     public static final KnownKey zimbra_waitset_min_request_timeout;
     public static final KnownKey zimbra_waitset_max_request_timeout;
+    public static final KnownKey zimbra_waitset_max_per_account;
 
     public static final KnownKey zimbra_admin_waitset_default_request_timeout;
     public static final KnownKey zimbra_admin_waitset_min_request_timeout;
@@ -261,6 +262,8 @@ public class LC {
     
     public static final KnownKey zimbra_waitset_initial_sleep_time;
     public static final KnownKey zimbra_waitset_nodata_sleep_time;
+    
+    public static final KnownKey zimbra_csv_mapping_file;
     
     static {
         final String ZM_MYCNF_CAVEAT = "This value is stored here for use by zmmycnf program.  " +
@@ -731,7 +734,7 @@ public class LC {
         postfix_transport_maps.setDoc("postfix_transport_maps");
 
         postfix_version  = new KnownKey("postfix_version");
-        postfix_version.setDefault("2.2.9");
+        postfix_version.setDefault("2.4.3.3");
         postfix_version.setDoc("postfix_version");
 
         postfix_virtual_alias_domains  = new KnownKey("postfix_virtual_alias_domains");
@@ -764,7 +767,7 @@ public class LC {
                     " maximum Java heap size (-Xmx) of the JVM running Mailboxd.");
 
         mailboxd_java_options = new KnownKey("mailboxd_java_options");
-        mailboxd_java_options.setDefault("-client -XX:NewRatio=2 -Djava.awt.headless=true");
+        mailboxd_java_options.setDefault("-client -XX:NewRatio=2 -Djava.awt.headless=true -XX:MaxPermSize=128m");
         mailboxd_java_options.setDoc("JVM options to use when launching Mailboxd.");
 
         mailboxd_java_home = new KnownKey("mailboxd_java_home");
@@ -815,9 +818,9 @@ public class LC {
         calendar_outlook_compatible_allday_events.setDefault("true");
         calendar_outlook_compatible_allday_events.setDoc("Use Outlook-compatible all-day events.  True by default.");
 
-        nio_imap_enable = new KnownKey("nio_imap_enable");
-        nio_imap_enable.setDefault("false");
-        nio_imap_enable.setDoc("Enable NIO based IMAP server.  If false, then the thread per connection IO framework is used.");
+        nio_imap_enabled = new KnownKey("nio_imap_enabled");
+        nio_imap_enabled.setDefault("false");
+        nio_imap_enabled.setDoc("Enable NIO based IMAP server.  If false, then the thread per connection IO framework is used.");
 
         nio_imap_debug_logging = new KnownKey("nio_imap_log_buffers");
         nio_imap_debug_logging.setDefault("false");
@@ -926,6 +929,9 @@ public class LC {
         "Minimum Timeout (seconds) a non-admin WaitSetRequest will block");
         zimbra_waitset_max_request_timeout = new KnownKey("zimbra_waitset_max_request_timeout", "1200",
         "Maximum Timeout (seconds) a non-admin WaitSetRequest will block");
+        zimbra_waitset_max_per_account = new KnownKey("zimbra_waitset_max_per_account", "5",
+        "Maximum number of non-admin WaitSets a single account may have open");
+        
         zimbra_admin_waitset_default_request_timeout = new KnownKey("zimbra_admin_waitset_default_request_timeout", "300",
         "Default Timeout (seconds) an admin WaitSetRequest will block");
         zimbra_admin_waitset_min_request_timeout = new KnownKey("zimbra_admin_waitset_min_request_timeout", "0", 
@@ -937,5 +943,9 @@ public class LC {
             "Initial timeout (seconds) to wait before processing any WaitSetRequest");
         zimbra_waitset_nodata_sleep_time = new KnownKey("zimbra_waitset_nodata_sleep_time", "3",
         "Time (seconds) to sleep handling a WaitSetRequest if there is no data after initial check");
+
+        zimbra_csv_mapping_file = new KnownKey("zimbra_csv_mapping_file");
+        zimbra_csv_mapping_file.setDefault("${zimbra_home}" + FS + "conf" + FS + "zimbra-contact-fields.xml");
+        zimbra_csv_mapping_file.setDoc("Contact field mapping for CSV import and export");
     }
 }

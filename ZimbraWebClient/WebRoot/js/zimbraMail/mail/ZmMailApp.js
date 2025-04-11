@@ -48,11 +48,12 @@ ZmItem.ATT					= ZmEvent.S_ATT;
 ZmOrganizer.FOLDER			= ZmEvent.S_FOLDER;
 
 // App-related constants
-ZmApp.MAIL					= "Mail";
-ZmApp.CLASS[ZmApp.MAIL]		= "ZmMailApp";
-ZmApp.SETTING[ZmApp.MAIL]	= ZmSetting.MAIL_ENABLED;
-ZmApp.LOAD_SORT[ZmApp.MAIL]	= 20;
-ZmApp.QS_ARG[ZmApp.MAIL]	= "mail";
+ZmApp.MAIL							= "Mail";
+ZmApp.CLASS[ZmApp.MAIL]				= "ZmMailApp";
+ZmApp.SETTING[ZmApp.MAIL]			= ZmSetting.MAIL_ENABLED;
+ZmApp.UPSELL_SETTING[ZmApp.MAIL]	= ZmSetting.MAIL_UPSELL_ENABLED;
+ZmApp.LOAD_SORT[ZmApp.MAIL]			= 20;
+ZmApp.QS_ARG[ZmApp.MAIL]			= "mail";
 
 ZmMailApp.prototype = new ZmApp;
 ZmMailApp.prototype.constructor = ZmMailApp;
@@ -74,14 +75,13 @@ function() {
 
 ZmMailApp.prototype._defineAPI =
 function() {
-	AjxDispatcher.registerMethod("Compose", "Mail", new AjxCallback(this, this.compose));
-	AjxDispatcher.registerMethod("GetAttachmentListController", "Mail", new AjxCallback(this, this.getAttachmentListController));
-	AjxDispatcher.registerMethod("GetComposeController", ["Mail", "Zimlet"], new AjxCallback(this, this.getComposeController));
-	AjxDispatcher.registerMethod("GetConvController", "Mail", new AjxCallback(this, this.getConvController));
-	AjxDispatcher.registerMethod("GetConvListController", "Mail", new AjxCallback(this, this.getConvListController));
-	AjxDispatcher.registerMethod("GetMsgController", "Mail", new AjxCallback(this, this.getMsgController));
-	AjxDispatcher.registerMethod("GetTradController", "Mail", new AjxCallback(this, this.getTradController));
-	AjxDispatcher.registerMethod("GetMailListController", "Mail", new AjxCallback(this, this.getMailListController));
+	AjxDispatcher.registerMethod("Compose", ["MailCore", "Mail"], new AjxCallback(this, this.compose));
+	AjxDispatcher.registerMethod("GetComposeController", ["MailCore", "Mail", "Zimlet"], new AjxCallback(this, this.getComposeController));
+	AjxDispatcher.registerMethod("GetConvController", ["MailCore", "Mail"], new AjxCallback(this, this.getConvController));
+	AjxDispatcher.registerMethod("GetConvListController", "MailCore", new AjxCallback(this, this.getConvListController));
+	AjxDispatcher.registerMethod("GetMsgController", ["MailCore", "Mail"], new AjxCallback(this, this.getMsgController));
+	AjxDispatcher.registerMethod("GetTradController", "MailCore", new AjxCallback(this, this.getTradController));
+	AjxDispatcher.registerMethod("GetMailListController", "MailCore", new AjxCallback(this, this.getMailListController));
 };
 
 ZmMailApp.prototype._registerSettings =
@@ -105,6 +105,11 @@ function(settings) {
 	settings.registerSetting("MAIL_FORWARDING_ADDRESS",			{name:"zimbraPrefMailForwardingAddress", type:ZmSetting.T_PREF});
 	settings.registerSetting("MAIL_FORWARDING_ENABLED",			{name:"zimbraFeatureMailForwardingEnabled", type:ZmSetting.T_COS, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
 	settings.registerSetting("MAIL_FROM_ADDRESS",				{name:"zimbraPrefFromAddress", type:ZmSetting.T_PREF, dataType:ZmSetting.D_LIST });
+	settings.registerSetting("MAIL_LIFETIME_INBOX_READ",		{name:"zimbraPrefInboxReadLifetime", type:ZmSetting.T_PREF, defaultValue:"0"}); // dataType: DURATION
+	settings.registerSetting("MAIL_LIFETIME_INBOX_UNREAD",		{name:"zimbraPrefInboxUnreadLifetime", type:ZmSetting.T_PREF, defaultValue:"0"}); // dataType: DURATION
+	settings.registerSetting("MAIL_LIFETIME_JUNK",				{name:"zimbraPrefJunkLifetime", type:ZmSetting.T_PREF, defaultValue:"0"}); // dataType: DURATION
+	settings.registerSetting("MAIL_LIFETIME_SENT",				{name:"zimbraPrefSentLifetime", type:ZmSetting.T_PREF, defaultValue:"0"}); // dataType: DURATION
+	settings.registerSetting("MAIL_LIFETIME_TRASH",				{name:"zimbraPrefTrashLifetime", type:ZmSetting.T_PREF, defaultValue:"0"}); // dataType: DURATION
 	settings.registerSetting("MAIL_LOCAL_DELIVERY_DISABLED",	{name:"zimbraPrefMailLocalDeliveryDisabled", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:false});
 	settings.registerSetting("NEW_WINDOW_COMPOSE",				{name:"zimbraPrefComposeInNewWindow", type:ZmSetting.T_PREF, dataType:ZmSetting.D_BOOLEAN, defaultValue:true});
 	settings.registerSetting("NOTIF_ADDRESS",					{name:"zimbraPrefNewMailNotificationAddress", type:ZmSetting.T_PREF});
@@ -148,6 +153,11 @@ function() {
 				ZmSetting.INITIAL_GROUP_MAIL_BY,
 				ZmSetting.INITIAL_SEARCH,
 				ZmSetting.MAIL_FORWARDING_ADDRESS,
+				ZmSetting.MAIL_LIFETIME_INBOX_READ,
+				ZmSetting.MAIL_LIFETIME_INBOX_UNREAD,
+				ZmSetting.MAIL_LIFETIME_JUNK,
+				ZmSetting.MAIL_LIFETIME_SENT,
+				ZmSetting.MAIL_LIFETIME_TRASH,
 				ZmSetting.MAIL_LOCAL_DELIVERY_DISABLED,
 				ZmSetting.NOTIF_ADDRESS,
 				ZmSetting.NOTIF_ENABLED,
@@ -161,38 +171,32 @@ function() {
 				ZmSetting.VIEW_AS_HTML
 			]
 		},
-		IDENTITIES: {
-			title: ZmMsg.identities,
-			templateId: "zimbraMail.prefs.templates.Pages#Identities",
-			priority: 59,
-			precondition: ZmSetting.IDENTITIES_ENABLED,
-			prevs: [
-				ZmSetting.IDENTITIES
-			],
-			manageDirty: true,
-			createView: function(parent, appCtxt, section, controller) {
-				return controller.getIdentityController().getListView();
-			}
-		},
 		ACCOUNTS: {
-			title: ZmMsg.popAccounts,
+			title: ZmMsg.accounts,
 			templateId: "zimbraMail.prefs.templates.Pages#Accounts",
 			priority: 60,
-			precondition: ZmSetting.POP_ACCOUNTS_ENABLED,
 			prefs: [
 				ZmSetting.ACCOUNTS
 			],
 			manageDirty: true,
 			createView: function(parent, appCtxt, section, controller) {
-				return AjxDispatcher.run("GetPopAccountsController").getListView();
+				return new ZmAccountsPage(parent, appCtxt, section, controller);
 			}
 		},
 		SIGNATURES: {
 			title: ZmMsg.signatures,
 			templateId: "zimbraMail.prefs.templates.Pages#Signatures",
 			priority: 30,
-			precondition: false,
-			prefs: [] // TODO
+			precondition: ZmSetting.SIGNATURES_ENABLED,
+			prefs: [
+				ZmSetting.SIGNATURES,
+				ZmSetting.SIGNATURE_STYLE,
+				ZmSetting.SIGNATURE_ENABLED
+			],
+			manageDirty: true,
+			createView: function(parent, appCtxt, section, controller) {
+				return new ZmSignaturesPage(parent, appCtxt, section, controller);
+			}
 		},
 		FILTERS: {
 			title: ZmMsg.filterRules,
@@ -225,13 +229,6 @@ function() {
 		displayContainer:	ZmPref.TYPE_CHECKBOX
 	});
 
-	ZmPref.registerPref("FORWARD_INCLUDE_ORIG", {
-		displayName:		ZmMsg.forwardInclude,
-		displayContainer:	ZmPref.TYPE_SELECT,
-		displayOptions:		[ZmMsg.includeAsAttach, ZmMsg.includeInBody, ZmMsg.includePrefix],
-		options:			[ZmSetting.INCLUDE_ATTACH, ZmSetting.INCLUDE, ZmSetting.INCLUDE_PREFIX]
-	});
-
 	ZmPref.registerPref("INITIAL_GROUP_MAIL_BY", { 
 		displayName:		ZmMsg.groupMailBy,
 		displayContainer:	ZmPref.TYPE_SELECT,
@@ -248,7 +245,7 @@ function() {
 		displaySeparator:	false,
 		precondition:		ZmSetting.INITIAL_SEARCH_ENABLED
 	});
-	
+
 	ZmPref.registerPref("MAIL_FORWARDING_ADDRESS", {
 		displayName:		ZmMsg.mailForwardingAddress,
 		displayContainer:	ZmPref.TYPE_INPUT,
@@ -256,7 +253,58 @@ function() {
 		errorMessage:       ZmMsg.invalidEmail,
 		precondition:		ZmSetting.MAIL_FORWARDING_ENABLED
 	});
-		
+
+	ZmPref.registerPref("MAIL_LIFETIME_INBOX_READ", {
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		[ ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationDays,
+							  ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationDays,
+							  ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationNever ],
+		options:			[ 30, 45, 60, 90, 120, 0 ],
+		displayFunction:	ZmPref.durationDay2Int,
+		valueFunction:		ZmPref.int2DurationDay
+	});
+
+	ZmPref.registerPref("MAIL_LIFETIME_INBOX_UNREAD", {
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		[ ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationDays,
+							  ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationDays,
+							  ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationNever ],
+		options:			[ 30, 45, 60, 90, 120, 0 ],
+		displayFunction:	ZmPref.durationDay2Int,
+		valueFunction:		ZmPref.int2DurationDay
+	});
+
+	ZmPref.registerPref("MAIL_LIFETIME_JUNK", {
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		ZmMsg.lifetimeDurationDays,
+		options:			[ 1, 3, 7, 30 ],
+		displayFunction:	ZmPref.durationDay2Int,
+		valueFunction:		ZmPref.int2DurationDay
+	});
+
+	ZmPref.registerPref("MAIL_LIFETIME_SENT", {
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		[ ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationDays,
+							  ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationDays,
+							  ZmMsg.lifetimeDurationDays, ZmMsg.lifetimeDurationNever ],
+		options:			[ 30, 45, 60, 90, 120, 0 ],
+		displayFunction:	ZmPref.durationDay2Int,
+		valueFunction:		ZmPref.int2DurationDay
+	});
+
+	ZmPref.registerPref("MAIL_LIFETIME_TRASH", {
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		ZmMsg.lifetimeDurationDays,
+		options:			[ 1, 3, 7, 30 ],
+		displayFunction:	ZmPref.durationDay2Int,
+		valueFunction:		ZmPref.int2DurationDay
+	});
+
 	ZmPref.registerPref("MAIL_LOCAL_DELIVERY_DISABLED", {
 		displayName:		ZmMsg.mailDeliveryDisabled,
 		displayContainer:	ZmPref.TYPE_CHECKBOX,
@@ -284,22 +332,6 @@ function() {
 		displayContainer:	ZmPref.TYPE_CHECKBOX
 	});
 	
-	ZmPref.registerPref("REPLY_INCLUDE_ORIG", {
-		displayName:		ZmMsg.replyInclude,
-		displayContainer:	ZmPref.TYPE_SELECT,
-		displayOptions:		[ZmMsg.dontInclude, ZmMsg.includeAsAttach,
-							 ZmMsg.includeInBody, ZmMsg.includePrefix, ZmMsg.smartInclude],
-		options:			[ZmSetting.INCLUDE_NONE, ZmSetting.INCLUDE_ATTACH,
-							 ZmSetting.INCLUDE, ZmSetting.INCLUDE_PREFIX, ZmSetting.INCLUDE_SMART]
-	});
-	
-	ZmPref.registerPref("REPLY_PREFIX", {
-		displayName:		ZmMsg.prefix,
-		displayContainer:	ZmPref.TYPE_SELECT,
-		displayOptions:		[">", "|"],
-		displaySeparator:	true
-	});
-	
 	ZmPref.registerPref("REPLY_TO_ADDRESS", {
 		displayName:		ZmMsg.replyToAddress,
 		displayContainer:	ZmPref.TYPE_INPUT,
@@ -322,7 +354,10 @@ function() {
 	
 	ZmPref.registerPref("SIGNATURE_STYLE", {
 		displayName:		ZmMsg.signatureStyle,
-		displayContainer:	ZmPref.TYPE_CHECKBOX
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		[ZmMsg.aboveQuotedText, ZmMsg.atBottomOfMessage],
+		options:			[ZmSetting.SIG_OUTLOOK, ZmSetting.SIG_INTERNET]
 	});
 	
 	ZmPref.registerPref("VACATION_MSG", {
@@ -338,6 +373,13 @@ function() {
 		displayName:		ZmMsg.awayMessageEnabled,
 		displayContainer:	ZmPref.TYPE_CHECKBOX,
 		precondition:		ZmSetting.VACATION_MSG_FEATURE_ENABLED
+	});
+
+	ZmPref.registerPref("SIGNATURES", {
+		displayContainer:	ZmPref.TYPE_CUSTOM
+	});
+	ZmPref.registerPref("ACCOUNTS", {
+		displayContainer:	ZmPref.TYPE_CUSTOM
 	});
 };
 
@@ -406,7 +448,7 @@ function() {
 						 searchType:	"conversation",
 						 resultsList:
 		AjxCallback.simpleClosure(function(search) {
-			AjxDispatcher.require("Mail");
+			AjxDispatcher.require("MailCore");
 			return new ZmMailList(ZmItem.CONV, this._appCtxt, search);
 		}, this)
 						});
@@ -422,7 +464,7 @@ function() {
 						 searchType:	"message",
 						 resultsList:
 		AjxCallback.simpleClosure(function(search) {
-			AjxDispatcher.require("Mail");
+			AjxDispatcher.require("MailCore");
 			return new ZmMailList(ZmItem.MSG, this._appCtxt, search);
 		}, this)
 						});
@@ -445,16 +487,14 @@ function() {
 	ZmSearchToolBar.addMenuItem(ZmSearchToolBar.FOR_MAIL_MI,
 								{msgKey:		"searchMail",
 								 tooltipKey:	"searchMail",
-								 icon:			"SearchMail"
+								 icon:			"Message",
+								 shareIcon:		"SharedMailFolder"
 								});
+};
 
-	ZmSearchToolBar.FOR_PAM_MI 	= "FOR PAM";
-	ZmSearchToolBar.addMenuItem(ZmSearchToolBar.FOR_PAM_MI,
-								{msgKey:		"searchPersonalSharedMail",
-								 tooltipKey:	"searchPersonalSharedMail",
-								 icon:			"SearchSharedMail",
-								 setting:		ZmSetting.SHARING_ENABLED
-								});
+ZmMailApp.prototype._setupCurrentAppToolbar =
+function() {
+	ZmCurrentAppToolBar.registerApp(this.getName(), ZmOperation.NEW_FOLDER, ZmOrganizer.FOLDER);
 };
 
 ZmMailApp.prototype._registerApp =
@@ -467,7 +507,7 @@ function() {
 	actionCodes[ZmKeyMap.NEW_MESSAGE_WIN]	= ZmOperation.NEW_MESSAGE_WIN;
 	
 	ZmApp.registerApp(ZmApp.MAIL,
-							 {mainPkg:				"Mail",
+							 {mainPkg:				"MailCore",
 							  nameKey:				"mail",
 							  icon:					"MailApp",
 							  chooserTooltipKey:	"goToMail",
@@ -485,7 +525,8 @@ function() {
 							  qsViews:				["compose", "msg"],
 							  trashViewOp:			ZmOperation.SHOW_ONLY_MAIL,
 							  chooserSort:			10,
-							  defaultSort:			10
+							  defaultSort:			10,
+							  upsellUrl:			ZmSetting.MAIL_UPSELL_URL
 							  });
 };
 
@@ -493,7 +534,7 @@ function() {
 
 ZmMailApp.prototype.startup =
 function(result) {
-	AjxDispatcher.run("GetComposeController").initComposeView(true);
+//	AjxDispatcher.run("GetComposeController").initComposeView(true);
 	this._groupBy = this._appCtxt.get(ZmSetting.GROUP_MAIL_BY);	// set type for initial search
 };
 
@@ -771,6 +812,11 @@ function(refresh) {
 		var account = this._appCtxt.multiAccounts ? this._appCtxt.getMainAccount() : null;
 		this.resetOverview(this.getOverviewId(account));
 	}
+
+	var inbox = this._appCtxt.getById(ZmFolder.ID_INBOX);
+	if (inbox) {
+		this.setNewMailNotice(inbox);
+	}
 };
 
 ZmMailApp.prototype.handleOp =
@@ -800,12 +846,6 @@ function(inNewWindow) {
 // Public methods
 
 ZmMailApp.prototype.launch =
-function(callback, checkQS) {
-	var loadCallback = new AjxCallback(this, this._handleLoadLaunch, [callback, checkQS]);
-	AjxDispatcher.require("Mail", true, loadCallback, null, true);
-};
-
-ZmMailApp.prototype._handleLoadLaunch =
 function(callback, checkQS) {
 	var query;
 	if (checkQS) {
@@ -858,7 +898,7 @@ function() {
 		accordion.addSelectionListener(new AjxListener(this, this._accordionSelectionListener));
 		accordion.addContextListener(new AjxListener(this, this._accordionActionListener));
 		// add an accordion item for each account, and create overview for main account
-		var accts = this._appCtxt.getAccounts();
+		var accts = this._appCtxt.getZimbraAccounts();
 		this._overview = {};
 		for (var i in accts) {
 			var data = {appName:ZmApp.MAIL};
@@ -933,17 +973,27 @@ ZmMailApp.prototype._mailSearch =
 function(query, callback) {
 	query = query || this._appCtxt.get(ZmSetting.INITIAL_SEARCH);
 	var types = new AjxVector();
-	types.add(this.getGroupMailBy());
-
-	var params = {query:query, callback:callback, types:types};
+	var type = this.getGroupMailBy();
+	types.add(type);
+	var params = {query:query, callback:callback, types:types, fetch:Boolean(type == ZmItem.MSG)};
 	params.errorCallback = new AjxCallback(this, this._handleErrorLaunch, params);
 	this._appCtxt.getSearchController().search(params);
+};
+
+ZmMailApp.prototype.getSearchParams =
+function(params) {
+	params = params || {};
+	var mc = this.getMailListController();
+	if (mc._readingPaneOn && (this.getGroupMailBy() == ZmItem.MSG)) {
+		params.fetch = true;
+	}
+	return params;
 };
 
 ZmMailApp.prototype.showSearchResults =
 function(results, callback) {
 	var loadCallback = new AjxCallback(this, this._handleLoadShowSearchResults, [results, callback]);
-	AjxDispatcher.require("Mail", false, loadCallback, null, true);
+	AjxDispatcher.require("MailCore", false, loadCallback, null, true);
 };
 
 ZmMailApp.prototype._handleLoadShowSearchResults =
@@ -956,14 +1006,6 @@ function(results, callback) {
 	if (callback) {
 		callback.run();
 	}
-};
-
-ZmMailApp.prototype.getAttachmentListController =
-function() {
-	if (!this._attachmentListController) {
-		this._attachmentListController = new ZmAttachmentListController(this._appCtxt, this._container, this);
-	}
-	return this._attachmentListController;
 };
 
 ZmMailApp.prototype.getConvListController =
@@ -1033,6 +1075,16 @@ function(params) {
 	AjxDispatcher.run("GetComposeController").doAction(params);
 };
 
+ZmMailApp.prototype.setNewMailNotice =
+function(organizer) {
+	var appChooser = this._appCtxt.getAppController().getAppChooser();
+	if (appChooser) {
+		var mb = appChooser.getButton(ZmApp.MAIL);
+		var icon = (organizer.numUnread > 0) ? "EnvelopeOpen" : "MailApp";
+		mb.setImage(icon);
+	}
+};
+
 /**
 * Convenience method to convert "group mail by" between server (string)
 * and client (int constant) versions.
@@ -1068,4 +1120,3 @@ function(parent) {
 	parent.setMenu(menu);
 	return menu;
 };
- 

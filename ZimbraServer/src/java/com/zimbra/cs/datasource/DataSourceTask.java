@@ -24,91 +24,78 @@
  */
 package com.zimbra.cs.datasource;
 
-import java.util.Date;
-import java.util.concurrent.Callable;
-
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.account.DataSource;
 import com.zimbra.cs.account.Provisioning;
-import com.zimbra.cs.account.Provisioning.AccountBy;
 import com.zimbra.cs.account.Provisioning.DataSourceBy;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.MailboxManager;
+import com.zimbra.cs.mailbox.ScheduledTask;
 
 public class DataSourceTask
-implements Callable<Void> {
-    
-    private int mMailboxId;
-    private String mDataSourceId;
-    private String mAccountId;
-    private Date mLastExecTime;
-    private Date mNextExecTime;
+extends ScheduledTask {
 
-    public DataSourceTask(int mailboxId, String dataSourceId, String accountId, Date lastExecTime, Date nextExecTime) {
-        if (StringUtil.isNullOrEmpty(dataSourceId)) {
-            throw new IllegalArgumentException("dataSourceId cannot be null or empty");
-        }
+    private static final String KEY_DATA_SOURCE_ID = "dsid";
+    
+    /**
+     * Constructor with no arguments required for task instantiation.
+     */
+    public DataSourceTask() {
+    }
+    
+    public DataSourceTask(int mailboxId, String accountId, String dataSourceId, long intervalMillis) {
         if (StringUtil.isNullOrEmpty(accountId)) {
             throw new IllegalArgumentException("accountId cannot be null or empty");
         }
-        if (nextExecTime == null) {
-            throw new IllegalArgumentException("nextExecTime cannot be null");
+        if (StringUtil.isNullOrEmpty(dataSourceId)) {
+            throw new IllegalArgumentException("dataSourceId cannot be null or empty");
         }
-        mMailboxId = mailboxId;
-        mDataSourceId = dataSourceId;
-        mAccountId = accountId;
-        mLastExecTime = lastExecTime;
-        mNextExecTime = nextExecTime;
+        
+        setMailboxId(mailboxId);
+        setProperty(KEY_DATA_SOURCE_ID, dataSourceId);
+        setIntervalMillis(intervalMillis);
     }
 
-    public int getMailboxId() { return mMailboxId; }
-    public String getDataSourceId() { return mDataSourceId; }
-    public String getAccountId() { return mAccountId; }
-    public Date getLastExecTime() { return mLastExecTime; }
-    public Date getNextExecTime() { return mNextExecTime; }
-
+    public String getName() { return getDataSourceId(); }
+    
+    public String getDataSourceId() {
+        return getProperty(KEY_DATA_SOURCE_ID);
+    }
+    
     public Void call()
     throws Exception {
-        ZimbraLog.datasource.debug("Executing scheduled import for Account %s, DataSource %s",
-            mAccountId, mDataSourceId);
+        ZimbraLog.addMboxToContext(getMailboxId());
+        ZimbraLog.datasource.debug("Running scheduled import for DataSource %s",
+            getDataSourceId());
+        Mailbox mbox = null;
         
-        // Look up account and data source
-        Provisioning prov = Provisioning.getInstance();
-        Account account = prov.get(AccountBy.id, mAccountId);
-        if (account == null) {
-            ZimbraLog.datasource.info("Account %s was deleted.  Aborting scheduled import.", mAccountId);
-            DataSourceManager.updateSchedule(mAccountId, mDataSourceId);
-            return null;
-        }
-        DataSource ds = prov.get(account, DataSourceBy.id, mDataSourceId);
-        if (ds == null) {
-            ZimbraLog.datasource.info("DataSource %s was deleted.  Aborting scheduled import.", mDataSourceId);
-            DataSourceManager.updateSchedule(mAccountId, mDataSourceId);
-            return null;
-        }
-        
-        // Initialize logging context
-        ZimbraLog.addAccountNameToContext(account.getName());
-        ZimbraLog.addDataSourceNameToContext(ds.getName());
         try {
-            Mailbox mbox = MailboxManager.getInstance().getMailboxByAccount(account);
-            ZimbraLog.addMboxToContext(mbox.getId());
+            // Look up mailbox, account and data source
+            mbox = MailboxManager.getInstance().getMailboxById(getMailboxId());
+            Account account = mbox.getAccount();
+            Provisioning prov = Provisioning.getInstance();
+            DataSource ds = prov.get(account, DataSourceBy.id, getDataSourceId());
+            if (ds != null) {
+                // Do the work
+                ZimbraLog.addDataSourceNameToContext(ds.getName());
+                DataSourceManager.importData(account, ds);
+            } else {
+                ZimbraLog.datasource.info("DataSource %s was deleted.  Cancelling future tasks.",
+                    getDataSourceId());
+                DataSourceManager.cancelTask(mbox, getDataSourceId());
+            }
         } catch (ServiceException e) {
-            ZimbraLog.datasource.warn("Unable to look up mailbox", e);
+            ZimbraLog.datasource.warn("Scheduled DataSource import failed.  Cancelling future tasks.", e);
+            DataSourceManager.cancelTask(mbox, getDataSourceId());
+            return null;
         }
+        
+        ZimbraLog.removeDataSourceNameFromContext();
+        ZimbraLog.removeMboxFromContext();
 
-        // Do the work and reschedule if necessary
-        DataSourceManager.importDataInternal(account, ds);
-        mLastExecTime = new Date();
-        try {
-            DataSourceManager.updateSchedule(account.getId(), ds.getId());
-        } catch (ServiceException e) {
-            ZimbraLog.datasource.warn("Unable to reschedule DataSourceTask", e);
-        }
-        
         return null;
     }
 }

@@ -25,17 +25,19 @@
 package com.zimbra.cs.service.formatter;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.PrintWriter;
 
 import javax.servlet.http.HttpServletResponse;
 
 import com.zimbra.cs.mailbox.Document;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.WikiItem;
 import com.zimbra.cs.mailbox.MailServiceException.NoSuchItemException;
 import com.zimbra.cs.mime.ParsedDocument;
+import com.zimbra.cs.service.UserServlet;
 import com.zimbra.cs.service.UserServletException;
 import com.zimbra.cs.service.UserServlet.Context;
 import com.zimbra.common.service.ServiceException;
@@ -43,6 +45,7 @@ import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.cs.wiki.PageCache;
 import com.zimbra.cs.wiki.Wiki;
+import com.zimbra.cs.wiki.WikiPage;
 import com.zimbra.cs.wiki.Wiki.WikiContext;
 import com.zimbra.cs.wiki.WikiTemplate;
 
@@ -60,8 +63,13 @@ public class WikiFormatter extends Formatter {
 	
     private void handleDocument(Context context, Document doc) throws IOException, ServiceException {
         context.resp.setContentType(doc.getContentType());
-        InputStream is = doc.getRawDocument();
-        ByteUtil.copy(is, true, context.resp.getOutputStream(), false);
+        String v = context.params.get(UserServlet.QP_VERSION);
+        int version = v != null ? Integer.parseInt(v) : -1;
+
+        MailItem item = (version > 0 ? doc.getMailbox().getItemRevision(context.opContext, doc.getId(), doc.getType(), version) : doc);
+        if (item == null)
+            throw MailServiceException.NO_SUCH_REVISION(doc.getId(), version);
+        ByteUtil.copy(item.getContentStream(), true, context.resp.getOutputStream(), false);
     }
     
     private static PageCache sCache = new PageCache();
@@ -81,15 +89,23 @@ public class WikiFormatter extends Formatter {
     
     private void handleWiki(Context context, WikiItem wiki) throws IOException, ServiceException {
     	WikiContext ctxt = createWikiContext(context);
-    	// fully rendered pages are cached in <code>PageCache</code>.
-    	String key = sCache.generateKey(context.opContext.getAuthenticatedUser(), wiki);
-    	String template = sCache.getPage(key);
-    	if (template == null) {
-    		WikiTemplate wt = getTemplate(context, wiki);
-    		template = wt.getComposedPage(ctxt, wiki, CHROME);
-    		sCache.addPage(key, template);
-    	}
-		printWikiPage(context, template, wiki.getName());
+    	String template = null;
+        String v = context.params.get(UserServlet.QP_VERSION);
+        if (v == null) {
+            // fully rendered pages are cached in <code>PageCache</code>.
+            String key = sCache.generateKey(context.opContext.getAuthenticatedUser(), wiki);
+            template = sCache.getPage(key);
+            if (template == null) {
+                WikiTemplate wt = getTemplate(context, wiki);
+                template = wt.getComposedPage(ctxt, wiki, CHROME);
+                sCache.addPage(key, template);
+            }
+        } else {
+            WikiTemplate wt = getTemplate(context, wiki);
+            template = wt.getComposedPage(ctxt, wiki, CHROME);
+        }
+    	String url = UserServlet.getRestUrl(wiki);
+		printWikiPage(context, template, wiki.getName(),url);
 	}
 
     private static final String TOC = "_Index";
@@ -102,9 +118,18 @@ public class WikiFormatter extends Formatter {
     	return getTemplate(context, folder.getMailbox().getAccountId(), folder.getId(), name);
     }
     private WikiTemplate getTemplate(Context context, String accountId, int folderId, String name) throws ServiceException {
+        int ver = -1;
+        String v = context.params.get(UserServlet.QP_VERSION);
+        if (v != null)
+            ver = Integer.parseInt(v);
+        
     	WikiContext wctxt = createWikiContext(context);
     	Wiki wiki = Wiki.getInstance(wctxt, accountId, Integer.toString(folderId));
-    	return wiki.getTemplate(wctxt, name);
+    	WikiPage page = wiki.lookupWikiRevision(wctxt, name, ver);
+        if (page != null)
+            return page.getTemplate(wctxt);
+        
+        return wiki.getTemplate(wctxt, name);
     }
     private WikiTemplate getDefaultTOC() {
     	return WikiTemplate.getDefaultTOC();
@@ -128,7 +153,8 @@ public class WikiFormatter extends Formatter {
         	template = wt.getComposedPage(ctxt, folder, CHROME);
     		//sCache.addPage(key, template);
     	}
-		printWikiPage(context, template, folder.getName());
+    	String url = UserServlet.getRestUrl(folder);
+		printWikiPage(context, template, folder.getName(),url);
     }
 
 	/**
@@ -136,15 +162,16 @@ public class WikiFormatter extends Formatter {
 	 * This will be revisited when the client relies on the REST
 	 * output for display/browsing functionality.
 	 */
-	private static void printWikiPage(Context context, String s, String title)
+	private static void printWikiPage(Context context, String s, String title, String baseURL)
 	throws IOException {
 		context.resp.setContentType(WikiItem.WIKI_CONTENT_TYPE);
-		javax.servlet.ServletOutputStream out = context.resp.getOutputStream();
+		PrintWriter out = context.resp.getWriter();
 		out.println("<HTML>");
 		out.println("<HEAD>");
 		out.println("<TITLE>");
 		out.println(title);
-		out.println("</TITLE>");
+		out.println("</TITLE>");		 
+		out.println("<base href='"+baseURL+"'/>");
 		/***
 		// NOTE: This doesn't work because this servlet is at a different
 		//       context path than the wiki.css file.

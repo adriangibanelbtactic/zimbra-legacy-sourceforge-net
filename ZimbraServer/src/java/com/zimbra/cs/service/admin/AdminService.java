@@ -72,6 +72,7 @@ public class AdminService implements DocumentService {
         dispatcher.registerHandler(AdminConstants.GET_DOMAIN_INFO_REQUEST, new GetDomainInfo());
         dispatcher.registerHandler(AdminConstants.GET_ALL_DOMAINS_REQUEST, new GetAllDomains());
         dispatcher.registerHandler(AdminConstants.MODIFY_DOMAIN_REQUEST, new ModifyDomain());
+        dispatcher.registerHandler(AdminConstants.MODIFY_DOMAIN_STATUS_REQUEST, new ModifyDomainStatus());
         dispatcher.registerHandler(AdminConstants.DELETE_DOMAIN_REQUEST, new DeleteDomain());
 
         dispatcher.registerHandler(AdminConstants.CREATE_COS_REQUEST, new CreateCos());
@@ -189,6 +190,8 @@ public class AdminService implements DocumentService {
         dispatcher.registerHandler(AdminConstants.GET_ALL_ACCOUNT_LOGGERS_REQUEST, new GetAllAccountLoggers());
         
         dispatcher.registerHandler(AdminConstants.CHECK_DIRECTORY_REQUEST, new CheckDirectory());
+        
+        dispatcher.registerHandler(AdminConstants.FLUSH_CACHE_REQUEST, new FlushCache());
 
     }
 

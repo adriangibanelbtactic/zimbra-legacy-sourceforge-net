@@ -386,9 +386,11 @@ an authToken can be passed instead of account/password/preauth to validate an ex
  
 ----------------------------
 
-<GetInfoRequest>
+<GetInfoRequest [sections="mbox,prefs,attrs,zimlets,props,idents,sigs,dsrcs,children"]>
 </GetInfoRequest>
- 
+
+   <-- by default, GetInfo returns all data; to limit the returned data, specify only the sections you want in the "sections" attr -->
+
 <GetInfoResponse>
    <version>{version}</version>
    <id>{account-id}</id>
@@ -823,7 +825,6 @@ urn:zimbraMail
    mail.SEND_FAILURE
    mail.TOO_MANY_QUERY_TERMS_EXPANDED
    mail.INVALID_COMMIT_ID
-   mail.TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT(ACCOUNT(STR)="accountId", [EXISTING_WAITSET(STR)=WaitSetId]+)
 
 <!-- 
 
@@ -1188,7 +1189,7 @@ DOCUMENT ME
 appointment result:
 -------------------
 
-<appt id="appointment_mail_item_id"
+<appt|task id="appointment_mail_item_id"
        t="{tags}" f="{flags}" s="{size}" d="{date}" cid="{conv-id}" // standard hit data
        l="{location}" score="..." [mbx="UID"] sf="SORT-FIELD-VALUE" // standard hit data    
        [fba="F|B|T|U"]
@@ -1202,7 +1203,8 @@ appointment result:
        invId="default_invite_mail_item_id" compNum="default_invite_component_number"
        isOrg="default_am_i_organizer_flag"
        [priority="num"]
-       [percentComplete="num"]
+       [percentComplete="num"] // only if a <task>
+       [dueDate="num"]         // only if a <task>
        [dur="duration"]  // default duration
    >
      [<or d="friendly name" a="address">] // organizer, if available
@@ -1894,6 +1896,8 @@ Contacts:
   <cn id="{contact-id}" [t="{tags}"] [f="{flags}"] md="{modified-date}" [l="{folder}"] [fileAsStr="{file-as}"]>
     <a n="{attr-name}">{attr-data}</a>+
     <a n="{attr-name}" aid="{upload-id}"/>*
+    <a n="{attr-name}" id="{item-id}" [part="{subpart-name}"]/>*
+    <a n="{attr-name}" part="{part-id}"/>*  <-- only valid when modifying an existing contact -->
   </cn>
 
   {contact-id} = unique contact id
@@ -1901,13 +1905,12 @@ Contacts:
   {modified-date}  = secs since epoch, date contact was modified
   {file-as} = current "file as" string for display/sorting purposes; *cannot* be used to *set* the file-as value
   {attr-name} = name of the attribute (firstName, etc)
-  {attr-id} = for the scope of a response, a unique id assigned to the attr-name. The first contact with
-               a given attr will include the name and id, the second will only include the ref.
 
   {folder-id} = id of folder to create contact in. Un-specified means use the default Contacts folder.
 
   to add attachments, specify an {upload-id} instead of providing {attr-data} on the attr
-
+    alternatively, specify an {item-id} to attach, with an optional {subpart-name} for contacts and messages
+    when editing an existing contact, can omit the {item-id} and we'll assume it's the contact being edited
 
   when contacts are returned, they look like:
 
@@ -2015,7 +2018,7 @@ for op="update", caller can specify any or all of: l="{folder}", t="{tag-list}",
 
 ----------
 
-<ImportContactsRequest ct="{content-type}" [l="{folder-id}"]>
+<ImportContactsRequest ct="{content-type}" [l="{folder-id}"] [csvfmt="{csv-format}"]>
   <content [aid="{attach-upload-id}"]>...</content>
 </ImportContactsRequest>
 
@@ -2027,12 +2030,15 @@ for op="update", caller can specify any or all of: l="{folder}", t="{tag-list}",
 {folder-id} = optional folder id to import contacts into
 
 {attach-upload-id} = attachment id from upload server. If specified, then body of content is ignored.
+{csv-format} = the format of csv being imported.  when it's not defined Zimbra
+               format is assumed.  the supported formats are defined in
+               $ZIMBRA_HOME/conf/zimbra-contact-fields.xml
 
 TODO: should have an option on import that matches email addresses to existing contacts, and updates/ignores them.
 
 ----------
 
-<ExportContactsRequest ct="{content-type}" [l="{folder-id}"]/>
+<ExportContactsRequest ct="{content-type}" [l="{folder-id}"] [csvfmt="{csv-format}"]/>
 
 <ExportContactsResponse>
   <content>...</content>
@@ -2040,6 +2046,8 @@ TODO: should have an option on import that matches email addresses to existing c
 
 {content-type} = currently, the only supported content type is "csv" (comma-separated values)
 {folder-id} = optional folder id to export contacts from
+{csv-format} = optional csv format for exported contacts.  the supported formats
+               are defined in $ZIMBRA_HOME/conf/zimbra-contact-fields.xml
 
 ----------
 

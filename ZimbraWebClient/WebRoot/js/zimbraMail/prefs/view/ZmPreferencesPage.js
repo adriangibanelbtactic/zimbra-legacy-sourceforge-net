@@ -38,7 +38,7 @@
 * @param controller			[ZmPrefController]			prefs controller
 */
 ZmPreferencesPage = function(parent, appCtxt, section, controller) {
-
+	if (arguments.length == 0) return;
 	DwtTabViewPage.call(this, parent, "ZmPreferencesPage");
 	
 	this._appCtxt = appCtxt;
@@ -47,9 +47,14 @@ ZmPreferencesPage = function(parent, appCtxt, section, controller) {
 	this._title = [ZmMsg.zimbraTitle, ZmMsg.options, section.title].join(": ");
 
 	this._dwtObjects = {};
-	this._createHtml();
 	this._rendered = false;
 	this._hasRendered = false;
+
+    // Map of ids to locales.
+    this._localeMap = null;
+
+    // Map whose keys are language ids, and whose values are objects with name and array of locale.
+    this._languageMap = null;
 };
 
 ZmPreferencesPage.prototype = new DwtTabViewPage;
@@ -96,11 +101,12 @@ function() {
 	// expand template
 	DBG.println(AjxDebug.DBG2, "rendering preferences page " + this._section.id);
 	var templateId = this._section.templateId;
-	var data = { id: this._htmlElId };
-	data.isEnabled = AjxCallback.simpleClosure(this._isEnabled, this, data);
-	data.expandField = AjxCallback.simpleClosure(this._expandField, this, data);
-
-	this.getContentHtmlElement().innerHTML = AjxTemplate.expand(templateId, data);
+	var data = {
+		id: this._htmlElId, 
+		isEnabled: AjxCallback.simpleClosure(this._isEnabled, this, data),
+		expandField: AjxCallback.simpleClosure(this._expandField, this, data)
+	};
+	this._createPageHtml(templateId, data);
 	this.setVisible(false); // hide until ready
 
     // create controls for prefs, if present in template
@@ -121,7 +127,7 @@ function() {
 
 		// ignore if doesn't meet pre-condition
         var setup = ZmPref.SETUP[id];
-        if (!this.parent._checkPreCondition(setup)) {
+        if (!this._controller.checkPreCondition(setup)) {
 			continue;
 		}
 
@@ -150,73 +156,93 @@ function() {
 		DBG.println(AjxDebug.DBG3, "adding pref " + pref.name + " / " + value);
 
 		var type = setup ? setup.displayContainer : null;
+		if (type == ZmPref.TYPE_CUSTOM) {
+			var control = this._setupCustom(id, setup, value);
+			control.replaceElement(elem);
+			continue;
+		}
+
 		if (type == ZmPref.TYPE_SELECT) {
 			var select = this._setupSelect(id, setup, value);
 			select.replaceElement(elem);
+			continue;
 		}
-		else if (type == ZmPref.TYPE_RADIO_GROUP) {
+
+		if (type == ZmPref.TYPE_RADIO_GROUP) {
 			var radio = this._setupRadioGroup(id, setup, value);
 			radio.replaceElement(elem);
+			continue;
 		}
-		else if (type == ZmPref.TYPE_CHECKBOX) {
+
+		if (type == ZmPref.TYPE_CHECKBOX) {
 			var checkbox = this._setupCheckbox(id, setup, value);
 			checkbox.replaceElement(elem);
+			continue;
 		}
-		else if (type == ZmPref.TYPE_INPUT) {
+
+		if (type == ZmPref.TYPE_INPUT) {
 			var input = this._setupInput(id, setup, value);
 			input.replaceElement(elem);
+			continue;
 		}
-		else if (type == ZmPref.TYPE_COLOR) {
+
+		if (type == ZmPref.TYPE_COLOR) {
 			var control = this._setupColor(id, setup, value);
 			control.replaceElement(elem);
+			continue;
+		}
+
+        if (type == ZmPref.TYPE_LOCALES) {
+            var control = this._setupLocales(id, setup, value);
+            control.replaceElement(elem);
+            continue;
+        }
+
+		var html = [];
+		var j = 0;
+		var buttonId;
+		var prefId = ZmPref.KEY_ID + id;
+		if (type == ZmPref.TYPE_TEXTAREA) {
+			html[j++] = "<textarea id='";
+			html[j++] = prefId;
+			html[j++] = "' ";
+			html[j++] = "wrap='on' style='width:402' rows='4' cols='60'>";
+			html[j++] = value;
+			html[j++] = "</textarea>";
+        }
+        else if (type == ZmPref.TYPE_PASSWORD ||
+				 type == ZmPref.TYPE_IMPORT ||
+				 type == ZmPref.TYPE_EXPORT) {
+			buttonId = Dwt.getNextId();
+			html[j++] = "<div id='";
+			html[j++] = buttonId;
+			html[j++] = "'></div>";
 		}
 		else {
-			var html = [];
-			var j = 0;
-			var buttonId;
-			var prefId = ZmPref.KEY_ID + id;
-			if (type == ZmPref.TYPE_TEXTAREA) {
-				html[j++] = "<textarea id='";
-				html[j++] = prefId;
-				html[j++] = "' ";
-				html[j++] = "wrap='on' style='width:402' rows='4' cols='60'>";
-				html[j++] = value;
-				html[j++] = "</textarea>";
-			}
-			else if (type == ZmPref.TYPE_PASSWORD ||
-					 type == ZmPref.TYPE_IMPORT ||
-					 type == ZmPref.TYPE_EXPORT) {
-				buttonId = Dwt.getNextId();
-				html[j++] = "<div id='";
-				html[j++] = buttonId;
-				html[j++] = "'></div>";
-			}
-			else {
-				continue;
-			}
+			continue;
+		}
 
-			elem.innerHTML = html.join("");
+		elem.innerHTML = html.join("");
 
-			if (type == ZmPref.TYPE_PASSWORD) {
-				this._addButton(buttonId, setup.displayName, 50, new AjxListener(this, this._changePasswordListener));
+		if (type == ZmPref.TYPE_PASSWORD) {
+			this._addButton(buttonId, setup.displayName, 50, new AjxListener(this, this._changePasswordListener));
+		}
+		else if (type == ZmPref.TYPE_IMPORT) {
+			this._importDiv = document.getElementById(buttonId);
+			if (this._importDiv) {
+				this._addImportWidgets(this._importDiv, id, setup);
 			}
-            else if (type == ZmPref.TYPE_IMPORT) {
-				this._importDiv = document.getElementById(buttonId);
-				if (this._importDiv) {
-					this._addImportWidgets(this._importDiv, id, setup);
-				}
-			}
-			else if (type == ZmPref.TYPE_EXPORT) {
-				var label = setup.displayName || ZmMsg._export;
-				var btn = this._addButton(buttonId, label, 65, new AjxListener(this, this._exportButtonListener));
-				btn.setData(Dwt.KEY_ID, id);
-			}
+		}
+		else if (type == ZmPref.TYPE_EXPORT) {
+			var label = setup.displayName || ZmMsg._export;
+			var btn = this._addButton(buttonId, label, 110, new AjxListener(this, this._exportButtonListener));
+			btn.setData(Dwt.KEY_ID, id);
 		}
 	}
 
 	var elem = document.getElementById([this._htmlElId,"DEFAULTS_RESTORE"].join("_"));
 	if (elem) {
-		var button = this._addButton(this._resetId, ZmMsg.restoreDefaults, 100, new AjxListener(this, this._resetListener));
+		var button = this._addButton(this._resetId, ZmMsg.restoreDefaults, 110, new AjxListener(this, this._resetListener));
 		button.replaceElement(elem);
 	}
 
@@ -224,39 +250,117 @@ function() {
 	this._hasRendered = true;
 };
 
+ZmPreferencesPage.prototype.setFormObject = function(id, object) {
+	this._dwtObjects[id] = object;
+};
+
+ZmPreferencesPage.prototype.getFormObject = function(id) {
+	return this._dwtObjects[id]; 
+};
+
+/**
+ * Returns the value of the preference control.
+ *
+ * @param id		[string]		The preference identifier.
+ * @param setup		[object]		(Optional) The preference descriptor.
+ * @param control	[DwtControl|*]	(Optional) The preference control.
+ */
 ZmPreferencesPage.prototype.getFormValue =
-function(id) {
+function(id, setup, control) {
+	setup = setup || ZmPref.SETUP[id];
 	var value = null;
-	var setup = ZmPref.SETUP[id];
 	var type = setup ? setup.displayContainer : null;
 	if (type == ZmPref.TYPE_SELECT || type == ZmPref.TYPE_CHECKBOX ||
-		type == ZmPref.TYPE_RADIO_GROUP ||
-		type == ZmPref.TYPE_INPUT) {
-		var object = this._dwtObjects[id];
+		type == ZmPref.TYPE_RADIO_GROUP || type == ZmPref.TYPE_COLOR ||
+		type == ZmPref.TYPE_INPUT || type == ZmPref.TYPE_LOCALES) {
+		var object = control || this.getFormObject(id);
 		if (object) {
-			if (id == ZmSetting.COMPOSE_INIT_FONT_COLOR) {
+			if (type == ZmPref.TYPE_COLOR) {
 				value = object.getColor();
 			}
 			else if (type == ZmPref.TYPE_CHECKBOX) {
 				value = object.isSelected();
+				if (setup.options) {
+					value = setup.options[Number(value)];
+				}
 			}
 			else if (type == ZmPref.TYPE_RADIO_GROUP) {
 				value = object.getSelectedValue();
+			}
+			else if (type == ZmPref.TYPE_LOCALES) {
+				value = object._localeId;
 			}
 			else {
 				value = object.getValue();
 			}
 		}
+		// TODO: user valueFunction
 		if (id == ZmSetting.POLLING_INTERVAL) {
 			value = value * 60; // convert minutes to seconds
 		}
-	} else {
+	}
+	else {
 		var prefId = ZmPref.KEY_ID + id;
 		var element = document.getElementById(prefId);
 		if (!element) return null;
 		value = element.value;
 	}
-	return value;
+	return setup && setup.valueFunction ? setup.valueFunction(value) : value;
+};
+
+/**
+ * Returns the value of the preference control.
+ *
+ * @param id		[string]		The preference identifier.
+ * @param value		[ANY]			The preference value.
+ * @param setup		[object]		(Optional) The preference descriptor.
+ * @param control	[DwtControl|*]	(Optional) The preference control.
+ */
+ZmPreferencesPage.prototype.setFormValue = function(id, value, setup, control) {
+	setup = setup || ZmPref.SETUP[id];
+	value = setup && setup.displayFunction ? setup.displayFunction(value) : value;
+	var type = setup ? setup.displayContainer : null;
+	if (type == ZmPref.TYPE_SELECT || type == ZmPref.TYPE_CHECKBOX ||
+		type == ZmPref.TYPE_RADIO_GROUP ||
+		type == ZmPref.TYPE_COLOR) {
+		var object = control || this.getFormObject(id);
+		if (!object) return;
+
+		if (type == ZmPref.TYPE_COLOR) {
+			object.setColor(value);
+		}
+		else if (type == ZmPref.TYPE_CHECKBOX) {
+			object.setSelected(value);
+		}
+		else if (type == ZmPref.TYPE_RADIO_GROUP) {
+			object.setSelectedValue(value);
+		}
+		else {
+			var curValue = object.getValue();
+			if (value != null && (curValue != value))
+				object.setSelectedValue(value);
+		}
+	}
+	else if (type == ZmPref.TYPE_INPUT) {
+		var object = control || this.getFormObject(id);
+		if (!object) return;
+
+		var curValue = object.getValue();
+		if (value != null && (curValue != value))
+			object.setValue(value);
+	}
+	else if (type == ZmPref.TYPE_LOCALES) {
+		if (this._localeMap) {
+			var button = this._dwtObjects[ZmSetting.LOCALE_NAME];
+			this._showLocale(value, button);
+		}
+	}
+	else {
+		var element = control || document.getElementById((ZmPref.KEY_ID + id));
+		if (!element || element.value == value) return;
+
+		element.value = value || "";
+	}
 };
 
 ZmPreferencesPage.prototype.getTitle =
@@ -282,40 +386,16 @@ function(useDefaults) {
 		if (type == ZmPref.TYPE_PASSWORD) { continue; } // ignore non-form elements
 		var pref = settings.getSetting(id);
 		var newValue = this._getPrefValue(id, useDefaults, true);
-		if (type == ZmPref.TYPE_SELECT || type == ZmPref.TYPE_CHECKBOX ||
-			type == ZmPref.TYPE_RADIO_GROUP ||
-			type == ZmPref.TYPE_COLOR) {
-			var obj = this._dwtObjects[id];
-			if (!obj) continue;
-
-			if (id == ZmSetting.COMPOSE_INIT_FONT_COLOR) {
-				obj.setColor(newValue);
-			}
-			else if (type == ZmPref.TYPE_CHECKBOX) {
-				obj.setSelected(newValue);
-			}
-			else if (type == ZmPref.TYPE_RADIO_GROUP) {
-				obj.setSelectedValue(newValue);
-			}
-			else {
-				var curValue = obj.getValue();
-				if (newValue != null && (curValue != newValue))
-					obj.setSelectedValue(newValue);
-			}
-		} else if (type == ZmPref.TYPE_INPUT) {
-			var input = this._dwtObjects[id];
-			if (!input) continue;
-
-			var curValue = this._dwtObjects[id].getValue();
-			if (newValue != null && (curValue != newValue))
-				this._dwtObjects[id].setValue(newValue);
-		} else {
-			var element = document.getElementById((ZmPref.KEY_ID + id));
-			if (!element || element.value == newValue) continue;
-			if (newValue == null) newValue = "";
-			element.value = newValue;
-		}
+		this.setFormValue(id, newValue);
 	}
+};
+
+//
+// Protected methods
+//
+
+ZmPreferencesPage.prototype._createPageHtml = function(templateId, data) {
+	this.getContentHtmlElement().innerHTML = AjxTemplate.expand(templateId, data);
 };
 
 /*
@@ -331,20 +411,13 @@ function(id, useDefault, convert) {
 	var pref = this._appCtxt.getSettings().getSetting(id);
 	var value = useDefault ? pref.getDefaultValue() : pref.getValue();
 	if (convert) {
-		if (id == ZmSetting.SIGNATURE_STYLE) {
-			value = (value == ZmSetting.SIG_INTERNET);
-		} else if (id == ZmSetting.POLLING_INTERVAL) {
+		// TODO: user displayFunction
+		if (id == ZmSetting.POLLING_INTERVAL) {
 			value = parseInt(value / 60); // setting stored as seconds, displayed as minutes
 		}
 	}
 
 	return value;
-};
-
-// Creates a table that we can later add preference rows to, and a placeholder DIV for
-// the reset button.
-ZmPreferencesPage.prototype._createHtml =
-function() {
 };
 
 // Add a button to the preferences page
@@ -358,25 +431,23 @@ function(parentId, text, width, listener) {
 	return button;
 };
 
+ZmPreferencesPage.prototype._setupStatic = function(id, setup, value) {
+	var text = new DwtText(this);
+	this.setFormObject(id, text);
+	text.setText(value);
+	return text;
+};
+
 ZmPreferencesPage.prototype._setupSelect =
 function(id, setup, value) {
-	/*** TODO
-	if (id == ZmSetting.LOCALE_NAME) {
-		var selObj = new ZmLocaleSelect(this, setup.choices);
-		this._dwtObjects[id] = selObj;
-		selObj.setSelectedValue(value);
-		return selObj;
-	}
-	/***/
-
 	if (setup.approximateFunction) {
 		value = setup.approximateFunction(value);
 	}
 
 	var selObj = new DwtSelect(this);
-	this._dwtObjects[id] = selObj;
+	this.setFormObject(id, selObj);
 
-	var options = setup.options || setup.displayOptions || setup.choices;
+	var options = setup.options || setup.displayOptions || setup.choices || [];
 	var isChoices = Boolean(setup.choices);
 	for (var j = 0; j < options.length; j++) {
 		var optValue = isChoices ? options[j].value : options[j];
@@ -395,6 +466,11 @@ function(id, setup, value) {
 
 ZmPreferencesPage.prototype._setupRadioGroup =
 function(id, setup, value) {
+	if (setup.approximateFunction) {
+		value = setup.approximateFunction(value);
+	}
+
+	// TODO: Make DwtRadioButtonGroup an instance of DwtComposite
 	var container = new DwtComposite(this);
 
 	// build horizontally-oriented radio group, if needed
@@ -416,12 +492,13 @@ function(id, setup, value) {
 	// add options
 	var options = setup.options || setup.displayOptions || setup.choices;
 	var isChoices = setup.choices;
+	var isDisplayString = AjxUtil.isString(setup.displayOptions);
 
 	var radioIds = {};
 	var selectedId;
 	for (var i = 0; i < options.length; i++) {
 		var optValue = isChoices ? options[i].value : options[i];
-		var optLabel = isChoices ? options[i].label : setup.displayOptions[i];
+		var optLabel = isChoices ? options[i].label : (isDisplayString ? setup.displayOptions : setup.displayOptions[i]);
 		optLabel = ZmPreferencesPage.__formatLabel(optLabel, optValue);
 		var isSelected = value == optValue; 
 
@@ -430,7 +507,7 @@ function(id, setup, value) {
 		radioBtn.setValue(optValue);
 
 		var radioId = radioBtn.getInputElement().id;
-		radioIds[radioId] = optValue;
+		radioIds[radioId] = radioBtn;
 		if (isSelected) {
 			radioBtn.setSelected(true);
             selectedId = radioId;
@@ -444,7 +521,7 @@ function(id, setup, value) {
 	}
 
 	// store radio button group
-	this._dwtObjects[id] = new DwtRadioButtonGroup(radioIds, selectedId);
+	this.setFormObject(id, new DwtRadioButtonGroup(radioIds, selectedId));
 
 	return container;
 };
@@ -452,7 +529,7 @@ function(id, setup, value) {
 ZmPreferencesPage.prototype._setupCheckbox =
 function(id, setup, value) {
 	var checkbox = new DwtCheckbox(this, null, null, value);
-	this._dwtObjects[id] = checkbox;
+	this.setFormObject(id, checkbox);
 	var cboxLabel = ZmPreferencesPage.__formatLabel(setup.displayName, value);
 	checkbox.setText(cboxLabel);
 	checkbox.setSelected(value);
@@ -462,13 +539,13 @@ function(id, setup, value) {
 ZmPreferencesPage.prototype._setupInput =
 function(id, setup, value) {
 	var input = new DwtInputField({parent: this, type: DwtInputField.STRING, initialValue: value, size: 40});
-	this._dwtObjects[id] = input;
+	this.setFormObject(id, input);
 	return input;
 };
 
 ZmPreferencesPage.prototype._addImportWidgets =
 function(buttonDiv, settingId, setup) {
-	var uri = location.protocol + "//" + document.domain + this._appCtxt.get(ZmSetting.CSFE_UPLOAD_URI);
+	var uri = this._appCtxt.get(ZmSetting.CSFE_UPLOAD_URI);
 
 	var importDivId = this._htmlElId+"_import";
 	var isAddrBookImport = settingId == ZmSetting.IMPORT; 
@@ -487,7 +564,7 @@ function(buttonDiv, settingId, setup) {
 
 	// set up import button
 	var btnLabel = setup ? setup.displayName : ZmMsg._import;
-	this._importBtn = this._addButton(buttonDiv.id, btnLabel, 65, new AjxListener(this, this._importButtonListener));
+	this._importBtn = this._addButton(buttonDiv.id, btnLabel, 100, new AjxListener(this, this._importButtonListener));
 	if (settingId) {
 		this._importBtn.setData(Dwt.KEY_ID, settingId);
 	}
@@ -501,17 +578,122 @@ function(id, setup, value) {
 	picker.setToolTipContent(ZmMsg.fontColor);
 	picker.setColor(value);
 
-	this._dwtObjects[id] = picker;
+	this.setFormObject(id, picker);
 
 	return picker;
+};
+
+ZmPreferencesPage.prototype._setupCustom =
+function(id, setup, value) {
+	alert("TODO: override ZmPreferences#_setupCustom");
+};
+
+ZmPreferencesPage.prototype._setupLocales =
+function(id, setup, value) {
+    this._createLocaleData(setup);
+    var button = new DwtButton(this);
+    button.setSize(60, Dwt.DEFAULT);
+    button.setMenu(new AjxListener(this, this._createLocalesMenu, [setup]));
+    this._showLocale(value, button);
+
+    this._dwtObjects[id] = button;
+
+	return button;
+};
+
+ZmPreferencesPage.prototype._showLocale =
+function(localeId, button) {
+    var locale = this._localeMap[localeId];
+    button.setImage(locale.image);
+    button.setText(locale.name);
+    button._localeId = localeId;
+};
+
+ZmPreferencesPage.prototype._createLocaleData =
+function(setup) {
+    if (this._localeMap) {
+        return;
+    }
+
+    this._localeMap = {};
+    this._languageMap = {};
+    var locales = this._appCtxt.get(ZmSetting.LOCALES);
+    for (var i = 0; i < locales.length; i++) {
+        var locale = locales[i];
+        var id = locale.id;
+        var index = id.indexOf("_");
+        var languageId;
+        if (index == -1) {
+            languageId = id;
+        } else {
+            languageId = id.substr(0, index);
+        }
+        if (!this._languageMap[languageId]) {
+            this._languageMap[languageId] = { name: "", locales: [] };
+        }
+        if (index != -1) {
+            var country = id.substring(id.length - 2);
+            var localeObj = {
+                id: id,
+                name: locale.name,
+                image: "Flag" + country
+            };
+            this._languageMap[languageId].locales.push(localeObj);
+            this._localeMap[id] = localeObj;
+        } else {
+            this._languageMap[languageId].name = locale.name;
+        }
+    }
+};
+
+ZmPreferencesPage.prototype._createLocalesMenu =
+function(setup) {
+
+    var button = this._dwtObjects[ZmSetting.LOCALE_NAME];
+    var result = new DwtMenu(button);
+
+    for (var language in this._languageMap) {
+        var array = this._languageMap[language].locales;
+        if (array && array.length == 1) {
+            this._createLocaleItem(result, array[0]);
+        } else if (array.length > 1) {
+            var menuItem = new DwtMenuItem(result, DwtMenuItem.CASCADE_STYLE);
+            menuItem.setText(this._languageMap[language].name)
+            var subMenu = new DwtMenu(result, DwtMenu.DROPDOWN_STYLE);
+            menuItem.setMenu(subMenu);
+            for (var i = 0, count = array.length; i < count; i++) {
+                this._createLocaleItem(subMenu, array[i]);
+            }
+        }
+    }
+    return result;
+};
+
+ZmPreferencesPage.prototype._createLocaleItem =
+function(parent, obj) {
+    var result = new DwtMenuItem(parent);
+    result.setText(obj.name);
+    result.setImage(obj.image);
+    result._localeId = obj.id;
+    result.addSelectionListener(new AjxListener(this, this._localeSelectionListener));
+    return result;
+};
+
+ZmPreferencesPage.prototype._localeSelectionListener =
+function(ev) {
+    var item = ev.dwtObj;
+    var button = this._dwtObjects[ZmSetting.LOCALE_NAME];
+    this._showLocale(item._localeId, button);
 };
 
 // Popup the change password dialog.
 ZmPreferencesPage.prototype._changePasswordListener =
 function(ev) {
-	var passwordDialog = this._appCtxt.getChangePasswordDialog();
-	passwordDialog.registerCallback(DwtDialog.OK_BUTTON, this._controller._changePassword, this._controller);
-	passwordDialog.popup();
+	var args = "height=465,width=705,location=no,menubar=no,resizable=yes,scrollbars=no,status=yes,toolbar=no";
+	var proto = this._appCtxt.get(ZmSetting.PROTOCOL_MODE);
+	proto = (proto == ZmSetting.PROTO_MIXED) ? ZmSetting.PROTO_HTTPS : ZmSetting.PROTO_HTTP;
+	var url = AjxUtil.formatUrl({protocol:proto, path:"/zimbra/h/changepass", qsReset:true});
+	window.open(url, "_blank", args);
 };
 
 ZmPreferencesPage.prototype._exportButtonListener =
@@ -680,7 +862,7 @@ function(data, prefId1 /* ..., prefIdN */) {
 	for (var i = 1; i < arguments.length; i++) {
 		var prefId = arguments[i];
 		if (!prefId) { return false; }	// setting not created (its app is disabled)
-		if (this.parent._checkPreCondition(ZmPref.SETUP[prefId])) {
+		if (this._controller.checkPreCondition(ZmPref.SETUP[prefId])) {
 			return true;
 		}
 	}
@@ -707,97 +889,4 @@ ZmPreferencesPage.__formatLabel = function(prefLabel, prefValue) {
 	return prefLabel.match(/\{/) ? AjxMessageFormat.format(prefLabel, prefValue) : prefLabel;
 };
 
-/*** TODO ***
-//
-// Classes
-//
 
-ZmLocaleSelect = function(parent) {
-	DwtButton.prototype.call(this, parent);
-
-	// initialize global langs
-	if (!ZmLocaleSelect._initialized) {
-		ZmLocaleSelect._initialized = true;
-
-		// gather hierarchy of locales
-		var regex = new RegExp("_.*", "g");
-		var locales = ZmAppCtxt.getFromShell(DwtShell.getShell(window)).get(ZmSetting.LOCALES);
-		for (var i = 0; i < locales.length; i++) {
-			var locale = locales[i];
-			var id = locale.id;
-			var name = locale.name;
-			var lang = id.replace(regex,"");
-			if (!ZmLocaleSelect._locales[lang]) {
-				ZmLocaleSelect._locales[lang] = [];
-			}
-			ZmLocaleSelect._locales[lang].push(locale);
-			ZmLocaleSelect._localeIdMap[id] = locale;
-			ZmLocaleSelect._localeNameMap[name] = locale;
-		}
-
-		// collapse single item languages and sort
-		var langlist = [];
-		for (var lang in ZmLocaleSelect._locales) {
-			var locales = ZmLocaleSelect._locales[lang];
-			if (locales.length == 1) {
-				ZmLocaleSelect._locales[lang] = locales[0];
-				continue;
-			}
-
-		}
-		ZmLocaleSelect._locales.sort(ZmLocaleSelect.__BY_NAME);
-
-		// TODO
-		// create menu
-//		for (var i = 0; i < langlist.length; i++) {
-//			var countries =
-//		}
-	}
-
-	// set menu
-	this.setMenu(ZmLocaleSelect._menu);
-}
-ZmLocaleSelect.prototype = new DwtButton;
-ZmLocaleSelect.prototype.constructor = ZmLocaleSelect;
-
-ZmLocaleSelect.prototype.toString = function() {
-	return "ZmLocaleSelect";
-};
-
-// Constants
-
-ZmLocaleSelect._locales = [];
-ZmLocaleSelect._localeIdMap = {};
-ZmLocaleSelect._localeNameMap = {};
-
-// Data
-
-ZmLocaleSelect.prototype.TEMPLATE = "DwtSelect";
-
-// Public methods
-
-ZmLocaleSelect.getNameFromId = function(id) {
-	return ZmLocaleSelect._localeIdMap && ZmLocaleSelect._localeIdMap[id].name;
-};
-
-ZmLocaleSelect.getIdFromName = function(name) {
-	return ZmLocaleSelect._localeNameMap && ZmLocaleSelect._localeNameMap[name].id;
-};
-
-ZmLocaleSelect.prototype.setSelectedValue = function(id) {
-	var name = ZmLocaleSelect.getNameFromId(id);
-	this.setText(name);
-};
-
-ZmLocaleSelect.prototype.getSelectedValue = function() {
-	var name = this.getText();
-	return ZmLocaleSelect.getIdFromName(name);
-};
-
-ZmLocaleSelect.__BY_NAME = function(a, b) {
-	var aname = a.name;
-	var bname = b.name;
-	if (aname == bname) return 0;
-	return aname < bname ? -1 : 1;
-};
-/***/

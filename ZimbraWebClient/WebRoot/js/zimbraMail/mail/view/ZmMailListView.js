@@ -59,14 +59,14 @@ function(item) {
 
 ZmMailListView.prototype.set =
 function(list, sortField) {
-	this._folderId = list.search ? list.search.folderId : null;
+	this._folderId = (list && list.search) ? list.search.folderId : null;
 	ZmListView.prototype.set.call(this, list, sortField);
 };
 
 ZmMailListView.prototype.getTitle =
 function() {
-	return this._controller._activeSearch && this._controller._activeSearch.search 
-		? this._controller._activeSearch.search.getTitle() : null;
+	var search = this._controller._activeSearch ? this._controller._activeSearch.search : null;
+	return search ? search.getTitle() : "";
 };
 
 ZmMailListView.prototype.replenish = 
@@ -298,6 +298,11 @@ ZmMailListView.prototype._changeListener =
 function(ev) {
 
 	var item = ev.item;
+	if (!item) {
+		var items = ev.getDetail("items");
+		item = (items && items.length) ? items[0] : null;
+	}
+	if (!item) { return; }
 	if (ev.handled || !this._handleEventType[item.type]) { return; }
 
 	if (ev.event == ZmEvent.E_FLAGS) { // handle "unread" flag

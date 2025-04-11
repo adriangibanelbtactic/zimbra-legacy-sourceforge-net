@@ -59,6 +59,7 @@ ZmApp = function(name, appCtxt, container, parentController) {
 	this._registerItems();
 	this._registerOrganizers();
 	this._setupSearchToolbar();
+	this._setupCurrentAppToolbar();
 	this._registerApp();
 
 	this._opc = this._appCtxt.getOverviewController();
@@ -69,6 +70,7 @@ ZmApp = function(name, appCtxt, container, parentController) {
 // these are needed statically (before we get user settings)
 ZmApp.CLASS					= {};	// constructor for app class
 ZmApp.SETTING				= {};	// ID of setting that's true when app is enabled
+ZmApp.UPSELL_SETTING		= {};	// ID of setting that's true when app upsell is enabled
 ZmApp.LOAD_SORT				= {};	// controls order in which apps are instantiated
 
 // these are set via registerApp() in app constructor
@@ -94,6 +96,7 @@ ZmApp.OPS					= {};	// IDs of operations for the app
 ZmApp.OPS_R					= {};	// map of operation ID to app
 ZmApp.QS_VIEWS				= {};	// list of views to handle in query string
 ZmApp.TRASH_VIEW_OP			= {};	// menu choice for "Show Only ..." in Trash view
+ZmApp.UPSELL_URL			= {};	// URL for content of upsell
 
 // assistants for each app; each valu is a hash where the key is the name of the
 // assistant class and the value is the required package
@@ -138,6 +141,7 @@ function() {
  * @param chooserSort		[int]		controls order of apps in app chooser toolbar
  * @param defaultSort		[int]		controls order in which app is chosen as default start app
  * @param trashViewOp		[constant]	menu choice for "Show Only ..." in Trash view
+ * @param upsellUrl			[string]	URL for content of upsell
  */
 ZmApp.registerApp =
 function(app, params) {
@@ -159,6 +163,7 @@ function(app, params) {
 	if (params.chooserSort)			{ ZmApp.CHOOSER_SORT[app]		= params.chooserSort; }
 	if (params.defaultSort)			{ ZmApp.DEFAULT_SORT[app]		= params.defaultSort; }
 	if (params.trashViewOp)			{ ZmApp.TRASH_VIEW_OP[app]		= params.trashViewOp; }
+	if (params.upsellUrl)			{ ZmApp.UPSELL_URL[app]			= params.upsellUrl; }
 
 	if (params.searchTypes) {
 		ZmApp.SEARCH_TYPES_R[app] = {};
@@ -211,24 +216,25 @@ function() {
 }
 
 // Functions called during construction
-ZmApp.prototype._defineAPI			= function() {};
-ZmApp.prototype._registerSettings	= function() {};
-ZmApp.prototype._registerOperations	= function() {};
-ZmApp.prototype._registerItems		= function() {};
-ZmApp.prototype._registerOrganizers	= function() {};
-ZmApp.prototype._setupSearchToolbar	= function() {};
-ZmApp.prototype._registerApp		= function() {};
-ZmApp.prototype._registerPrefs		= function() {};							// called when Preferences pkg is loaded
+ZmApp.prototype._defineAPI				= function() {};
+ZmApp.prototype._registerSettings		= function() {};
+ZmApp.prototype._registerOperations		= function() {};
+ZmApp.prototype._registerItems			= function() {};
+ZmApp.prototype._registerOrganizers		= function() {};
+ZmApp.prototype._setupSearchToolbar		= function() {};
+ZmApp.prototype._setupCurrentAppToolbar = function() {};
+ZmApp.prototype._registerApp			= function() {};
+ZmApp.prototype._registerPrefs			= function() {};						// called when Preferences pkg is loaded
 
 // Functions that apps can override in response to certain events
-ZmApp.prototype.startup				= function(result) {};						// run during startup
-ZmApp.prototype.preNotify			= function(notify) {};						// run before handling notifications
-ZmApp.prototype.deleteNotify		= function(ids) {};							// run on delete notifications
-ZmApp.prototype.createNotify		= function(list) {};						// run on create notifications
-ZmApp.prototype.modifyNotify		= function(list) {};						// run on modify notifications
-ZmApp.prototype.postNotify			= function(notify) {};						// run after handling notifications
-ZmApp.prototype.refresh				= function(refresh) {};						// run when a <refresh> block arrives
-ZmApp.prototype.handleOp			= function(op, params) {};					// handle an operation
+ZmApp.prototype.startup					= function(result) {};					// run during startup
+ZmApp.prototype.preNotify				= function(notify) {};					// run before handling notifications
+ZmApp.prototype.deleteNotify			= function(ids) {};						// run on delete notifications
+ZmApp.prototype.createNotify			= function(list) {};					// run on create notifications
+ZmApp.prototype.modifyNotify			= function(list) {};					// run on modify notifications
+ZmApp.prototype.postNotify				= function(notify) {};					// run after handling notifications
+ZmApp.prototype.refresh					= function(refresh) {};					// run when a <refresh> block arrives
+ZmApp.prototype.handleOp				= function(op, params) {};				// handle an operation
 
 /**
 * Returns the app's name.
@@ -419,6 +425,17 @@ function(item) {
 };
 
 /**
+ * Provides a mechanism for an app to add to search params.
+ * 
+ * @param params	[hash]*		a hash of arguments for the search (see ZmSearchController::search)
+ */
+ZmApp.prototype.getSearchParams =
+function(params) {
+	params = params || {};
+	return params;
+};
+
+/**
  * Default function to run after an app's main package has been loaded.
  */
 ZmApp.prototype._postLoad =
@@ -455,7 +472,10 @@ function(type) {
 	}
 	this._clearDeferredFolders();
 
-	this._appCtxt.getFolderTree().getPermissions(type);
+	var folderTree = this._appCtxt.getFolderTree();
+	if (folderTree) {
+		folderTree.getPermissions(type);
+	}
 };
 
 ZmApp.prototype._clearDeferredFolders =
@@ -470,6 +490,8 @@ function() {
  * 
  * @param type	[string]	type of notification (delete, create, or modify)
  * @param data	[array]		list of notifications
+ * 
+ * TODO: revisit use of MAIN_PKG, it's hokey
  */
 ZmApp.prototype._deferNotifications =
 function(type, data) {
@@ -521,7 +543,10 @@ function(create, org) {
 	if (parent && (create.view == ZmOrganizer.VIEWS[org][0])) {
 		parent.notifyCreate(create);
 		// XXX: once bug #4434 is fixed, check if this call is still needed
-		this._appCtxt.getFolderTree().getPermissions(org);
+		var folderTree = this._appCtxt.getFolderTree();
+		if (folderTree) {
+			folderTree.getPermissions(org);
+		}
 		create._handled = true;
 	}
 };

@@ -43,6 +43,7 @@ ZmConvController = function(appCtxt, container, mailApp) {
 	this._convDeleteListener = new AjxListener(this, this._deleteListener);
 	this._listeners[ZmOperation.DELETE_MENU] = this._convDeleteListener;
 	this._readingPaneOn = true;	// always start with reading pane on
+	this._msgControllerMode = ZmController.CONV_VIEW;
 }
 
 ZmConvController.prototype = new ZmDoublePaneController;
@@ -140,10 +141,11 @@ function(view) {
 */
 ZmConvController.prototype._standardToolBarOps =
 function() {
-	return [ZmOperation.NEW_MENU, ZmOperation.SEP, ZmOperation.CHECK_MAIL,
-			ZmOperation.TAG_MENU, ZmOperation.SEP,
-			ZmOperation.DELETE_MENU, ZmOperation.MOVE,
-			ZmOperation.PRINT];
+	return [ZmOperation.NEW_MENU,
+			ZmOperation.SEP,
+			ZmOperation.CHECK_MAIL,
+			ZmOperation.SEP,
+			ZmOperation.DELETE_MENU, ZmOperation.MOVE, ZmOperation.PRINT];
 }
 
 ZmConvController.prototype._getViewType =
@@ -226,6 +228,18 @@ function(ev) {
 		}
 	}
 }
+
+// same as for ZmTradController
+ZmConvController.prototype._listSelectionListener =
+function(ev) {
+	var item = ev.item;
+	if (!item) { return; }
+	var handled = ZmDoublePaneController.prototype._listSelectionListener.apply(this, arguments);
+	if (!handled && ev.detail == DwtListView.ITEM_DBL_CLICKED) {
+		var respCallback = new AjxCallback(this, this._handleResponseListSelectionListener, item);
+		AjxDispatcher.run("GetMsgController").show(item, this._msgControllerMode, respCallback);
+	}
+};
 
 // Miscellaneous
 

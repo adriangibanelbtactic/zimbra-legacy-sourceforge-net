@@ -179,7 +179,9 @@ ZmImApp.prototype._registerPrefs = function() {
 
 	ZmPref.registerPref("IM_PREF_INSTANT_NOTIFY",
 			    { displayName      : ZmMsg.imPrefInstantNotify,
-			      displayContainer : ZmPref.TYPE_CHECKBOX });
+			      displayContainer : ZmPref.TYPE_CHECKBOX,
+			      precondition     : ZmSetting.INSTANT_NOTIFY
+			    });
 
 	ZmPref.registerPref("IM_PREF_AUTO_LOGIN",
 			    { displayName      : ZmMsg.imPrefAutoLogin,
@@ -226,7 +228,7 @@ ZmImApp.prototype.handleOp = function(op) {
 ZmImApp.prototype.postNotify =
 function(notify) {
 	if (notify.im) {
-		AjxDispatcher.run("GetRoster").handleNotification(notify.im);
+                AjxDispatcher.run("GetRoster").pushNotification(notify.im);
 	}
 };
 
@@ -274,12 +276,8 @@ ZmImApp.prototype.getRoster =
 function() {
 	if (!this._roster) {
 		this._roster = new ZmRoster(this._appCtxt, this);
-		if (this._initialGwResponse)
-			this._roster._handleRequestGateways(this._initialGwResponse);
-		else
-			this._roster._requestGateways();
 		// enable instant notify?
-		if (this._appCtxt.get(ZmSetting.IM_PREF_INSTANT_NOTIFY))
+		if (this._appCtxt.get(ZmSetting.INSTANT_NOTIFY))
 			this._appCtxt.getAppController().setInstantNotify(true);
 	}
 	return this._roster;
@@ -298,7 +296,6 @@ ZmImApp.prototype.startFlashingIcon = function() {
 
 ZmImApp.prototype.stopFlashingIcon = function() {
 	if (this._appCtxt.get(ZmSetting.IM_PREF_FLASH_ICON)) {
-		this._appCtxt.setStatusIconVisible(ZmStatusView.ICON_IM, false);
 		this._appCtxt.getAppController().getAppChooserButton("IM").stopFlashing();
 	}
 };
@@ -343,28 +340,4 @@ ZmImApp.prototype.getOverviewPanelContent = function() {
 	if (!this._imOvw)
 		this._imOvw = new ZmImOverview(this._appCtxt, this._container);
 	return this._imOvw;
-};
-
-ZmImApp.prototype.startup = function() {
-
-	var sd = AjxSoapDoc.create("IMGatewayListRequest", "urn:zimbraIM");
-	this._appCtxt.getAppController().sendRequest(
-		{ soapDoc   : sd,
-		  asyncMode : true,
-		  callback  : new AjxCallback(this, function(args) {
-			  this._initialGwResponse = args;
-		  })
-		}
-	);
-
-// 	var sd = AjxSoapDoc.create("IMGetRosterRequest", "urn:zimbraIM");
-// 	this._appCtxt.getAppController().sendRequest(
-// 		{ soapDoc   : sd,
-// 		  asyncMode : true,
-// 		  callback  : new AjxCallback(this, function(args) {
-// 			  this._initialRosterResponse = args;
-// 		  })
-// 		}
-// 	);
-
 };

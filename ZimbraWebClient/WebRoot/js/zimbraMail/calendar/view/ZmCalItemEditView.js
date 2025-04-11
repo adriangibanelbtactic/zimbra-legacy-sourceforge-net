@@ -509,7 +509,8 @@ ZmCalItemEditView.prototype._resetFolderSelect =
 function(calItem, mode) {
 	// get all calendar folders
 	var org = ZmOrganizer.ITEM_ORGANIZER[calItem.type];
-	var data = this._appCtxt.getFolderTree().getByType(org);
+	var folderTree = this._appCtxt.getFolderTree();
+	var data = folderTree ? folderTree.getByType(org) : [];
 	var len = data.length;
 
 	// look for calItem's calendar
@@ -563,7 +564,7 @@ function() {
 	this._attachDivId = Dwt.getNextId();
 
 	html[i++] = "<form style='margin:0;padding:0' method='POST' action='";
-	html[i++] = (location.protocol + "//" + document.domain + this._appCtxt.get(ZmSetting.CSFE_UPLOAD_URI));
+	html[i++] = this._appCtxt.get(ZmSetting.CSFE_UPLOAD_URI);
 	html[i++] = "' id='";
 	html[i++] = this._uploadFormId;
 	html[i++] = "' enctype='multipart/form-data'><div id='";
@@ -725,18 +726,16 @@ function(ev) {
 ZmCalItemEditView.prototype._dateCalSelectionListener =
 function(ev) {
 	var parentButton = ev.item.parent.parent;
-
-	// do some error correction... maybe we can optimize this?
-	var sd = AjxDateUtil.simpleParseDateStr(this._startDateField.value);
-	var ed = AjxDateUtil.simpleParseDateStr(this._endDateField.value);
 	var newDate = AjxDateUtil.simpleComputeDateStr(ev.detail);
 
 	// change the start/end date if they mismatch
 	if (parentButton == this._startDateButton) {
+		var ed = AjxDateUtil.simpleParseDateStr(this._endDateField.value);
 		if (ed && (ed.valueOf() < ev.detail.valueOf()))
 			this._endDateField.value = newDate;
 		this._startDateField.value = newDate;
 	} else {
+		var sd = AjxDateUtil.simpleParseDateStr(this._startDateField.value);
 		if (sd && (sd.valueOf() > ev.detail.valueOf()))
 			this._startDateField.value = newDate;
 		this._endDateField.value = newDate;

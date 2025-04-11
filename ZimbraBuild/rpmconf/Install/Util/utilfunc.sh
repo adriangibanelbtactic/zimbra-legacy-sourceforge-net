@@ -819,6 +819,8 @@ restoreCerts() {
     cp $SAVEDIR/keystore /opt/zimbra/tomcat/conf/keystore
   elif [ -f "$SAVEDIR/keystore" -a -d "/opt/zimbra/jetty/etc" ]; then
     cp $SAVEDIR/keystore /opt/zimbra/jetty/etc/keystore
+  else 
+    cp $SAVEDIR/keystore /opt/zimbra/conf/keystore
   fi
   if [ -f "$SAVEDIR/perdition.key" ]; then
     cp $SAVEDIR/perdition.key /opt/zimbra/conf/perdition.key 
@@ -934,7 +936,7 @@ removeExistingInstall() {
       echo ""
       if [ -f "/opt/zimbra/openldap/sbin/slapcat" ]; then
         /opt/zimbra/openldap/sbin/slapcat -f /opt/zimbra/conf/slapd.conf \
-         -l /opt/zimbra/openldap-data/ldap.bak
+         -b '' -l /opt/zimbra/openldap-data/ldap.bak
       fi
     fi
 

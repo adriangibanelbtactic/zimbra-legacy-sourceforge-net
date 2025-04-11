@@ -25,10 +25,10 @@
 
 package com.zimbra.webClient.servlet;
 
+import com.zimbra.common.util.ZimbraLog;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -64,8 +64,6 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.zimbra.common.util.ZimbraLog;
-
 /**
  * TODO: Clean up this code!
  */
@@ -79,6 +77,7 @@ extends HttpServlet {
 	private static final String P_SKIN = "skin";
 	private static final String P_USER_AGENT = "agent";
 	private static final String P_DEBUG = "debug";
+	private static final String P_CLIENT = "client";
 
 	private static final String H_USER_AGENT = "User-Agent";
 
@@ -93,6 +92,9 @@ extends HttpServlet {
 
 	private static final String DEFAULT_SKIN = "sand";
 	private static final String SKIN_MANIFEST = "manifest.xml";
+
+	private static final String CLIENT_STANDARD = "standard";
+	private static final String CLIENT_ADVANCED = "advanced";
 
 	private static final Pattern RE_IFDEF = Pattern.compile("^\\s*#ifdef\\s+(.*?)\\s*$", Pattern.CASE_INSENSITIVE);
 	private static final Pattern RE_IFNDEF = Pattern.compile("^\\s*#ifndef\\s+(.*?)\\s*$", Pattern.CASE_INSENSITIVE);
@@ -143,17 +145,21 @@ extends HttpServlet {
 		String contentType = getContentType(uri);
 		String type = contentType.replaceAll("^.*/", "");
 		boolean debug = req.getParameter(P_DEBUG) != null;
+		String client = req.getParameter(P_CLIENT);
+		if (client == null) {
+			client = CLIENT_ADVANCED;
+		}
 
 		String userAgent = getUserAgent(req);
 		Map<String,String> macros = parseUserAgent(userAgent);
 		String browserType = getMacroNames(macros.keySet());
 		String skin = getSkin(req);
 
-		String cacheId = skin+": "+browserType;
+		String cacheId = client+": "+skin+": "+browserType;
 
 		if (DEBUG) {
 			ZimbraLog.webclient.debug("DEBUG: skin="+skin);
-			ZimbraLog.webclient.debug("DEBUG: skin="+skin);
+			ZimbraLog.webclient.debug("DEBUG: client="+client);
 			ZimbraLog.webclient.debug("DEBUG: browserType="+browserType);
 			ZimbraLog.webclient.debug("DEBUG: uri="+uri);
 			ZimbraLog.webclient.debug("DEBUG: cacheId="+cacheId);
@@ -166,7 +172,7 @@ extends HttpServlet {
 		String buffer = buffers != null && !debug ? buffers.get(uri) : null;
 		if (buffer == null) {
 			if (DEBUG) ZimbraLog.webclient.debug("DEBUG: generating buffer");
-			buffer = generate(req, macros, type);
+			buffer = generate(req, macros, type, client);
             if (!debug) {
 				if (buffers == null) {
 					buffers = new HashMap<String,String>();
@@ -211,7 +217,7 @@ extends HttpServlet {
 
 	private String generate(HttpServletRequest req,
 							Map<String,String> macros,
-							String type)
+							String type, String client)
 	throws IOException {
 		String commentStart = "/* ";
 		String commentContinue = " * ";
@@ -261,7 +267,7 @@ extends HttpServlet {
 		File manifestFile = new File(skinDir, SKIN_MANIFEST);
 
 		// load manifest
-		Manifest manifest = new Manifest(manifestFile, macros);
+		Manifest manifest = new Manifest(manifestFile, macros, client);
 
 		// process input files
 		StringTokenizer tokenizer = new StringTokenizer(filenames, ",");
@@ -327,35 +333,35 @@ extends HttpServlet {
 		while ((line = in.readLine()) != null) {
 			Matcher ifdef = RE_IFDEF.matcher(line);
 			if (ifdef.matches()) {
-				out.print(commentStart);
-				out.print("Info: "+line);
-				out.println(commentEnd);
+//				out.print(commentStart);
+//				out.print("Info: "+line);
+//				out.println(commentEnd);
 				String macroName = ifdef.group(1);
 				ignore.push(ignore.peek() || macros.get(macroName) == null);
 				continue;
 			}
 			Matcher ifndef = RE_IFNDEF.matcher(line);
 			if (ifndef.matches()) {
-				out.print(commentStart);
-				out.print("Info: "+line);
-				out.println(commentEnd);
+//				out.print(commentStart);
+//				out.print("Info: "+line);
+//				out.println(commentEnd);
 				String macroName = ifndef.group(1);
 				ignore.push(ignore.peek() || macros.get(macroName) != null);
 				continue;
 			}
 			Matcher endif = RE_ENDIF.matcher(line);
 			if (endif.matches()) {
-				out.print(commentStart);
-				out.print("Info: "+line);
-				out.println(commentEnd);
+//				out.print(commentStart);
+//				out.print("Info: "+line);
+//				out.println(commentEnd);
 				ignore.pop();
 				continue;
 			}
             Matcher elseMatcher = RE_ELSE.matcher(line);
             if (elseMatcher.matches()) {
-                out.print(commentStart);
-                out.print("Info: "+line);
-                out.println(commentEnd);
+//                out.print(commentStart);
+//                out.print("Info: "+line);
+//                out.println(commentEnd);
                 boolean ignoring = ignore.pop();
                 ignore.push(!ignoring);
                 continue;
@@ -491,8 +497,9 @@ extends HttpServlet {
 		boolean isSafari = false;
 		boolean isGeckoBased = false;
 		boolean isOpera = false;
+        boolean isIPhone = false;
 
-		// parse user agent
+        // parse user agent
 		String agt = agent.toLowerCase();
 		StringTokenizer agtArr = new StringTokenizer(agt, " ;()");
 		int i = 0;
@@ -528,7 +535,9 @@ extends HttpServlet {
 				} else if ((token.indexOf("webtv")) != -1) {
 					isWebTv = true;
 					isNav = false;
-				} else if ((token.indexOf("hotjava")) != -1) {
+                } else if ((token.indexOf("iphone")) != -1) {
+                    isIPhone = true;
+                } else if ((token.indexOf("hotjava")) != -1) {
 					isHotJava = true;
 					isNav = false;
 				} else if ((index = token.indexOf("msie")) != -1) {
@@ -640,7 +649,8 @@ extends HttpServlet {
 
 			define(macros, "WEBTV", isWebTv);
 			define(macros, "HOTJAVA", isHotJava);
-		}
+            define(macros, "IPHONE", isIPhone);
+        }
 
 		return macros;
 
@@ -672,18 +682,24 @@ extends HttpServlet {
 		// Constants
 		//
 
+		private static final String E_SKIN = "skin";
 		private static final String E_SUBSTITUTIONS = "substitutions";
 		private static final String E_CSS = "css";
 		private static final String E_HTML = "html";
         private static final String E_SCRIPT = "script";
         private static final String E_TEMPLATE = "template";
         private static final String E_FILE = "file";
+		private static final String E_COMMON = "common";
+		private static final String E_STANDARD = "standard";
+		private static final String E_ADVANCED = "advanced";
 
 		private static final Pattern RE_TOKEN = Pattern.compile("@.+?@");
 
 		//
 		// Data
 		//
+
+		private String client;
 
 		private List<File> substList = new LinkedList<File>();
 		private List<File> cssList = new LinkedList<File>();
@@ -697,8 +713,9 @@ extends HttpServlet {
 		// Constructors
 		//
 
-		public Manifest(File manifestFile, Map<String,String> macros)
+		public Manifest(File manifestFile, Map<String,String> macros, String client)
 		throws IOException {
+			this.client = client;
 			// load document
 			Document document = null;
 			try {
@@ -731,9 +748,9 @@ extends HttpServlet {
 					CharArrayWriter out = new CharArrayWriter(4096); // 4K
 					SkinResources.preprocess(file, out, macros, null, "#", "#", "#");
 					String content = out.toString();
-					// NOTE: properties files should be ASCII with
+					// NOTE: properties files should be ISO-Latin-1 with
 					//       escaped Unicode char sequences.
-					byte[] bytes = content.getBytes("US-ASCII");
+					byte[] bytes = content.getBytes("ISO-8859-1");
 
 					InputStream in = new ByteArrayInputStream(bytes);
 
@@ -866,9 +883,22 @@ extends HttpServlet {
 		// Private functions
 		//
 
-		private static void getFiles(Document document, String ename,
+		private void getFiles(Document document, String ename,
 									 File baseDir, List<File> list) {
-			Element element = getFirstElementByTagName(document, ename);
+			Element docElement = getFirstChildElement(document, E_SKIN);
+			Element common = getFirstChildElement(docElement, E_COMMON);
+			addFiles(common, ename, baseDir, list);
+			Element root = getFirstChildElement(docElement, this.client);
+			if (root == null && this.client.equals(SkinResources.CLIENT_ADVANCED)) {
+				root = docElement;
+			}
+			addFiles(root, ename, baseDir, list);
+		}
+		private void addFiles(Element root, String ename,
+							  File baseDir, List<File> list) {
+			if (root == null) return;
+
+			Element element = getFirstChildElement(root, ename);
 			if (element != null) {
 				Element fileEl = getFirstChildElement(element, E_FILE);
 				while (fileEl != null) {
@@ -878,11 +908,6 @@ extends HttpServlet {
 					fileEl = getNextSiblingElement(fileEl, E_FILE);
 				}
 			}
-		}
-
-		private static Element getFirstElementByTagName(Document doc, String ename) {
-			NodeList nodes = doc.getElementsByTagName(ename);
-			return (Element)nodes.item(0);
 		}
 
 		private static Element getFirstChildElement(Node parent, String ename) {

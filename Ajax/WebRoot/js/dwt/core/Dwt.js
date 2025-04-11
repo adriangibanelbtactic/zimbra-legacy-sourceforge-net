@@ -735,6 +735,44 @@ function(htmlElement, x, y, containerElement, dontIncScrollTop, point) {
 	return p;
 };
 
+Dwt.getInsets = function(htmlElement) {
+	// return an object with the insets (border + padding size) for each side of the element, eg:
+	//		{ left: 3, top:0, right:3, bottom:0 }
+	// NOTE: assumes values from computedStyle are returned in pixels!!!
+
+	var style = DwtCssStyle.getComputedStyleObject(htmlElement);
+
+	var bl = parseInt(style.borderLeftWidth) 	|| 0;
+	var bt = parseInt(style.borderTopWidth) 	|| 0;
+	var br = parseInt(style.borderRightWidth)	|| 0;
+	var bb = parseInt(style.borderBottomWidth)	|| 0;
+
+	var pl = parseInt(style.paddingLeft) 	|| 0;
+	var pt = parseInt(style.paddingTop) 	|| 0;
+	var pr = parseInt(style.paddingRight)	|| 0;
+	var pb = parseInt(style.paddingBottom)	|| 0;
+
+	return {
+			left 	: bl + pl,
+			top  	: bt + pt,
+			right 	: br + pr,
+			bottom	: bb + pb
+		};
+}
+
+Dwt.insetBounds = function(bounds, insets) {
+	// given a 'bounds' object [from Dwt.getBounds()] 
+	//	and an 'insets' object [from Dwt.getInsets()]
+	//	munge the bounds so it takes the insets into account.
+	// Useful to get the inner dimensions of an element.
+	if (isNaN(bounds.x) || isNaN(insets.left)) return bounds;
+	bounds.x += insets.left;
+	bounds.y += insets.top;
+	bounds.width  -= insets.left + insets.right;
+	bounds.height -= insets.top + insets.bottom;
+	return bounds;
+}
+
 Dwt.setStatus =
 function(text) {
 	window.status = text;
@@ -784,7 +822,17 @@ function(html, isRow) {
 		html = "<table style='table-layout:fixed'>" + html + "</table>";
 	Dwt._div.innerHTML = html;
 
-	return isRow ? Dwt._div.firstChild.rows[0] : Dwt._div.firstChild;
+	if (isRow) {
+		var fragment = document.createDocumentFragment();
+		var rows = Dwt._div.firstChild.rows;
+		for (var i = rows.length - 1; i >= 0; i--) {
+			// NOTE: We always grab the first row because once we append it
+			//       to the fragment, it will be removed from the table.
+			fragment.appendChild(rows[0]);
+		}
+		return fragment.childNodes.length > 1 ? fragment : fragment.firstChild;
+	}
+	return Dwt._div.firstChild;
 };
 
 Dwt.contains =

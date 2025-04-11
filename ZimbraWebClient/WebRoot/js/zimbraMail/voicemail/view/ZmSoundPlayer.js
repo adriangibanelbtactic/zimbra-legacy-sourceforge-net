@@ -1,17 +1,26 @@
 /*
- * Copyright (C) 2006, The Apache Software Foundation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- *      http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: ZPL 1.2
+ *
+ * The contents of this file are subject to the Zimbra Public License
+ * Version 1.2 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ *
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ *
+ * The Original Code is: Zimbra Collaboration Suite Web Client
+ *
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+ * All Rights Reserved.
+ *
+ * Contributor(s):
+ *
+ * ***** END LICENSE BLOCK *****
  */
 
 
@@ -136,7 +145,7 @@ function(compact) {
 			} else {
 				this._getPlugin();
 			}
-			this._playButton.setToggled(!compact);
+			this._playButton.setSelected(!compact);
 		}
 		this._isCompact = compact;
 
@@ -207,8 +216,8 @@ function() {
 ZmSoundPlayer.prototype._setPlayState =
 function(state) {
 	if (this._isScriptable) {
-		this._playButton.setToggled(state == ZmSoundPlayer._PLAYING);
-		this._pauseButton.setToggled(state == ZmSoundPlayer._PAUSED);
+		this._playButton.setSelected(state == ZmSoundPlayer._PLAYING);
+		this._pauseButton.setSelected(state == ZmSoundPlayer._PAUSED);
 	}
 };
 
@@ -239,16 +248,18 @@ function(event) {
 
 ZmSoundPlayer.prototype._pluginChangeListener =
 function(event) {
-	if (this._timeSlider && !this._timeSlider.isDragging()) {
-		if (event.duration != this._timeSlider.getMaximum()) {
-			this._timeSlider.setRange(0, event.duration, event.time);
-		} else if (event.status != DwtSoundPlugin.ERROR) {
-			this._timeSlider.setValue(event.time);
+	if (event.status != DwtSoundPlugin.ERROR) {
+		if (this._timeSlider && !this._timeSlider.isDragging()) {
+			if (event.duration != this._timeSlider.getMaximum()) {
+				this._timeSlider.setRange(0, event.duration, event.time);
+			} else if (event.status != DwtSoundPlugin.ERROR) {
+				this._timeSlider.setValue(event.time);
+			}
+			this._setStatus(event.time);
 		}
-		this._setStatus(event.time);
-	}
-	if (event.finished) {
-		this._setPlayState(ZmSoundPlayer._NONE);
+		if (event.finished) {
+			this._setPlayState(ZmSoundPlayer._NONE);
+		}
 	}
 	this.notifyListeners(DwtEvent.ONCHANGE, event);
 };
@@ -286,14 +297,14 @@ function() {
     	"zimbraMail.voicemail.templates.Voicemail#ZmSoundPlayerNoScript";
 
     element.innerHTML = AjxTemplate.expand(template, id);
-	this._playButton = new DwtButton(this);
+	this._playButton = new DwtBorderlessButton(this);
 	this._playButton.replaceElement(id + "_play");
 	this._playButton.setImage("Play");
 	this._playButton.setToolTipContent(ZmMsg.play);
 	this._playButton.addSelectionListener(new AjxListener(this, this.play));
 
     if (this._isScriptable) {
-		this._pauseButton = new DwtButton(this);
+		this._pauseButton = new DwtBorderlessButton(this);
 		this._pauseButton.replaceElement(id + "_pause");
 		this._pauseButton.setImage("Pause");
 		this._pauseButton.setToolTipContent(ZmMsg.pause);

@@ -28,8 +28,6 @@
  */
 package com.zimbra.cs.mailbox;
 
-import java.util.List;
-
 import com.zimbra.common.service.ServiceException;
 
 import javax.mail.Address;
@@ -53,7 +51,8 @@ public class MailServiceException extends ServiceException {
     public static final String NO_SUCH_CALITEM = "mail.NO_SUCH_CALITEM";
 	public static final String NO_SUCH_APPT    = "mail.NO_SUCH_APPT";
     public static final String NO_SUCH_TASK    = "mail.NO_SUCH_TASK";
-	public static final String NO_SUCH_DOC     = "mail.NO_SUCH_DOC";
+    public static final String NO_SUCH_DOC     = "mail.NO_SUCH_DOC";
+    public static final String NO_SUCH_REVISION = "mail.NO_SUCH_REVISION";
     public static final String NO_SUCH_TAG     = "mail.NO_SUCH_TAG";
     public static final String NO_SUCH_UPLOAD  = "mail.NO_SUCH_UPLOAD";
     public static final String NO_SUCH_WAITSET = "mail.NO_SUCH_WAITSET";
@@ -83,6 +82,7 @@ public class MailServiceException extends ServiceException {
     public static final String TOO_MANY_UPLOADS  = "mail.TOO_MANY_UPLOADS";
     public static final String TOO_MANY_CONTACTS = "mail.TOO_MANY_CONTACTS";
     public static final String UNABLE_TO_IMPORT_CONTACTS = "mail.UNABLE_TO_IMPORT_CONTACTS";
+    public static final String UNABLE_TO_EXPORT_CONTACTS = "mail.UNABLE_TO_EXPORT_CONTACTS";
     public static final String UNABLE_TO_IMPORT_APPOINTMENTS = "mail.UNABLE_TO_IMPORT_APPOINTMENTS";    
     public static final String QUOTA_EXCEEDED  = "mail.QUOTA_EXCEEDED";
 	public static final String QUERY_PARSE_ERROR = "mail.QUERY_PARSE_ERROR";
@@ -99,11 +99,11 @@ public class MailServiceException extends ServiceException {
 
 
     public static final String INVALID_COMMIT_ID = "mail.INVALID_COMMIT_ID";
-    public static final String TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT = "mail.TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT";
-
+    
     public static final String ID              = "id";
     public static final String TOKEN           = "token";
     public static final String ITEM_ID         = "itemId";
+    public static final String REVISION        = "ver";
     public static final String NAME            = "name"; 
     public static final String PATH            = "path"; 
     public static final String UID             = "uid"; 
@@ -228,9 +228,13 @@ public class MailServiceException extends ServiceException {
     public static MailServiceException NO_SUCH_TASK(String uid, String msg) {
         return new MailServiceException("no such task: "+uid+" "+msg, NO_SUCH_TASK, SENDERS_FAULT, new Argument(UID, uid, Argument.Type.STR));
     }
-    
+
     public static MailServiceException NO_SUCH_DOC(int id) {
         return new NoSuchItemException("no such document: " + id, NO_SUCH_DOC, SENDERS_FAULT, new Argument(ITEM_ID, id, Argument.Type.IID));
+    }
+
+    public static MailServiceException NO_SUCH_REVISION(int docId, int version) {
+        return new NoSuchItemException("no such revision: " + docId + '/' + version, NO_SUCH_REVISION, SENDERS_FAULT, new Argument(ITEM_ID, docId, Argument.Type.IID), new Argument(REVISION, version, Argument.Type.NUM));
     }
 
     public static MailServiceException NO_SUCH_TAG(int id) {
@@ -270,6 +274,10 @@ public class MailServiceException extends ServiceException {
     }
 
     public static MailServiceException UNABLE_TO_IMPORT_CONTACTS(String msg, Throwable t) {
+        return new MailServiceException(msg, UNABLE_TO_IMPORT_CONTACTS, false, t);
+    }
+
+    public static MailServiceException UNABLE_TO_EXPORT_CONTACTS(String msg, Throwable t) {
         return new MailServiceException(msg, UNABLE_TO_IMPORT_CONTACTS, false, t);
     }
 
@@ -434,16 +442,6 @@ public class MailServiceException extends ServiceException {
 
     public static MailServiceException INVALID_COMMIT_ID(String commitId) {
         return new MailServiceException("CommitId " + commitId + " not found in redo logs", INVALID_COMMIT_ID, SENDERS_FAULT);
-    }
-
-    public static MailServiceException TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT(String msg, String accountId, List<String> existingWaitSetId) {
-        Argument[] args = new Argument[existingWaitSetId.size()+1];
-        int i = 0;
-        args[i++] = new Argument("ACCOUNT", accountId, Argument.Type.STR); 
-        for (String s : existingWaitSetId) {
-            args[i++] = new Argument("EXISTING_WAITSET", s, Argument.Type.STR);
-        }
-        return new MailServiceException(msg, TOO_MANY_WAITSETS_FOR_THIS_ACCOUNT, SENDERS_FAULT, args); 
     }
     
 }

@@ -31,6 +31,7 @@ AjxPackage.require("ajax.util.AjxTimezone");
 AjxPackage.require("ajax.xslt.AjxXslt");
 AjxPackage.require("ajax.util.AjxSHA1");
 AjxPackage.require("ajax.util.AjxEmailAddress");
+AjxPackage.require("ajax.util.AjxHistoryMgr");
 
 // DWT files
 
@@ -88,6 +89,7 @@ AjxPackage.require("ajax.dwt.widgets.DwtMenu");
 AjxPackage.require("ajax.dwt.widgets.DwtMessageDialog");
 AjxPackage.require("ajax.dwt.widgets.DwtHtmlEditor");
 AjxPackage.require("ajax.dwt.widgets.DwtInputField");
+AjxPackage.require("ajax.dwt.widgets.DwtPasswordField");
 AjxPackage.require("ajax.dwt.widgets.DwtSash");
 AjxPackage.require("ajax.dwt.widgets.DwtToolBar");
 AjxPackage.require("ajax.dwt.widgets.DwtToolTip");

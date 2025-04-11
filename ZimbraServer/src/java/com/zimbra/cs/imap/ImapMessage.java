@@ -34,9 +34,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
@@ -69,6 +71,8 @@ public class ImapMessage implements Comparable<ImapMessage> {
         private static final long serialVersionUID = 4831178352505203361L;
         ImapMessageSet()  { super(new SequenceComparator()); }
     }
+
+    public static final List<Byte> SUPPORTED_TYPES = Arrays.asList(MailItem.TYPE_MESSAGE, MailItem.TYPE_CHAT, MailItem.TYPE_CONTACT);
 
     static final short FLAG_RECENT       = 0x0001;
     static final short FLAG_SPAM         = 0x0002;
@@ -180,6 +184,10 @@ public class ImapMessage implements Comparable<ImapMessage> {
         }
     }
 
+    int getModseq(MailItem item, ImapFlagCache i4cache) {
+        return Math.max(item.getModifiedSequence(), getFlagModseq(i4cache));
+    }
+
     int getFlagModseq(ImapFlagCache i4cache) {
         int modseq = 0;
         long tagBuffer = tags;
@@ -195,8 +203,21 @@ public class ImapMessage implements Comparable<ImapMessage> {
         return modseq;
     }
 
-    int getModseq(MailItem item, ImapFlagCache i4cache) {
-        return Math.max(item.getModifiedSequence(), getFlagModseq(i4cache));
+    void setPermanentFlags(int f, long t, int changeId, ImapFolder parent) {
+        if (t == tags && (f & IMAP_FLAGS) == (flags & IMAP_FLAGS))
+            return;
+        flags = (f & IMAP_FLAGS) | (flags & ~IMAP_FLAGS);
+        tags  = t;
+        if (parent != null)
+            parent.dirtyMessage(this, changeId);
+    }
+
+    void setSessionFlags(short s, ImapFolder parent) {
+        if ((s & MUTABLE_SESSION_FLAGS) == (sflags & MUTABLE_SESSION_FLAGS))
+            return;
+        sflags = (short) ((s & MUTABLE_SESSION_FLAGS) | (sflags & ~MUTABLE_SESSION_FLAGS));
+        if (parent != null)
+            parent.dirtyMessage(this, -1);
     }
 
     private static final String NO_FLAGS = "FLAGS ()";
@@ -237,27 +258,16 @@ public class ImapMessage implements Comparable<ImapMessage> {
             long mask = 1L << i;
             if ((tagBuffer & mask) != 0) {
                 ImapFlag i4flag = i4folder.getTagByMask(mask);
-                if (i4flag != null)
-                    result.append(result.length() == empty ? "" : " ").append(i4flag);
+                if (i4flag != null) {
+                    // make sure there's no naming conflict with a system flag like "Forwarded" or "NonJunk"
+                    ImapFlag other = i4folder.getFlagByName(i4flag.mImapName);
+                    if (other == null || other == i4flag)
+                        result.append(result.length() == empty ? "" : " ").append(i4flag);
+                }
                 tagBuffer &= ~mask;
             }
         }
         return result.append(')').toString();
-    }
-    void setPermanentFlags(int f, long t, int changeId, ImapFolder parent) {
-        if (t == tags && (f & IMAP_FLAGS) == (flags & IMAP_FLAGS))
-            return;
-        flags = (f & IMAP_FLAGS) | (flags & ~IMAP_FLAGS);
-        tags  = t;
-        if (parent != null)
-            parent.dirtyMessage(this, changeId);
-    }
-    void setSessionFlags(short s, ImapFolder parent) {
-        if ((s & MUTABLE_SESSION_FLAGS) == (sflags & MUTABLE_SESSION_FLAGS))
-            return;
-        sflags = (short) ((s & MUTABLE_SESSION_FLAGS) | (sflags & ~MUTABLE_SESSION_FLAGS));
-        if (parent != null)
-            parent.dirtyMessage(this, -1);
     }
 
     private static final byte[] NIL = { 'N', 'I', 'L' };

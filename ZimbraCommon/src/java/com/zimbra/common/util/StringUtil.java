@@ -48,11 +48,7 @@ import java.util.regex.Pattern;
  */
 public class StringUtil {
     
-    /**
-     * A user-friendly equal that handles one or both nulls easily
-     * 
-     * @return
-     */
+    /** A user-friendly equal that handles one or both nulls easily. */
     public static boolean equal(String s1, String s2) {
         if (s1 == null || s2 == null)
             return s1 == s2;
@@ -84,6 +80,9 @@ public class StringUtil {
 		return sb.toString();
 	}
 
+    /** Returns whether the passed-in <code>String</code> is comprised only of
+     *  printable ASCII characters.  The "printable ASCII characters" are CR,
+     *  LF, TAB, and all characters from 0x20 to 0x7E. */
     public static boolean isAsciiString(String str) {
         if (str == null)
             return false;
@@ -93,6 +92,18 @@ public class StringUtil {
                 return false;
         }
         return true;
+    }
+
+    /** Removes all spaces (and any character below 0x20) from the end of the
+     *  passed-in <code>String</code>.  If nothing was trimmed, the original
+     *  <code>String</code> is returned. */
+    public static String trimTrailingSpaces(String raw) {
+        if (raw == null)
+            return null;
+        int length = raw.length();
+        while (length > 0 && raw.charAt(length - 1) <= ' ')
+            length--;
+        return length == raw.length() ? raw : raw.substring(0, length);
     }
 
     /**
@@ -413,22 +424,23 @@ public class StringUtil {
         }
         return buf.toString();
     }
-    
+
     /**
      * Joins an array of objects, separated by a delimiter.
      */
     public static String join(String delimiter, Object[] array) {
-        if (array == null) {
+        return (array == null ? null : join(delimiter, array, 0, array.length));
+    }
+
+    public static String join(String delimiter, Object[] array, final int start, final int count) {
+        if (array == null)
             return null;
-        }
-        
+
         StringBuilder buf = new StringBuilder();
-        
-        for (int i = 0; i < array.length; i++) {
+        for (int i = start, end = start + count; i < end; i++) {
             buf.append(array[i]);
-            if (i + 1 < array.length) {
+            if (i + 1 < end)
                 buf.append(delimiter);
-            }
         }
         return buf.toString();
     }

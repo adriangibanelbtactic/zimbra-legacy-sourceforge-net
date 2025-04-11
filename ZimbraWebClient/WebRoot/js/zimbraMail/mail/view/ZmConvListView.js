@@ -330,6 +330,8 @@ function(conv, msg, offset) {
 		this._expandedItems[cid] = [];
 	}
 	this._expandedItems[cid].push(item);
+
+	this._resetColWidth();
 };
 
 ZmConvListView.prototype._collapse =
@@ -348,6 +350,8 @@ function(item) {
 	} else {
 		this._doCollapse(item);
 	}
+
+	this._resetColWidth();
 };
 
 ZmConvListView.prototype._doCollapse =
@@ -460,6 +464,11 @@ ZmConvListView.prototype._changeListener =
 function(ev) {
 
 	var item = ev.item;
+	if (!item) {
+		var items = ev.getDetail("items");
+		item = (items && items.length) ? items[0] : null;
+	}
+	if (!item) { return; }
 	if (ev.handled || !this._handleEventType[item.type]) { return; }
 
 	var fields = ev.getDetail("fields");
@@ -608,8 +617,10 @@ function(convId) {
 	if (msgRows && msgRows.length) {
 		for (var i = 0; i < msgRows.length; i++) {
 			var row = document.getElementById(msgRows[i]);
-			this._selectedItems.remove(row);
-			this._parentEl.removeChild(row);
+			if (row) {
+				this._selectedItems.remove(row);
+				this._parentEl.removeChild(row);
+			}
 		}
 	}
 };

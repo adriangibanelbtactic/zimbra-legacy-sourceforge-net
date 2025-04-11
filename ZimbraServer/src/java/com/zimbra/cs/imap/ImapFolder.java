@@ -51,6 +51,7 @@ import com.zimbra.cs.mailbox.Contact;
 import com.zimbra.cs.mailbox.Flag;
 import com.zimbra.cs.mailbox.Folder;
 import com.zimbra.cs.mailbox.MailItem;
+import com.zimbra.cs.mailbox.MailServiceException;
 import com.zimbra.cs.mailbox.Mailbox;
 import com.zimbra.cs.mailbox.Message;
 import com.zimbra.cs.mailbox.Mailbox.OperationContext;
@@ -67,7 +68,7 @@ import com.zimbra.common.soap.SoapProtocol;
 import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.ZimbraLog;
 
-class ImapFolder extends Session implements Iterable<ImapMessage> {
+public class ImapFolder extends Session implements Iterable<ImapMessage> {
     public static final long IMAP_IDLE_TIMEOUT_MSEC = 30 * Constants.MILLIS_PER_MINUTE;
 
     static final byte SELECT_READONLY  = 0x01;
@@ -80,10 +81,12 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
 
     private List<ImapMessage>         mSequence;
     private Map<Integer, ImapMessage> mMessageIds;
+    private int                       mRecentCount;
 
     private int mUIDValidityValue;
     private int mInitialUIDNEXT = -1;
     private int mInitialMODSEQ = -1;
+    private int mInitialRECENT = -1;
     private int mInitialFirstUnread = -1;
     private int mLastSize = 0;
 
@@ -115,6 +118,9 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         mWritable = (params & SELECT_READONLY) == 0 && mPath.isWritable();
         if ((params & SELECT_CONDSTORE) != 0)
             mCredentials.activateExtension(ActivatedExtension.CONDSTORE);
+
+        // need mInitialRecent to be set *before* loading the folder so we can determine what's \Recent
+        mInitialRECENT = ((Folder) path.getFolder()).getImapRECENT();
     }
 
     @Override
@@ -124,20 +130,41 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         mMailbox.beginTrackingImap();
 
         OperationContext octxt = mCredentials.getContext().setSession(this);
-        Folder folder = mMailbox.getFolderByPath(octxt, mPath.asZimbraPath());
+        Folder folder = (Folder) mPath.getFolder();
         mFolderId = folder.getId();
-
-        mUIDValidityValue = getUIDValidity(folder);
-        mInitialUIDNEXT = folder.getImapUIDNEXT();
-        mInitialMODSEQ = folder.getImapMODSEQ();
 
         // load the folder's contents
         loadFolder(octxt, folder);
+
+        // need these to be set *after* loading the folder because UID renumbering affects them
+        mUIDValidityValue = getUIDValidity(folder);
+        mInitialUIDNEXT = folder.getImapUIDNEXT();
+        mInitialMODSEQ = folder.getImapMODSEQ();
 
         // initialize the flag and tag caches
         mFlags = ImapFlagCache.getSystemFlags(mMailbox);
         mTags = new ImapFlagCache(mMailbox, octxt);
         return this;
+    }
+
+    @Override
+    public Session unregister() {
+        snapshotRECENT();
+        return super.unregister();
+    }
+
+    /** If the folder is selected READ-WRITE, updates its highwater RECENT
+     *  change ID so that subsequent IMAP sessions do not see the loaded
+     *  messages as \Recent. */
+    private void snapshotRECENT() {
+        try {
+            if (isWritable())
+                mMailbox.recordImapSession(mFolderId);
+        } catch (MailServiceException.NoSuchItemException nsie) {
+            // don't log if the session expires because the folder was deleted out from under it
+        } catch (Throwable t) {
+            ZimbraLog.session.warn("exception recording unloaded session's RECENT limit", t);
+        }
     }
 
     private void loadFolder(OperationContext octxt, Folder folder) throws ServiceException {
@@ -181,7 +208,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
             mSequence = new ArrayList<ImapMessage>();
             StringBuilder added = debug ? new StringBuilder("  ** added: ") : null;
             for (ImapMessage i4msg : i4list) {
-                cache(i4msg);
+                cache(i4msg, i4msg.imapUid > mInitialRECENT);
                 if (mInitialFirstUnread == -1 && (i4msg.flags & Flag.BITMASK_UNREAD) != 0)
                     mInitialFirstUnread = i4msg.sequence;
                 if (debug)  added.append(' ').append(i4msg.msgId);
@@ -236,30 +263,40 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         if (isVirtual())
             throw ServiceException.INVALID_REQUEST("cannot reopen virtual folders", null);
 
-        OperationContext octxt = mCredentials.getContext().setSession(this);
-        Folder folder = mMailbox.getFolderByPath(octxt, mPath.asZimbraPath());
+        Folder folder = (Folder) mPath.getFolder();
         if (!mPath.isSelectable())
             throw ServiceException.PERM_DENIED("cannot select folder: " + mPath);
         if (folder.getId() != mFolderId)
             throw ServiceException.INVALID_REQUEST("folder IDs do not match (was " + mFolderId + ", is " + folder.getId() + ')', null);
 
-        mWritable = (params & SELECT_READONLY) == 0 && mPath.isWritable();
-        if ((params & SELECT_CONDSTORE) != 0)
-            mCredentials.activateExtension(ActivatedExtension.CONDSTORE);
+        snapshotRECENT();
 
         mUIDValidityValue = getUIDValidity(folder);
         mInitialUIDNEXT = folder.getImapUIDNEXT();
-        mInitialMODSEQ  = folder.getImapMODSEQ();
+        mInitialMODSEQ = folder.getImapMODSEQ();
+        mInitialRECENT = folder.getImapRECENT();
+
+        // in order to avoid screwing up the RECENT value, this must come after snapshotRECENT() and folder.getImapRECENT()
+        mWritable = (params & SELECT_READONLY) == 0 && mPath.isWritable();
+        if ((params & SELECT_CONDSTORE) != 0)
+            mCredentials.activateExtension(ActivatedExtension.CONDSTORE);
 
         mNotificationsSuspended = false;
         mDirtyMessages.clear();
         collapseExpunged();
 
+        mRecentCount = 0;
         mInitialFirstUnread = -1;
         for (ImapMessage i4msg : mSequence) {
             if (mInitialFirstUnread == -1 && (i4msg.flags & Flag.BITMASK_UNREAD) != 0)
                 mInitialFirstUnread = i4msg.sequence;
             i4msg.setAdded(false);
+            // reset the \Recent flag appropriately
+            if (i4msg.imapUid > mInitialRECENT) {
+                i4msg.sflags |= ImapMessage.FLAG_RECENT;  mRecentCount++;
+            } else {
+                i4msg.sflags &= ~ImapMessage.FLAG_RECENT;
+            }
         }
 
         mLastSize = mSequence.size();
@@ -302,7 +339,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     }
 
     /** Returns the selected folder's zimbra ID. */
-    int getId() {
+    public int getId() {
         return mFolderId;
     }
 
@@ -311,6 +348,13 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
      *  included in this count. */
     int getSize() {
         return mSequence == null ? 0 : mSequence.size();
+    }
+
+    /** Returns the number of messages in the folder that are considered
+     *  \Recent.  These are messages that have been deposited in the folder
+     *  since the last IMAP session that opened the folder. */
+    int getRecentCount() {
+        return isVirtual() ? 0 : mRecentCount;
     }
 
     /** Returns the search folder query associated with this IMAP folder, or
@@ -365,7 +409,7 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     }
 
     /** Returns whether this folder was opened for write. */
-    boolean isWritable() {
+    public boolean isWritable() {
         return mWritable;
     }
 
@@ -384,10 +428,11 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
 
 
     ImapPath getPath()              { return mPath; }
-    String getQuotedPath()          { return '"' + mPath.asZimbraPath() + '"'; }
     void updatePath(Folder folder)  { mPath = new ImapPath(null, folder.getPath(), mPath.getCredentials()); }
 
-    @Override public String toString()        { return mPath.toString(); }
+    String getQuotedPath() throws ServiceException  { return '"' + mPath.asResolvedPath() + '"'; }
+
+    @Override public String toString()  { return mPath.toString(); }
 
 
     /** Returns the UID Validity Value for the {@link Folder}.  This is the
@@ -474,11 +519,15 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
      *  the folder's {@link #mSequence} message list and inserted into the
      *  {@link #mMessageIds} hash (if the latter hash has been instantiated).
      * @return the passed-in ImapMessage. */
-    ImapMessage cache(ImapMessage i4msg) {
+    ImapMessage cache(ImapMessage i4msg, boolean recent) {
         if (mSequence == null)
             return null;
         // provide the information missing from the DB search
-        i4msg.sflags |= mFolderId == Mailbox.ID_FOLDER_SPAM ? (byte) (ImapMessage.FLAG_SPAM | ImapMessage.FLAG_JUNKRECORDED) : 0;
+        if (mFolderId == Mailbox.ID_FOLDER_SPAM)
+            i4msg.sflags |= ImapMessage.FLAG_SPAM | ImapMessage.FLAG_JUNKRECORDED;
+        if (recent) {
+            i4msg.sflags |= ImapMessage.FLAG_RECENT;  mRecentCount++;
+        }
         // update the folder information
         mSequence.add(i4msg);
         setIndex(i4msg, mSequence.size());
@@ -498,6 +547,8 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         if (mMessageIds != null)
             mMessageIds.remove(new Integer(i4msg.msgId));
         mDirtyMessages.remove(new Integer(i4msg.imapUid));
+        if ((i4msg.sflags & ImapMessage.FLAG_RECENT) != 0)
+            mRecentCount--;
     }
 
 
@@ -517,6 +568,24 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
         return mTags.cache(new ImapFlag(ltag.getName(), ltag, true));
     }
 
+    void dirtyTag(int id, int modseq) {
+        dirtyTag(id, modseq, false);
+    }
+
+    void dirtyTag(int id, int modseq, boolean removeTag) {
+        mTagsAreDirty = true;
+        if (getSize() == 0)
+            return;
+        long mask = 1L << Tag.getIndex(id);
+        for (ImapMessage i4msg : mSequence) {
+            if (i4msg != null && (i4msg.tags & mask) != 0) {
+                dirtyMessage(i4msg, modseq);
+                if (removeTag)
+                    i4msg.tags &= ~mask;
+            }
+        }
+    }
+
     ImapFlag getFlagByName(String name) {
         ImapFlag i4flag = mFlags.getByName(name);
         return (i4flag != null ? i4flag : mTags.getByName(name));
@@ -527,8 +596,10 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     }
 
     List<String> getFlagList(boolean permanentOnly) {
-        List <String> names = mFlags.listNames(permanentOnly);
-        names.addAll(mTags.listNames(permanentOnly));
+        List<String> names = mFlags.listNames(permanentOnly);
+        for (String tagname : mTags.listNames(permanentOnly))
+            if (mFlags.getByName(tagname) == null)
+                names.add(tagname);
         return names;
     }
 
@@ -539,14 +610,6 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     void clearTagCache() {
         mTags.clear();
     }
-
-
-    boolean checkpointSize()  { int last = mLastSize;  return last != (mLastSize = getSize()); }
-
-
-    void disableNotifications()  { mNotificationsSuspended = true; }
-    
-    void enableNotifications()   { mNotificationsSuspended = false; }
 
 
     static final class DirtyMessage {
@@ -581,22 +644,11 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
     void clearDirty()  { mDirtyMessages.clear(); }
 
 
-    void dirtyTag(int id, int modseq) {
-        dirtyTag(id, modseq, false);
-    }
+    boolean checkpointSize()  { int last = mLastSize;  return last != (mLastSize = getSize()); }
 
-    void dirtyTag(int id, int modseq, boolean removeTag) {
-        if (getSize() == 0)
-            return;
-        long mask = 1L << Tag.getIndex(id);
-        for (ImapMessage i4msg : mSequence) {
-            if (i4msg != null && (i4msg.tags & mask) != 0) {
-                dirtyMessage(i4msg, modseq);
-                if (removeTag)
-                	i4msg.tags &= ~mask;
-            }
-        }
-    }
+    void disableNotifications()  { mNotificationsSuspended = true; }
+    
+    void enableNotifications()   { mNotificationsSuspended = false; }
 
 
     void saveSearchResults(ImapMessageSet i4set) {
@@ -791,14 +843,24 @@ class ImapFolder extends Session implements Iterable<ImapMessage> {
 
         // add new messages to the currently selected mailbox
         if (mSequence != null && added != null && !added.isEmpty()) {
-            added.sort();
             boolean debug = ZimbraLog.imap.isDebugEnabled();
+
+            added.sort();
+            boolean recent = true;
+            for (Session s : mMailbox.getListeners(Session.Type.IMAP)) {
+                ImapFolder i4folder = (ImapFolder) s;
+                if (i4folder == this) {
+                    break;
+                } else if (i4folder.isWritable() && i4folder.getId() == mFolderId) {
+                    recent = false;  break;
+                }
+            }
 
             if (!added.numbered.isEmpty()) {
                 // if messages have acceptable UIDs, just add 'em
                 StringBuilder addlog = debug ? new StringBuilder("  ** adding messages (ntfn):") : null;
                 for (ImapMessage i4msg : added.numbered) {
-                    cache(i4msg);
+                    cache(i4msg, recent);
                     if (debug)  addlog.append(' ').append(i4msg.msgId);
                     i4msg.setAdded(true);
                     dirtyMessage(i4msg, changeId);

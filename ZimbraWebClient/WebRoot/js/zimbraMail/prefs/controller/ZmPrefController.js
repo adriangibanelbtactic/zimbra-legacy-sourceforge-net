@@ -84,13 +84,48 @@ function() {
 };
 
 /**
-* Returns the identity controller.
-*/
-ZmPrefController.prototype.getIdentityController =
-function() {
-	if (!this._identityController)
-		this._identityController = new ZmIdentityController(this._appCtxt, this._container, this._app, this._prefsView);
-	return this._identityController;
+ * Checks for a precondition on the given object. If one is found, it is
+ * evaluated based on its type. Note that the precondition must be contained
+ * within the object in a property named "precondition".
+ *
+ * @param obj			[object]	an object, possibly with a "precondition" property.
+ * @param precondition	[object]*	explicit precondition to check
+ */
+ZmPrefController.prototype.checkPreCondition =
+function(obj, precondition) {
+	// No object, nothing to check
+	if (!obj) {
+		return true;
+	}
+	// Object lacks "precondition" property, nothing to check
+	if (!("precondition" in obj)) {
+		return true;
+	}
+	var p = precondition || obj.precondition;
+	// Object has a precondition that didn't get defined, probably because its
+	// app is not enabled. That equates to failure for the precondition.
+	if (p == null) {
+		return false;
+	}
+	// Precondition is set to true or false
+	if (AjxUtil.isBoolean(p)) {
+		return p;
+	}
+	// Precondition is a function, look at its result
+	if (AjxUtil.isFunction(p)) {
+		return p(this._appCtxt);
+	}
+	// A list of preconditions is ORed together via a recursive call
+	if (AjxUtil.isArray(p)) {
+		for (var i = 0, count = p.length; i < count; i++) {
+			if (this.checkPreCondition(obj, p[i])) {
+				return true;
+			}
+		}
+		return false;
+	}
+	// Assume that the precondition is a setting, and return its value
+	return Boolean(this._appCtxt.get(p));
 };
 
 ZmPrefController.prototype.getKeyMapName =
@@ -199,12 +234,56 @@ function () {
 */
 ZmPrefController.prototype._saveListener = 
 function(ev, callback, noPop) {
-    //  try to validate first
-    var list;
+	// is there anything to do?
+	var dirty = this._prefsView.getChangedPrefs(true, true);
+	if (!dirty) {
+		this._appCtxt.getAppViewMgr().popView(true);
+		return;
+	}
+
+	// perform pre-save ops, if needed
+	var preSaveCallbacks = this._prefsView.getPreSaveCallbacks();
+	if (preSaveCallbacks && preSaveCallbacks.length > 0) {
+		var continueCallback = new AjxCallback(this, this._doPreSave);
+		continueCallback.args = [continueCallback, preSaveCallbacks, callback, noPop];
+		this._doPreSave.apply(this, continueCallback.args);
+	}
+
+	// do basic save
+	else {
+		this._doSave(callback, noPop);
+	}
+
+};
+
+ZmPrefController.prototype._doPreSave =
+function(continueCallback, preSaveCallbacks, callback, noPop, success) {
+	// cancel save
+	if (success != null && !success) {
+		return;
+	}
+
+	// perform save
+	if (preSaveCallbacks.length == 0) {
+		this._doSave(callback, noPop);
+	}
+
+	// continue pre-save operations
+	else {
+		var preSaveCallback = preSaveCallbacks.shift();
+		preSaveCallback.run(continueCallback);
+	}
+};
+
+ZmPrefController.prototype._doSave = function(callback, noPop) {
 	var batchCommand = new ZmBatchCommand(this._appCtxt);
+
+	//  get changed prefs
+	var list;
 	try {
 		list = this._prefsView.getChangedPrefs(false, false, batchCommand);
-	} catch (e) {
+	}
+	catch (e) {
 		// getChangedPrefs throws an AjxException if any of the values have not passed validation.
 		if (e instanceof AjxException) {
 			this._appCtxt.setStatusMsg(e.msg, ZmStatusView.LEVEL_CRITICAL);
@@ -214,38 +293,10 @@ function(ev, callback, noPop) {
 		return;
 	}
 
-    // now handle pre-save ops, if needed
-    var preSaveCallbacks = this._prefsView.getPreSaveCallbacks();
-    if (preSaveCallbacks && preSaveCallbacks.length > 0) {
-        var continueCallback = new AjxCallback(this, this._doPreSave);
-        continueCallback.args = [continueCallback, preSaveCallbacks, list, batchCommand, callback, noPop];
-        this._doPreSave.apply(this, continueCallback.args);
-    }
-    else {
-        this._doSave(list, batchCommand, callback, noPop);
-    }
-};
+	// save generic settings
+	this._appCtxt.getSettings().save(list, null, batchCommand);
 
-ZmPrefController.prototype._doPreSave =
-function(continueCallback, preSaveCallbacks, list, batchCommand, callback, noPop, success) {
-    // cancel save
-    if (success != null && !success) {
-        return;
-    }
-    // perform save
-    if (preSaveCallbacks.length == 0) {
-        this._doSave(list, batchCommand, callback, noPop);
-        return;
-    }
-    // continue pre-save operations
-    var preSaveCallback = preSaveCallbacks.shift();
-    preSaveCallback.run(continueCallback, batchCommand);
-};
-
-ZmPrefController.prototype._doSave = function(list, batchCommand, callback, noPop) {
-	if (list && list.length) {
-		this._appCtxt.getSettings().save(list, null, batchCommand);
-	} 
+	// save any extra commands that may have been added
 	if (batchCommand.size()) {
 		var respCallback = new AjxCallback(this, this._handleResponseSaveListener, [list, callback, noPop]);
 		batchCommand.run(respCallback);
@@ -275,36 +326,6 @@ function(list, callback, noPop, result) {
 ZmPrefController.prototype._backListener = 
 function() {
 	this._appCtxt.getAppViewMgr().popView();
-};
-
-ZmPrefController.prototype._changePassword =
-function(oldPassword, newPassword) {
-	var soapDoc = AjxSoapDoc.create("ChangePasswordRequest", "urn:zimbraAccount");
-	soapDoc.set("oldPassword", oldPassword);
-	soapDoc.set("password", newPassword);
-	var accountNode = soapDoc.set("account", this._appCtxt.get(ZmSetting.USERNAME));
-	accountNode.setAttribute("by", "name");
-
-	var respCallback = new AjxCallback(this, this._handleResponseChangePassword);
-	var errorCallback = new AjxCallback(this, this._handleErrorChangePassword);
-	this._appCtxt.getAppController().sendRequest({soapDoc: soapDoc, asyncMode: true,
-												  callback: respCallback, errorCallback: errorCallback});
-};
-
-ZmPrefController.prototype._handleResponseChangePassword =
-function(result) {
-	this._appCtxt.getChangePasswordDialog().popdown();
-	this._appCtxt.setStatusMsg(ZmMsg.passwordChangeSucceeded);
-};
-
-ZmPrefController.prototype._handleErrorChangePassword =
-function(ex) {
-	if (ex.code == ZmCsfeException.ACCT_AUTH_FAILED) {
-		this._appCtxt.getChangePasswordDialog().showMessageDialog(ZmMsg.oldPasswordIsIncorrect);
-		return true;
-	} else {
-		return false;
-	}
 };
 
 ZmPrefController.prototype._preHideCallback =

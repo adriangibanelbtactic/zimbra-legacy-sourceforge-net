@@ -39,6 +39,7 @@
  */
 ZmConvListController = function(appCtxt, container, mailApp) {
 	ZmDoublePaneController.call(this, appCtxt, container, mailApp);
+	this._msgControllerMode = ZmController.CONVLIST_VIEW;
 };
 
 ZmConvListController.prototype = new ZmDoublePaneController;
@@ -120,10 +121,12 @@ function() {
 	var list = this._standardToolBarOps();
 	list.push(ZmOperation.SEP);
 	list = list.concat(this._msgOps());
-	list.push(ZmOperation.SEP);
-	list.push(ZmOperation.SPAM);
-	list.push(ZmOperation.SEP);
-	list.push(ZmOperation.TAG_MENU);
+	list.push(ZmOperation.SEP,
+				ZmOperation.SPAM,
+				ZmOperation.SEP,
+				ZmOperation.TAG_MENU,
+				ZmOperation.SEP,
+				ZmOperation.VIEW_MENU);
 	return list;
 };
 
@@ -183,8 +186,60 @@ function(ev) {
 	if (ev.field == ZmItem.F_EXPAND && (this._mailListView._expandable[item.id])) {
 		this._toggle(item, false);
 	} else {
-		ZmDoublePaneController.prototype._listSelectionListener.apply(this, arguments);
+		var handled = ZmDoublePaneController.prototype._listSelectionListener.apply(this, arguments);
+		if (!handled) {
+			if (ev.detail == DwtListView.ITEM_DBL_CLICKED) {
+				var respCallback = new AjxCallback(this, this._handleResponseListSelectionListener, item);
+				if (item.type == ZmItem.MSG) {
+					AjxDispatcher.run("GetMsgController").show(item, this._msgControllerMode, respCallback);
+				} else {
+					AjxDispatcher.run("GetConvController").show(this._activeSearch, item, this, respCallback);
+				}
+			}
+		}
 	}
+};
+
+ZmConvListController.prototype._handleResponseListSelectionListener =
+function(item) {
+	// make sure correct msg is displayed in msg pane when user returns
+	if (this._readingPaneOn) {
+		this._setSelectedItem();
+	}
+};
+
+/**
+ * Checks to see if exactly one item (conv or msg) is selected, and if so,
+ * that the appropriate msg is displayed in the reading pane. For a conv, that's
+ * the first matching msg in the conv.
+ */
+ZmConvListController.prototype._setSelectedItem =
+function() {
+	var selCnt = this._listView[this._currentView].getSelectionCount();
+	if (selCnt == 1) {
+		var item = this._listView[this._currentView].getSelection()[0];
+		if (item.type == ZmItem.CONV && !item._loaded) {
+			// load conv (SearchConvRequest), which will also give us hit info
+			var respCallback = new AjxCallback(this, this._handleResponseSetSelectedItem);
+			item.load({query:this.getSearchString(), callback:respCallback, getFirstMsg:this._readingPaneOn});
+		} else {
+			this._handleResponseSetSelectedItem();
+		}
+	}
+};
+
+ZmConvListController.prototype._handleResponseSetSelectedItem =
+function() {
+	var msg = this._getSelectedMsg();
+	if (!msg) { return; }
+	this._displayMsg(msg);
+};
+
+ZmConvListController.prototype._getSelectedMsg =
+function() {
+	var item = this._listView[this._currentView].getSelection()[0];
+	if (!item) { return null; }
+	return (item.type == ZmItem.CONV) ? item.getHotMsg(0, this._mailListView.getLimit()) : item;
 };
 
 ZmConvListController.prototype._toggle =

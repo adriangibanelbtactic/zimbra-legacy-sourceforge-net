@@ -148,9 +148,9 @@ function(params) {
 };
 
 ZmComposeController.prototype.toggleSpellCheckButton =
-function(toggled) {
+function(selected) {
 	var spellCheckButton = this._toolbar.getButton(ZmOperation.SPELL_CHECK);
-	spellCheckButton.setToggled((toggled || false));
+	spellCheckButton.setSelected((selected || false));
 };
 
 /**
@@ -170,11 +170,12 @@ function() {
 	var identityId = this._composeView.getIdentity().id;
 	var backupForm = this._composeView.backupForm;
 	var sendUID = this._composeView.getSendUID();
+	var action = this._composeView._action || this._action;
 
 	// this is how child window knows what to do once loading:
 	var newWinObj = this._appCtxt.getNewWindow();
 	newWinObj.command = "composeDetach";
-	newWinObj.params = {action:this._action, msg:msg, addrs:addrs, subj:subj, forwardHtml:forAttHtml, body:body,
+	newWinObj.params = {action:action, msg:msg, addrs:addrs, subj:subj, forwardHtml:forAttHtml, body:body,
 					  composeMode:composeMode, identityId:identityId, accountName:this._accountName,
 					  backupForm:backupForm, sendUID:sendUID, msgIds:this._msgIds, forAttIds:this._forAttIds};
 };
@@ -297,7 +298,13 @@ function(ex) {
 		msg = ZmMsg.cancelSendMsgWarning;
 		this._composeView.setBackupForm();
 		return true;
+	}else if (ex.code == ZmCsfeException.MAIL_QUOTA_EXCEEDED){
+		if(this._composeView._attachDialog){
+			msg = ZmMsg.errorQuotaExceeded;			
+			this._composeView._attachDialog.setFooter('You have exceeded your mail quota. Please remove some attachments and try again.' );
+		}
 	}
+
 	if (msg) {
 		this._msgDialog.setMessage(msg, DwtMessageDialog.CRITICAL_STYLE);
 		this._msgDialog.popup();
@@ -330,17 +337,21 @@ function(initHide, composeMode) {
 	    this._composeView.setLocation(Dwt.LOC_NOWHERE, Dwt.LOC_NOWHERE);
 	    this._composeView.enableInputs(false);
 	}
-	this._composeView.getIdentitySelect().addChangeListener(new AjxListener(this, this._identityChangeListener));
+
+	var identitySelect = this._composeView.getIdentitySelect();
+	var signatureSelect = this._composeView.getSignatureSelect();
+	identitySelect.addChangeListener(new AjxListener(this, this._identityChangeListener, [true]));
+	signatureSelect.addChangeListener(new AjxListener(this, this._identityChangeListener, [false]));
 };
 
 ZmComposeController.prototype._identityChangeListener =
-function(event) {
+function(setSignature, event) {
 	if (!this._composeView.isDirty()) {
-		this._applyIdentityToBody();
+		this._applyIdentityToBody(setSignature);
 	} else {
 		var dialog = this._appCtxt.getYesNoMsgDialog();
 		dialog.reset();
-		dialog.registerCallback(DwtDialog.YES_BUTTON, this._identityChangeYesCallback, this, [dialog]);
+		dialog.registerCallback(DwtDialog.YES_BUTTON, this._identityChangeYesCallback, this, [dialog, setSignature]);
 		dialog.registerCallback(DwtDialog.NO_BUTTON, this._identityChangeNoCallback, this, [dialog]);
 		dialog.setMessage(ZmMsg.identityChangeWarning, DwtMessageDialog.WARNING_STYLE);
 		dialog.popup();
@@ -348,8 +359,8 @@ function(event) {
 };
 
 ZmComposeController.prototype._identityChangeYesCallback =
-function(dialog) {
-	this._applyIdentityToBody();
+function(dialog, setSignature) {
+	this._applyIdentityToBody(setSignature);
 	dialog.popdown();
 };
 
@@ -361,8 +372,11 @@ function(dialog) {
 };
 
 ZmComposeController.prototype._applyIdentityToBody =
-function() {
+function(setSignature) {
 	var identity = this._composeView.getIdentity();
+	if (setSignature) {
+		this._composeView.getSignatureSelect().setSelectedValue(identity.signature);
+	}
 	var newMode = this._getComposeMode(this._msg, identity);
 	if (newMode != this._composeView.getComposeMode()) {
 		this._composeView.setComposeMode(newMode);
@@ -500,7 +514,7 @@ function(params) {
 	this._accountName = params.accountName;
 	this._msgIds = params.msgIds;
 
-	var identityCollection = AjxDispatcher.run("GetIdentityCollection");
+	var identityCollection = this._appCtxt.getIdentityCollection();
 	var identity = (msg && msg.identity) ? msg.identity : identityCollection.selectIdentity(msg);
 	params.identity = identity;
 
@@ -560,7 +574,7 @@ function() {
 		}
 	}
 
-	var identity = AjxDispatcher.run("GetIdentityCollection").defaultIdentity;
+	var identity = this._appCtxt.getIdentityCollection().defaultIdentity;
 	var canAddSig = this._setAddSignatureVisibility(identity);
 
 	var actions = [ZmOperation.NEW_MESSAGE, ZmOperation.REPLY,
@@ -575,7 +589,7 @@ function() {
 	this._optionsMenu[ZmOperation.FORWARD_INLINE] = this._optionsMenu[ZmOperation.FORWARD_ATT];
 	this._optionsMenu[ZmOperation.SHARE] = this._optionsMenu[ZmOperation.NEW_MESSAGE];
 
-	// change default button style to toggle for spell check button
+	// change default button style to select for spell check button
 	var spellCheckButton = this._toolbar.getButton(ZmOperation.SPELL_CHECK);
 	spellCheckButton.setAlign(DwtLabel.IMAGE_LEFT | DwtButton.TOGGLE_STYLE);
 
@@ -594,7 +608,7 @@ function() {
 ZmComposeController.prototype._setAddSignatureVisibility =
 function(identity) {
 	if (!identity) { return false; }
-	var canAddSig = (!identity.signatureEnabled && identity.signature);
+	var canAddSig = Boolean(identity.signature);
 	var signatureButton = this._toolbar.getButton(ZmOperation.ADD_SIGNATURE);
 	if (signatureButton) {
 		signatureButton.setVisible(canAddSig);
@@ -824,8 +838,8 @@ function(ev) {
 		this._detachOkCancel.setMessage(ZmMsg.detachAnyway, DwtMessageDialog.WARNING_STYLE);
 		this._detachOkCancel.registerCallback(DwtDialog.OK_BUTTON, this._detachCallback, this);
 	}
-
-	this._composeView.addAttachmentField();
+	this._composeView.showAttachmentDialog();
+	//this._composeView.addAttachmentField();
 };
 
 ZmComposeController.prototype._optionsListener =

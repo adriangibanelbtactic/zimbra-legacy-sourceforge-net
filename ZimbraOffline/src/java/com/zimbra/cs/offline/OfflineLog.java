@@ -1,10 +1,24 @@
 /*
  * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1
  * 
- * Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+ * The contents of this file are subject to the Mozilla Public License
+ * Version 1.1 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ * 
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * The Original Code is: Zimbra Collaboration Suite Server.
+ * 
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
  * All Rights Reserved.
  * 
- * The Original Code is: Zimbra Network
+ * Contributor(s): 
  * 
  * ***** END LICENSE BLOCK *****
  */
@@ -15,4 +29,12 @@ import com.zimbra.common.util.LogFactory;
 public class OfflineLog {
     /** The "zimbra.offline" logger. For offline sync logs. */
     public static final com.zimbra.common.util.Log offline = LogFactory.getLog("zimbra.offline");
+
+    /** The "zimbra.offline.request" logger. For recording SOAP traffic
+     *  sent to the remote server. */
+    public static final com.zimbra.common.util.Log request = LogFactory.getLog("zimbra.offline.request");
+
+    /** The "zimbra.offline.response" logger. For recording SOAP traffic
+     *  received from the remote server. */
+    public static final com.zimbra.common.util.Log response = LogFactory.getLog("zimbra.offline.response");
 }

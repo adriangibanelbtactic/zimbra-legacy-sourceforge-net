@@ -1051,6 +1051,16 @@
         </attribute>
     </tag>
 
+
+    <tag>
+        <description>
+            check to see if we need to redirect to admin app.
+        </description>
+        <name>adminRedirect</name>
+        <tag-class>com.zimbra.cs.taglib.tag.AdminRedirectTag</tag-class>
+        <body-content>empty</body-content>
+    </tag>
+
     <tag>
         <description>
             Changes a password.
@@ -2380,6 +2390,14 @@
                 Name of the exported session scoped variable to store the ZUserAgentBean in.
             </description>
             <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                Whether or not to cache result in session.
+            </description>
+            <name>session</name>
             <required>true</required>
         </attribute>
 
@@ -4795,6 +4813,15 @@
             <type>java.lang.Object</type>
         </attribute>
 
+		<attribute>
+			<description>
+				Number of voice items per page
+			</description>
+			<name>numberPerPage</name>
+			<required>true</required>
+			<rtexprvalue>true</rtexprvalue>
+			<type>java.lang.String</type>
+		</attribute>
 
     </tag>
 
@@ -4901,6 +4928,16 @@
             <required>true</required>
             <rtexprvalue>true</rtexprvalue>
             <type>java.lang.Object</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Number of voice items per page
+            </description>
+            <name>numberPerPage</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
         </attribute>
     </tag>
 
@@ -5471,6 +5508,20 @@
         <name>getPhoneDisplay</name>
         <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
         <function-signature>java.lang.String getPhoneDisplay(java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>deserializeVoiceMailItemHits</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.taglib.bean.ZVoiceMailItemHitBean[]
+            deserializeVoiceMailItemHits(java.lang.String[],java.lang.String)
+        </function-signature>
+    </function>
+
+    <function>
+        <name>deserializeVoiceMailItemIds</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String deserializeVoiceMailItemIds(java.lang.String[],java.lang.String)</function-signature>
     </function>
 
     <function>

@@ -38,9 +38,12 @@ import com.zimbra.cs.account.AccessManager;
 import com.zimbra.cs.account.Account;
 import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.filter.RuleManager;
+import com.zimbra.cs.imap.ImapFolder;
+import com.zimbra.cs.session.Session;
 import com.zimbra.cs.session.PendingModifications.Change;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.util.ArrayUtil;
+import com.zimbra.common.util.StringUtil;
 import com.zimbra.common.util.ZimbraLog;
 
 /**
@@ -73,6 +76,7 @@ public class Folder extends MailItem {
     private SyncData  mSyncData;
     private int       mImapUIDNEXT;
     private int       mImapMODSEQ;
+    private int       mImapRECENT;
 
     Folder(Mailbox mbox, UnderlyingData ud) throws ServiceException {
         super(mbox, ud);
@@ -100,7 +104,7 @@ public class Folder extends MailItem {
      *  contents.  For instance, if the default view for the folder is
      *  {@link MailItem#TYPE_APPOINTMENT}, the client would render the
      *  contents using the calendar app.<p>
-     *  Defaults to {@link MailItem#TYPE_UNKNOWN}.*/
+     *  Defaults to {@link MailItem#TYPE_UNKNOWN}. */
     public byte getDefaultView() {
         return mDefaultView;
     }
@@ -131,10 +135,30 @@ public class Folder extends MailItem {
         return mSyncData;
     }
 
+    /** Returns the last assigned item ID in the enclosing Mailbox the last
+     *  time the folder was accessed via a read/write IMAP session.  If there
+     *  is such a session already active, returns the last item ID in the
+     *  Mailbox.  This value is used to calculate the \Recent flag. */
+    public int getImapRECENT() {
+        for (Session s : mMailbox.getListeners(Session.Type.IMAP)) {
+            ImapFolder i4folder = (ImapFolder) s;
+            if (i4folder.getId() == mId && i4folder.isWritable())
+                return mMailbox.getLastItemId();
+        }
+        return mImapRECENT;
+    }
+
+    /** Returns one higher than the IMAP ID of the last item added to the
+     *  folder.  This is used as the UIDNEXT value when returning the folder
+     *  via IMAP. */
     public int getImapUIDNEXT() {
         return mImapUIDNEXT;
     }
 
+    /** Returns the change number of the last time (a) an item was inserted
+     *  into the folder or (b) an item in the folder had its flags or tags
+     *  changed.  This data is used to enable IMAP client synchronization
+     *  via the CONDSTORE extension. */
     public int getImapMODSEQ() {
         return mImapMODSEQ;
     }
@@ -350,6 +374,7 @@ public class Folder extends MailItem {
     Folder findSubfolder(String name) {
         if (name == null || mSubfolders == null)
             return null;
+        name = StringUtil.trimTrailingSpaces(name);
         for (Folder subfolder : mSubfolders)
             if (subfolder != null && name.equalsIgnoreCase(subfolder.getName()))
                 return subfolder;
@@ -398,9 +423,9 @@ public class Folder extends MailItem {
         return list;
     }
 
-    /** Updates the number of items in the folder.  Only "leaf node" items in
-     *  the folder are summed; items in subfolders are included only in the
-     *  size of the subfolder.
+    /** Updates the number of items in the folder and their total size.  Only
+     *  "leaf node" items in the folder are summed; items in subfolders are
+     *  included only in the size of the subfolder.
      * @param countDelta  The change in item count, negative or positive.
      * @param sizeDelta   The change in total size, negative or positive. */
     void updateSize(int countDelta, long sizeDelta) throws ServiceException {
@@ -409,20 +434,21 @@ public class Folder extends MailItem {
         // if we go negative, that's OK!  just pretend we're at 0.
         markItemModified(Change.MODIFIED_SIZE);
         if (countDelta > 0) {
-            mImapUIDNEXT = mMailbox.getLastItemId() + 1;
-            mImapMODSEQ = mMailbox.getOperationChangeID();
+            updateUIDNEXT();  updateHighestMODSEQ();
         }
         mData.size = Math.max(0, mData.size + countDelta);
         mTotalSize = Math.max(0, mTotalSize + sizeDelta);
     }
 
+    /** Sets the number of items in the folder and their total size.
+     * @param count      The folder's new item count.
+     * @param totalSize  The folder's new total size. */
     void setSize(int count, long totalSize) throws ServiceException {
         if (!trackSize() || (count == 0 && totalSize == 0))
             return;
         markItemModified(Change.MODIFIED_SIZE);
         if (count > mData.size) {
-            mImapUIDNEXT = mMailbox.getLastItemId() + 1;
-            mImapMODSEQ = mMailbox.getOperationChangeID();
+            updateUIDNEXT();  updateHighestMODSEQ();
         }
         mData.size = count;
         mTotalSize = totalSize;
@@ -435,9 +461,35 @@ public class Folder extends MailItem {
             updateHighestMODSEQ();
     }
 
+    /** Sets the folder's UIDNEXT item ID highwater mark to one more than
+     *  the Mailbox's last assigned item ID. */
+    void updateUIDNEXT() {
+        int uidnext = mMailbox.getLastItemId() + 1;
+        if (mImapUIDNEXT < uidnext) {
+            markItemModified(Change.MODIFIED_SIZE);
+            mImapUIDNEXT = uidnext;
+        }
+    }
+
+    /** Sets the folder's MODSEQ change ID highwater mark to the Mailbox's
+     *  current change ID. */
     void updateHighestMODSEQ() throws ServiceException {
-        markItemModified(Change.MODIFIED_SIZE);
-        mImapMODSEQ = mMailbox.getOperationChangeID();
+        int modseq = mMailbox.getOperationChangeID();
+        if (mImapMODSEQ < modseq) {
+            markItemModified(Change.MODIFIED_SIZE);
+            mImapMODSEQ = modseq;
+        }
+    }
+
+    /** Sets the folder's RECENT item ID highwater mark to the Mailbox's
+     *  last assigned item ID. */
+    void checkpointRECENT() throws ServiceException {
+        if (mImapRECENT == mMailbox.getLastItemId())
+            return;
+
+        markItemModified(Change.INTERNAL_ONLY);
+        mImapRECENT = mMailbox.getLastItemId();
+        saveMetadata();
     }
 
     @Override boolean isTaggable()       { return false; }
@@ -543,7 +595,7 @@ public class Folder extends MailItem {
         if (id != Mailbox.ID_FOLDER_ROOT) {
             if (parent == null || !parent.canContain(TYPE_FOLDER))
                 throw MailServiceException.CANNOT_CONTAIN();
-            validateItemName(name);
+            name = validateItemName(name);
             if (parent.findSubfolder(name) != null)
                 throw MailServiceException.ALREADY_EXISTS(name);
             if (!parent.canAccess(ACL.RIGHT_SUBFOLDER))
@@ -553,15 +605,15 @@ public class Folder extends MailItem {
             validateType(view);
 
         UnderlyingData data = new UnderlyingData();
-        data.id          = id;
-        data.type        = TYPE_FOLDER;
-        data.folderId    = (id == Mailbox.ID_FOLDER_ROOT ? id : parent.getId());
-        data.parentId    = data.folderId;
-        data.date        = mbox.getOperationTimestamp();
-        data.flags       = flags & Flag.FLAGS_FOLDER;
-        data.name        = name;
-        data.subject     = name;
-        data.metadata    = encodeMetadata(color, attributes, view, null, new SyncData(url), id + 1, 0, mbox.getOperationChangeID());
+        data.id       = id;
+        data.type     = TYPE_FOLDER;
+        data.folderId = (id == Mailbox.ID_FOLDER_ROOT ? id : parent.getId());
+        data.parentId = data.folderId;
+        data.date     = mbox.getOperationTimestamp();
+        data.flags    = flags & Flag.FLAGS_FOLDER;
+        data.name     = name;
+        data.subject  = name;
+        data.metadata = encodeMetadata(color, 1, attributes, view, null, new SyncData(url), id + 1, 0, mbox.getOperationChangeID(), 0);
         data.contentChanged(mbox);
         DbMailItem.create(mbox, data);
 
@@ -725,16 +777,16 @@ public class Folder extends MailItem {
         }
     }
 
-    /** Renames the item and optionally moves it.  Altering an item's
-     *  case (e.g. from <tt>foo</tt> to <tt>FOO</tt>) is allowed.
-     *  If you don't want the item to be moved, you must pass 
-     *  <tt>folder.getFolder()</tt> as the second parameter.
+    /** Renames the item and optionally moves it.  Altering an item's case
+     *  (e.g. from <tt>foo</tt> to <tt>FOO</tt>) is allowed.  Trailing
+     *  whitespace is stripped from the name.  If you don't want the item to be
+     *  moved, you must pass <tt>folder.getFolder()</tt> as the second parameter.
      * 
      * @perms {@link ACL#RIGHT_WRITE} on the folder to rename it,
      *        {@link ACL#RIGHT_DELETE} on the folder and
      *        {@link ACL#RIGHT_INSERT} on the target folder to move it */
     void rename(String name, Folder target) throws ServiceException {
-        validateItemName(name);
+        name = validateItemName(name);
         boolean renamed = !name.equals(mData.name);
         if (!renamed && target == mParent)
             return;
@@ -750,10 +802,10 @@ public class Folder extends MailItem {
      * @perms {@link ACL#RIGHT_INSERT} on the target folder,
      *        {@link ACL#RIGHT_DELETE} on the folder being moved */
     @Override
-    protected void move(Folder target) throws ServiceException {
+    boolean move(Folder target) throws ServiceException {
         markItemModified(Change.MODIFIED_FOLDER | Change.MODIFIED_PARENT);
         if (mData.folderId == target.getId())
-            return;
+            return false;
         if (!isMovable())
             throw MailServiceException.IMMUTABLE_OBJECT(mId);
         if (!canAccess(ACL.RIGHT_DELETE))
@@ -780,6 +832,8 @@ public class Folder extends MailItem {
         mData.metadataChanged(mMailbox);
         
         RuleManager.getInstance().folderRenamed(getAccount(), originalPath, getPath());
+
+        return true;
     }
 
     @Override
@@ -913,14 +967,14 @@ public class Folder extends MailItem {
     }
 
 
-    static void purgeMessages(Mailbox mbox, Folder folder, int beforeDate) throws ServiceException {
+    static void purgeMessages(Mailbox mbox, Folder folder, int beforeDate, Boolean unread) throws ServiceException {
         if (beforeDate <= 0 || beforeDate >= mbox.getOperationTimestamp())
             return;
         boolean allFolders = (folder == null);
         List<Folder> folders = (allFolders ? null : folder.getSubfolderHierarchy());
 
         // get the full list of things that are being removed
-        PendingDelete info = DbMailItem.getLeafNodes(mbox, folders, beforeDate, allFolders);
+        PendingDelete info = DbMailItem.getLeafNodes(mbox, folders, beforeDate, allFolders, unread);
         if (info.itemIds.isEmpty())
             return;
         mbox.markItemDeleted(info.itemIds.getTypesMask(), info.itemIds.getAll());
@@ -1009,6 +1063,7 @@ public class Folder extends MailItem {
         mTotalSize   = meta.getLong(Metadata.FN_TOTAL_SIZE, 0L);
         mImapUIDNEXT = (int) meta.getLong(Metadata.FN_UIDNEXT, 0);
         mImapMODSEQ  = (int) meta.getLong(Metadata.FN_MODSEQ, 0);
+        mImapRECENT  = (int) meta.getLong(Metadata.FN_RECENT, 0);
 
         if (meta.containsKey(Metadata.FN_URL))
             mSyncData = new SyncData(meta.get(Metadata.FN_URL), meta.get(Metadata.FN_SYNC_GUID, null), meta.getLong(Metadata.FN_SYNC_DATE, 0));
@@ -1024,14 +1079,14 @@ public class Folder extends MailItem {
 
     @Override
     Metadata encodeMetadata(Metadata meta) {
-        return encodeMetadata(meta, mColor, mAttributes, mDefaultView, mRights, mSyncData, mImapUIDNEXT, mTotalSize, mImapMODSEQ);
+        return encodeMetadata(meta, mColor, mVersion, mAttributes, mDefaultView, mRights, mSyncData, mImapUIDNEXT, mTotalSize, mImapMODSEQ, mImapRECENT);
     }
 
-    private static String encodeMetadata(byte color, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext, long totalSize, int modseq) {
-        return encodeMetadata(new Metadata(), color, attributes, hint, rights, fsd, uidnext, totalSize, modseq).toString();
+    private static String encodeMetadata(byte color, int version, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext, long totalSize, int modseq, int imapRecent) {
+        return encodeMetadata(new Metadata(), color, version, attributes, hint, rights, fsd, uidnext, totalSize, modseq, imapRecent).toString();
     }
 
-    static Metadata encodeMetadata(Metadata meta, byte color, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext, long totalSize, int modseq) {
+    static Metadata encodeMetadata(Metadata meta, byte color, int version, byte attributes, byte hint, ACL rights, SyncData fsd, int uidnext, long totalSize, int modseq, int imapRecent) {
         if (hint != TYPE_UNKNOWN)
             meta.put(Metadata.FN_VIEW, hint);
         if (attributes != 0)
@@ -1042,6 +1097,8 @@ public class Folder extends MailItem {
             meta.put(Metadata.FN_UIDNEXT, uidnext);
         if (modseq > 0)
             meta.put(Metadata.FN_MODSEQ, modseq);
+        if (imapRecent > 0)
+            meta.put(Metadata.FN_RECENT, imapRecent);
         if (rights != null)
             meta.put(Metadata.FN_RIGHTS, rights.encode());
         if (fsd != null && fsd.url != null && !fsd.url.equals("")) {
@@ -1050,7 +1107,7 @@ public class Folder extends MailItem {
             if (fsd.lastDate > 0)
                 meta.put(Metadata.FN_SYNC_DATE, fsd.lastDate);
         }
-        return MailItem.encodeMetadata(meta, color);
+        return MailItem.encodeMetadata(meta, color, version);
     }
 
 

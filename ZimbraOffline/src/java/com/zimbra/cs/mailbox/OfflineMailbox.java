@@ -1,38 +1,68 @@
 /*
  * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1
  * 
- * Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+ * The contents of this file are subject to the Mozilla Public License
+ * Version 1.1 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ * 
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * The Original Code is: Zimbra Collaboration Suite Server.
+ * 
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2006, 2007 Zimbra, Inc.
  * All Rights Reserved.
  * 
- * The Original Code is: Zimbra Network
+ * Contributor(s): 
  * 
  * ***** END LICENSE BLOCK *****
  */
 package com.zimbra.cs.mailbox;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import com.zimbra.common.service.ServiceException;
+import com.zimbra.common.soap.AccountConstants;
+import com.zimbra.common.soap.Element;
+import com.zimbra.common.soap.MailConstants;
+import com.zimbra.common.soap.SoapHttpTransport;
+import com.zimbra.common.soap.SoapProtocol;
+import com.zimbra.common.util.Constants;
 import com.zimbra.common.util.ZimbraLog;
+import com.zimbra.cs.account.offline.OfflineAccount;
+import com.zimbra.cs.account.offline.OfflineProvisioning;
 import com.zimbra.cs.db.DbMailItem;
 import com.zimbra.cs.db.DbOfflineMailbox;
-import com.zimbra.cs.mailbox.MailItem.PendingDelete;
+import com.zimbra.cs.mailbox.MailItem.TargetConstraint;
+import com.zimbra.cs.mailbox.MailServiceException.NoSuchItemException;
+import com.zimbra.cs.offline.Offline;
+import com.zimbra.cs.offline.OfflineLC;
+import com.zimbra.cs.offline.OfflineLog;
 import com.zimbra.cs.redolog.op.RedoableOp;
-import com.zimbra.cs.service.account.AccountService;
 import com.zimbra.cs.servlet.ZimbraServlet;
 import com.zimbra.cs.session.PendingModifications;
 import com.zimbra.cs.session.PendingModifications.Change;
 import com.zimbra.cs.store.StoreManager;
-import com.zimbra.soap.Element;
-import com.zimbra.soap.SoapHttpTransport;
-import com.zimbra.soap.SoapProtocol;
 
 public class OfflineMailbox extends Mailbox {
 
+    public enum SyncProgress {
+        BLANK, INITIAL, SYNC, RESET
+    }
+
     public enum SyncState {
-        BLANK, INITIAL, DELTA, PUSH, SYNC
+        OFFLINE, ONLINE, ERROR
     }
 
     public static class OfflineContext extends OperationContext {
@@ -43,33 +73,45 @@ public class OfflineMailbox extends Mailbox {
     public static final int ID_FOLDER_OUTBOX = 254;
     public static final int FIRST_OFFLINE_ITEM_ID = 2 << 29;
 
-    private String mPassword;
-    private String mBaseUrl;
-    private String mSoapUrl;
-    private String mRemoteId;
     private String mAuthToken;
     private long mAuthExpires;
+    private String mSessionId;
 
-    private SyncState mSyncState = SyncState.BLANK;
-    private int mSyncToken = -1;
+    private SyncProgress mSyncProgress = SyncProgress.BLANK;
+    private String mSyncToken;
+    private Element mInitialSync;
+    private int mLastSyncedItem;
+    private SyncState mSyncState = SyncState.OFFLINE;
+    private long mLastSyncTime = 0;
+    
+    private int mRetryCount = 0;
+    
+    private boolean mInProgress = false;
 
     private Map<Integer,Integer> mRenumbers = new HashMap<Integer,Integer>();
+    private Set<Integer> mLocalTagDeletes = new HashSet<Integer>();
 
-    OfflineMailbox(MailboxData data, String remoteId, String password, String url) throws ServiceException {
+    private static final String SN_OFFLINE  = "offline";
+    private static final String FN_PROGRESS = "state";
+    private static final String FN_TOKEN    = "token";
+    private static final String FN_INITIAL  = "initial";
+    private static final String FN_LAST_ID  = "last";
+
+    OfflineMailbox(MailboxData data) throws ServiceException {
         super(data);
-        mRemoteId = remoteId;
-        mPassword = password;
-        mBaseUrl = url;
-        mSoapUrl = url + ZimbraServlet.USER_SERVICE_URI;
 
-        Metadata config = getConfig(null, "offline");
-        if (config != null && config.containsKey("state")) {
+        Metadata config = getConfig(null, SN_OFFLINE);
+        if (config != null && config.containsKey(FN_PROGRESS)) {
             try {
-                mSyncToken = (int) config.getLong("token", -1);
-                mSyncState = SyncState.valueOf(config.get("state"));
+                mSyncProgress = SyncProgress.valueOf(config.get(FN_PROGRESS));
+                switch (mSyncProgress) {
+                    case INITIAL:  mInitialSync = Element.parseXML(config.get(FN_INITIAL, null));
+                                   mLastSyncedItem = (int) config.getLong(FN_LAST_ID, 0);          break;
+                    case SYNC:     mSyncToken = config.get(FN_TOKEN, null);                        break;
+                }
             } catch (Exception e) {
-                ZimbraLog.mailbox.warn("unknown sync state value: " + config.get("state", null));
-                mSyncState = SyncState.INITIAL;
+                ZimbraLog.mailbox.warn("invalid persisted sync data; will force reset");
+                mSyncProgress = SyncProgress.RESET;
             }
         }
     }
@@ -79,37 +121,141 @@ public class OfflineMailbox extends Mailbox {
         return new OfflineMailSender();
     }
 
-
+    public boolean lockMailboxToSync() {
+    	if (!mInProgress) {
+	    	synchronized (this) {
+	    		if (!mInProgress) {
+	    			mInProgress = true;
+	    			return true;
+	    		}
+	    	}
+    	}
+    	return false;
+    }
+    
+    public void unlockMailbox() {
+    	mInProgress = false;
+    }
+    
+    public void resetRetryCount() {
+    	mRetryCount = 0;
+    }
+    
+    public int incrementRetryCount() {
+    	return ++mRetryCount;
+    }
+    
+    /** Returns the current state of the process's sync connection.  This
+     *  reflects the success or failure of the last attempt to synchronize
+     *  with the remote server, and can be one of <tt>ONLINE</tt> (sync
+     *  completed successfully), <tt>OFFLINE</tt> (sync failed for connectivity
+     *  reasons), or <tt>ERROR</tt> (sync failed for other reasons, usually
+     *  data integrity).
+     * @see SyncState */
     public SyncState getSyncState() {
         return mSyncState;
     }
 
-    public int getSyncToken() {
+    /** Updates the current state of the process's sync connection.  This
+     *  reflects the success or failure of the last attempt to synchronize
+     *  with the remote server.
+     * @param state  One of<ul>
+     *       <li><tt>ONLINE</tt> (sync completed successfully),
+     *       <li><tt>OFFLINE</tt> (sync failed for connectivity reasons), or
+     *       <li><tt>ERROR</tt> (sync failed for other reasons, usually data
+     *           integrity).</ul>
+     * @see SyncState */
+    void setSyncState(SyncState state) {
+        mSyncState = state;
+    }
+
+    /** Returns the progress the client has made in completing an initial sync
+     *  from the remote server.  Can be one of <tt>BLANK</tt> (no initial sync
+     *  attempted), <tt>INITIAL</tt> (initial sync initiated but incomplete),
+     *  or <tt>SYNC</tt> (initial sync complete).  In very rare cases, can also
+     *  be <tt>RESET</tt>, indicating that a severe error has been detected and
+     *  a full wipe and resync are required.
+     * @see SyncProgress */
+    public SyncProgress getSyncProgress() {
+        return mSyncProgress;
+    }
+
+    /** Returns the sync token from the last completed initial or delta sync,
+     *  or <tt>null</tt> if initial sync has not yet been completed. */
+    public String getSyncToken() {
         return mSyncToken;
     }
 
-    void setSyncState(SyncState state) throws ServiceException {
-        setSyncState(state, mSyncToken);
-    }
-    
-    void setSyncState(SyncState state, int token) throws ServiceException {
-        if (state == null)
-            throw ServiceException.FAILURE("null SyncState passed to setSyncState", null);
-
-        int newToken = token > 0 ? token : mSyncToken;
-        Metadata config = new Metadata().put("state", state);
-        if (newToken > 0)
-            config.put("token", newToken);
-
-        setConfig(null, "offline", config);
-        mSyncState = state;
-        mSyncToken = newToken;
+    /** Returns the <tt>SyncResponse</tt> content from the pending initial
+     *  sync, or <tt>null</tt> if initial sync is not currently in progress. */
+    public Element getInitialSyncResponse() {
+        return mInitialSync;
     }
 
-
-    public String getRemoteId() {
-        return mRemoteId;
+    /** Returns the id of the last item initial synced from the current folder
+     *  during the pending initial sync, or <tt>0</tt> if initial sync is not
+     *  currently in progress or if the initial sync of the previous folder
+     *  completed. */
+    public int getLastSyncedItem() {
+        return mLastSyncedItem;
     }
+
+    /** Stores the <tt>SyncResponse</tt> content from the pending initial
+     *  sync.  As a side effect, sets the mailbox's {@link SyncProgress}
+     *  to <tt>INITIAL</tt>. */
+    void updateInitialSync(Element initial) throws ServiceException {
+        updateInitialSync(initial, -1);
+    }
+
+    /** Stores the <tt>SyncResponse</tt> content from the pending initial
+     *  sync.  As a side effect, sets the mailbox's {@link SyncProgress}
+     *  to <tt>INITIAL</tt>. */
+    void updateInitialSync(Element initial, int lastId) throws ServiceException {
+        if (initial == null)
+            throw ServiceException.FAILURE("null Element passed to updateInitialSync", null);
+
+        Metadata config = new Metadata().put(FN_PROGRESS, SyncProgress.INITIAL).put(FN_INITIAL, initial).put(FN_LAST_ID, lastId);
+        setConfig(null, SN_OFFLINE, config);
+
+        mSyncProgress = SyncProgress.INITIAL;
+        mInitialSync = initial;
+        mLastSyncedItem = lastId;
+        mSyncToken = null;
+    }
+
+    /** Stores the sync token from the last completed sync (initial or
+     *  delta).  As a side effect, sets the mailbox's {@link SyncProgress}
+     *  to <tt>SYNC</tt>. */
+    void recordSyncComplete(String token) throws ServiceException {
+        if (token == null)
+            throw ServiceException.FAILURE("null sync token passed to recordSyncComplete", null);
+
+        Metadata config = new Metadata().put(FN_PROGRESS, SyncProgress.SYNC).put(FN_TOKEN, token);
+        setConfig(null, SN_OFFLINE, config);
+
+        mSyncProgress = SyncProgress.SYNC;
+        mSyncToken = token;
+        mInitialSync = null;
+    }
+
+    /** Returns the last time a sync (initial or delta) was successfully
+     *  completed. */
+    long getLastSyncTime() {
+        return mLastSyncTime;
+    }
+
+    /** Records the last time a sync (initial or delta) was successfully
+     *  completed. */
+    void setLastSyncTime(long time) {
+        mLastSyncTime = time;
+    }
+
+    /** Returns the minimum frequency (in milliseconds) between syncs with the
+     *  remote server.  Defaults to 2 minutes. */
+    long getSyncFrequency() throws ServiceException {
+        return getAccount().getTimeInterval(OfflineProvisioning.A_offlineSyncInterval, OfflineMailboxManager.DEFAULT_SYNC_INTERVAL);
+    }
+
 
     String getAuthToken() throws ServiceException {
         return getAuthToken(false);
@@ -117,25 +263,30 @@ public class OfflineMailbox extends Mailbox {
 
     String getAuthToken(boolean force) throws ServiceException {
         if (force || mAuthToken == null || mAuthExpires < System.currentTimeMillis()) {
-            Element request = new Element.XMLElement(AccountService.AUTH_REQUEST);
-            request.addElement(AccountService.E_ACCOUNT).addAttribute(AccountService.A_BY, "id").setText(getRemoteId());
-            request.addElement(AccountService.E_PASSWORD).setText(mPassword);
+            String passwd = getAccount().getAttr(OfflineProvisioning.A_offlineRemotePassword);
+
+            Element request = new Element.XMLElement(AccountConstants.AUTH_REQUEST);
+            request.addElement(AccountConstants.E_ACCOUNT).addAttribute(AccountConstants.A_BY, "id").setText(getAccountId());
+            request.addElement(AccountConstants.E_PASSWORD).setText(passwd);
 
             Element response = sendRequest(request, false);
-            mAuthToken = response.getAttribute(AccountService.E_AUTH_TOKEN);
-            mAuthExpires = System.currentTimeMillis() + response.getAttributeLong(AccountService.E_LIFETIME);
+            mAuthToken = response.getAttribute(AccountConstants.E_AUTH_TOKEN);
+            mAuthExpires = System.currentTimeMillis() + response.getAttributeLong(AccountConstants.E_LIFETIME);
         }
         return mAuthToken;
     }
 
-    public String getBaseUri() {
-        return mBaseUrl;
+    public String getRemoteUser() throws ServiceException {
+        return getAccount().getName();
     }
 
-    public String getSoapUri() {
-        return mSoapUrl;
+    public String getSoapUri() throws ServiceException {
+        return Offline.getServerURI(getAccount(), ZimbraServlet.USER_SERVICE_URI);
     }
-
+    
+    public String getRemoteHost() throws ServiceException, MalformedURLException {
+    	return new URL(getSoapUri()).getHost();
+    }
 
     @Override
     synchronized void initialize() throws ServiceException {
@@ -162,19 +313,52 @@ public class OfflineMailbox extends Mailbox {
         return false;
     }
 
+    @Override
+    public boolean checkItemChangeID(int modMetadata, int modContent) {
+        return true;
+    }
 
+
+    @Override
     MailItem getItemById(int id, byte type) throws ServiceException {
         Integer renumbered = mRenumbers.get(id < -FIRST_USER_ID ? -id : id);
         return super.getItemById(renumbered == null ? id : (id < 0 ? -renumbered : renumbered), type);
     }
 
+    @Override
     MailItem[] getItemById(int[] ids, byte type) throws ServiceException {
         int renumbered[] = new int[ids.length], i = 0;
         for (int id : ids) {
+            // use a little sleight-of-hand so we pick up virtual conv ids from the corresponding message id
             Integer newId = mRenumbers.get(id < -FIRST_USER_ID ? -id : id);
-            renumbered[i++] = newId == null ? id : (id < 0 ? -newId : newId);
+            renumbered[i++] = (newId == null ? id : (id < 0 ? -newId : newId));
         }
         return super.getItemById(renumbered, type);
+    }
+
+    @Override
+    public synchronized void delete(OperationContext octxt, int[] itemIds, byte type, TargetConstraint tcon) throws ServiceException {
+        mLocalTagDeletes.clear();
+
+        for (int id : itemIds) {
+            try {
+                if (id != ID_AUTO_INCREMENT) {
+                    getTagById(octxt, id);
+                    if ((getChangeMask(octxt, id, MailItem.TYPE_TAG) & Change.MODIFIED_CONFLICT) != 0)
+                        mLocalTagDeletes.add(id);
+                }
+            } catch (NoSuchItemException nsie) { }
+        }
+
+        super.delete(octxt, itemIds, type, tcon);
+    }
+
+    @Override
+    MailItem.TypedIdList collectPendingTombstones() {
+        MailItem.TypedIdList tombstones = super.collectPendingTombstones();
+        for (Integer tagId : mLocalTagDeletes)
+            tombstones.remove(MailItem.TYPE_TAG, tagId);
+        return tombstones;
     }
 
     public synchronized void setConversationId(OperationContext octxt, int msgId, int convId) throws ServiceException {
@@ -240,10 +424,6 @@ public class OfflineMailbox extends Mailbox {
             if (mod_content < 0)
                 mod_content = item.getSavedSequence();
 
-            // FIXME: need to support tag renumbering (which requires updating bitmasks for tagged items)
-            if (item instanceof Tag)
-                throw ServiceException.FAILURE("cannot support tag renumbering at this point", null);
-
             // changing a message's item id needs to purge its Conversation (virtual or real)
             if (item instanceof Message)
                 uncacheItem(item.getParentId());
@@ -252,10 +432,8 @@ public class OfflineMailbox extends Mailbox {
             MailboxBlob mblob = item.getBlob();
             if (mblob != null) {
                 // register old blob for post-commit deletion
-                PendingDelete info = new PendingDelete();
-                info.blobs.add(mblob);
+                item.markBlobForDeletion();
                 item.mBlob = null;
-                markOtherItemDirty(info);
 
                 // copy blob to new id (note that item.getSavedSequence() may change again later)
                 try {
@@ -267,7 +445,7 @@ public class OfflineMailbox extends Mailbox {
             }
 
             // update the id in the database and in memory
-            markItemDeleted(id);
+            markItemDeleted(item.getType(), id);
             DbOfflineMailbox.renumberItem(item, newId, mod_content);
             item.mId = item.mData.id = newId;
             item.mData.modContent = mod_content;
@@ -318,6 +496,18 @@ public class OfflineMailbox extends Mailbox {
         }
     }
 
+    public void removePendingDelete(OperationContext octxt, int itemId, byte type) throws ServiceException {
+        boolean success = false;
+        try {
+            beginTransaction("removePendingDelete", octxt);
+
+            DbOfflineMailbox.removeTombstone(this, itemId, type);
+            success = true;
+        } finally {
+            endTransaction(success);
+        }
+    }
+
     public synchronized MailItem.TypedIdList getLocalChanges(OperationContext octxt) throws ServiceException {
         boolean success = false;
         try {
@@ -340,6 +530,8 @@ public class OfflineMailbox extends Mailbox {
             int mask = DbOfflineMailbox.getChangeMask(item);
             success = true;
             return mask;
+        } catch (NoSuchItemException nsie) {
+            return 0;
         } finally {
             endTransaction(success);
         }
@@ -396,15 +588,13 @@ public class OfflineMailbox extends Mailbox {
             DbOfflineMailbox.setChangeIds(item, date, mod_content, change_date, mod_metadata);
 
             // ... update the filename on the item's blob if necessary ...
-            boolean blobAffected = mod_content != item.getSavedSequence() && !item.getDigest().equals("");
+            boolean blobAffected = mod_content != item.getSavedSequence() && item.getDigest() != null && !item.getDigest().equals("");
             if (blobAffected) {
                 MailboxBlob mblob = item.getBlob();
 
                 // mark old blob as disposable
-                PendingDelete info = new PendingDelete();
-                info.blobs.add(mblob);
+                item.markBlobForDeletion();
                 item.mBlob = null;
-                markOtherItemDirty(info);
 
                 // and link to new blob
                 try {
@@ -483,7 +673,7 @@ public class OfflineMailbox extends Mailbox {
 
         if (pms.created != null) {
             for (MailItem item : pms.created.values()) {
-                if (item.getId() >= FIRST_USER_ID && PushChanges.PUSH_TYPES_SET.contains(item.getType()))
+                if ((item.getId() >= FIRST_USER_ID || item instanceof Tag) && PushChanges.PUSH_TYPES_SET.contains(item.getType()))
                     DbOfflineMailbox.updateChangeRecord(item, Change.MODIFIED_CONFLICT);
             }
         }
@@ -493,15 +683,19 @@ public class OfflineMailbox extends Mailbox {
                 if (!(change.what instanceof MailItem))
                     continue;
                 MailItem item = (MailItem) change.what;
+                if (isLocalItem(item))
+                    continue;
 
                 int filter = 0;
                 switch (item.getType()) {
-                    case MailItem.TYPE_MESSAGE:       filter = PushChanges.MESSAGE_CHANGES;  break;
-                    case MailItem.TYPE_CONTACT:       filter = PushChanges.CONTACT_CHANGES;  break;
-                    case MailItem.TYPE_FOLDER:        filter = PushChanges.FOLDER_CHANGES;   break;
-                    case MailItem.TYPE_SEARCHFOLDER:  filter = PushChanges.SEARCH_CHANGES;   break;
-                    case MailItem.TYPE_MOUNTPOINT:    filter = PushChanges.MOUNT_CHANGES;    break;
-                    case MailItem.TYPE_TAG:           filter = PushChanges.TAG_CHANGES;      break;
+                    case MailItem.TYPE_MESSAGE:       filter = PushChanges.MESSAGE_CHANGES;     break;
+                    case MailItem.TYPE_CHAT:          filter = PushChanges.CHAT_CHANGES;        break;
+                    case MailItem.TYPE_CONTACT:       filter = PushChanges.CONTACT_CHANGES;     break;
+                    case MailItem.TYPE_FOLDER:        filter = PushChanges.FOLDER_CHANGES;      break;
+                    case MailItem.TYPE_SEARCHFOLDER:  filter = PushChanges.SEARCH_CHANGES;      break;
+                    case MailItem.TYPE_MOUNTPOINT:    filter = PushChanges.MOUNT_CHANGES;       break;
+                    case MailItem.TYPE_TAG:           filter = PushChanges.TAG_CHANGES;         break;
+                    case MailItem.TYPE_APPOINTMENT:   filter = PushChanges.APPOINTMENT_CHANGES; break;
                 }
 
                 if ((change.why & filter) != 0)
@@ -510,26 +704,65 @@ public class OfflineMailbox extends Mailbox {
         }
     }
 
-
+    private boolean isLocalItem(MailItem item) {
+        return item.getId() == ID_FOLDER_OUTBOX;
+    }
+    
     public static final int SERVER_REQUEST_TIMEOUT_SECS = 6;
 
     public Element sendRequest(Element request) throws ServiceException {
         return sendRequest(request, true);
     }
-
+    
     public Element sendRequest(Element request, boolean requiresAuth) throws ServiceException {
-        SoapHttpTransport transport = new SoapHttpTransport(mSoapUrl);
+    	return sendRequest(request, requiresAuth, true, SERVER_REQUEST_TIMEOUT_SECS * 1000);
+    }
+
+    public Element sendRequest(Element request, boolean requiresAuth, boolean noSession, int timeout) throws ServiceException {
+        String uri = getSoapUri();
+        SoapHttpTransport transport = new SoapHttpTransport(uri);
         try {
+            transport.setUserAgent("Zimbra Desktop", OfflineLC.zdesktop_version.value());
             transport.setRetryCount(1);
-            transport.setTimeout(SERVER_REQUEST_TIMEOUT_SECS * 1000);
+            transport.setTimeout(timeout);
             if (requiresAuth)
                 transport.setAuthToken(getAuthToken());
             transport.setSoapProtocol(SoapProtocol.Soap12);
-            return transport.invokeWithoutSession(request.detach());
+
+            OfflineLog.request.debug(request);
+
+            Element response = null;
+            if (noSession) {
+            	response = transport.invokeWithoutSession(request.detach());
+            } else {
+            	if (mSessionId != null)
+            		transport.setSessionId(mSessionId);
+            	response = transport.invoke(request.detach());
+            }
+            OfflineLog.response.debug(response);
+            
+            if (transport.getSessionId() != null)
+            	mSessionId = transport.getSessionId(); //update sessionId is changed
+
+            return response;
         } catch (IOException e) {
-            throw ServiceException.PROXY_ERROR(e, mSoapUrl);
+            throw ServiceException.PROXY_ERROR(e, uri);
         } finally {
             transport.shutdown();
         }
+    }
+    
+    public OfflineAccount.Version getRemoteServerVersion() throws ServiceException {
+    	return ((OfflineAccount)getAccount()).getRemoteServerVersion();
+    }
+    
+    public void pollForUpdates() throws ServiceException {
+        Element request = new Element.XMLElement(MailConstants.NO_OP_REQUEST);
+        request.addAttribute("wait", "1");
+        sendRequest(request, true, false, 15 * Constants.SECONDS_PER_MINUTE * 1000); //will block
+    }
+    
+    public boolean hasDataToSync() {
+    	return OfflinePoller.getInstance().isSyncCandidate(this);
     }
 }

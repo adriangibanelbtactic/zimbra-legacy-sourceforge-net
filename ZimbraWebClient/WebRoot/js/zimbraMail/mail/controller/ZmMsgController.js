@@ -41,6 +41,11 @@ ZmMsgController = function(appCtxt, container, mailApp) {
 	ZmMailListController.call(this, appCtxt, container, mailApp);
 };
 
+ZmMsgController.MODE_TO_CONTROLLER = {};
+ZmMsgController.MODE_TO_CONTROLLER[ZmController.TRAD_VIEW]		= "GetTradController";
+ZmMsgController.MODE_TO_CONTROLLER[ZmController.CONV_VIEW]		= "GetConvController";
+ZmMsgController.MODE_TO_CONTROLLER[ZmController.CONVLIST_VIEW]	= "GetConvListController";
+
 ZmMsgController.prototype = new ZmMailListController;
 ZmMsgController.prototype.constructor = ZmMsgController;
 
@@ -66,12 +71,15 @@ function(msg, mode, callback) {
 	this._list = msg.list;
 	if (!msg._loaded) {
 		var respCallback = new AjxCallback(this, this._handleResponseShow, callback);
-		msg.load(this._appCtxt.get(ZmSetting.VIEW_AS_HTML), false, respCallback);
-	} else {
-		this._showMsg();
-		if (callback) {
-			callback.run();
+		if (msg._loadPending) {
+			// override any local callback if we're being launched by double-pane view,
+			// so that multiple GetMsgRequest's aren't made
+			msg._loadCallback = respCallback;
+		} else {
+			msg.load(this._appCtxt.get(ZmSetting.VIEW_AS_HTML), false, respCallback);
 		}
+	} else {
+		this._handleResponseShow(callback);
 	}
 };
 
@@ -135,11 +143,12 @@ function() {
 		var list = this._standardToolBarOps();
 		list.push(ZmOperation.SEP);
 		list = list.concat(this._msgOps());
-		list.push(ZmOperation.SEP);
-		list.push(ZmOperation.SPAM);
-		list.push(ZmOperation.SEP);
-		list.push(ZmOperation.TAG_MENU);		
-		list.push(ZmOperation.DETACH);
+		list.push(ZmOperation.SEP,
+					ZmOperation.SPAM,
+					ZmOperation.SEP,
+					ZmOperation.TAG_MENU,
+					ZmOperation.SEP,
+					ZmOperation.DETACH);
 		return list;
 	}
 };
@@ -162,6 +171,9 @@ function(view, arrowStyle) {
 		}
 	}
 };
+
+// message view has no view menu button
+ZmMsgController.prototype._setupViewMenu = function(view, firstTime) {};
 
 ZmMsgController.prototype._getActionMenuOps =
 function() {
@@ -226,10 +238,8 @@ function(view) {
 
 ZmMsgController.prototype._paginate = 
 function(view, bPageForward) {
-	// NOTE: do not call base class.
-	var controller = AjxDispatcher.run((this._mode == ZmController.TRAD_VIEW) ? "GetTradController" :
-																				"GetConvController");
-
+	// NOTE: do not call base class
+	var controller = AjxDispatcher.run(ZmMsgController.MODE_TO_CONTROLLER[this._mode]);
 	if (controller) {
 		controller.pageItemSilently(this._msg, bPageForward);
 		this._resetNavToolBarButtons(view);

@@ -57,6 +57,10 @@ public class ModifyDomain extends AdminDocumentHandler {
         if (domain == null)
             throw AccountServiceException.NO_SUCH_DOMAIN(id);
         
+        if (!canAccessDomain(lc, domain))
+            throw ServiceException.PERM_DENIED("can not access domain");
+        
+        
         // pass in true to checkImmutable
         prov.modifyAttrs(domain, attrs, true);
 

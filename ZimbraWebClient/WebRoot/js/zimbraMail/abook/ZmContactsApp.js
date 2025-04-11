@@ -37,6 +37,7 @@ ZmContactsApp = function(appCtxt, container, parentController) {
 	ZmApp.call(this, ZmApp.CONTACTS, appCtxt, container, parentController);
 
 	this._initialized = false;
+	this._contactsLoaded = false;
 };
 
 // Organizer and item-related constants
@@ -47,11 +48,12 @@ ZmItem.GROUP					= ZmEvent.S_GROUP;
 ZmOrganizer.ADDRBOOK			= "ADDRBOOK";
 
 // App-related constants
-ZmApp.CONTACTS					= "Contacts";
-ZmApp.CLASS[ZmApp.CONTACTS]		= "ZmContactsApp";
-ZmApp.SETTING[ZmApp.CONTACTS]	= ZmSetting.CONTACTS_ENABLED;
-ZmApp.LOAD_SORT[ZmApp.CONTACTS]	= 30;
-ZmApp.QS_ARG[ZmApp.CONTACTS]	= "contacts";
+ZmApp.CONTACTS							= "Contacts";
+ZmApp.CLASS[ZmApp.CONTACTS]				= "ZmContactsApp";
+ZmApp.SETTING[ZmApp.CONTACTS]			= ZmSetting.CONTACTS_ENABLED;
+ZmApp.UPSELL_SETTING[ZmApp.CONTACTS]	= ZmSetting.CONTACTS_UPSELL_ENABLED;
+ZmApp.LOAD_SORT[ZmApp.CONTACTS]			= 30;
+ZmApp.QS_ARG[ZmApp.CONTACTS]			= "contacts";
 
 // fields used for autocomplete matching
 ZmContactsApp.AC_VALUE_FULL 	= "fullAddress";
@@ -151,14 +153,12 @@ function() {
 	ZmPref.registerPref("GAL_AUTOCOMPLETE_SESSION", {
 		displayName:		ZmMsg.galAutocompleteSession,
 		displayContainer:	ZmPref.TYPE_CHECKBOX,
-		precondition:		ZmSetting.GAL_AUTOCOMPLETE,
-		displaySeparator:	true
+		precondition:		ZmSetting.GAL_AUTOCOMPLETE
 	});
 	
 	ZmPref.registerPref("IMPORT", {
 		displayName:		ZmMsg.importFromCSV,
-		displayContainer:	ZmPref.TYPE_IMPORT,
-		displaySeparator:	false
+		displayContainer:	ZmPref.TYPE_IMPORT
 	});
 };
 
@@ -167,10 +167,11 @@ function() {
 	ZmOperation.registerOp("CONTACT");	// placeholder
 	ZmOperation.registerOp("EDIT_CONTACT", {textKey:"AB_EDIT_CONTACT", image:"Edit"});
 	ZmOperation.registerOp("MOUNT_ADDRBOOK", {textKey:"mountAddrBook", image:"ContactsFolder"}, ZmSetting.SHARING_ENABLED);
-	ZmOperation.registerOp("NEW_ADDRBOOK", {textKey:"newAddrBook", tooltipKey:"newAddrBookTooltip", image:"NewContact"});
+	ZmOperation.registerOp("NEW_ADDRBOOK", {textKey:"newAddrBook", tooltipKey:"newAddrBookTooltip", image:"NewContactsFolder"});
 	ZmOperation.registerOp("NEW_CONTACT", {textKey:"newContact", tooltipKey:"newContactTooltip", image:"NewContact"});
 	ZmOperation.registerOp("NEW_GROUP", {textKey:"newGroup", tooltipKey:"newGroupTooltip", image:"NewGroup"});
-	ZmOperation.registerOp("PRINT_CONTACTLIST", {textKey:"printAddrBook", image:"Print"}, ZmSetting.PRINT_ENABLED);
+	ZmOperation.registerOp("PRINT_CONTACT", {textKey:"printContact", image:"Print"}, ZmSetting.PRINT_ENABLED);
+	ZmOperation.registerOp("PRINT_ADDRBOOK", {textKey:"printAddrBook", image:"Print"}, ZmSetting.PRINT_ENABLED);
 	ZmOperation.registerOp("SHARE_ADDRBOOK", {textKey:"shareAddrBook", image:"SharedContactsFolder"}, ZmSetting.SHARING_ENABLED);
 	ZmOperation.registerOp("SHOW_ONLY_CONTACTS", {textKey:"showOnlyContacts", image:"Contact"}, ZmSetting.MIXED_VIEW_ENABLED);
 };
@@ -234,24 +235,22 @@ function() {
 	ZmSearchToolBar.addMenuItem(ZmItem.CONTACT,
 								{msgKey:		"searchContacts",
 								 tooltipKey:	"searchPersonalContacts",
-								 icon:			"SearchContacts"
-								});
-
-	ZmSearchToolBar.FOR_PAS_MI 	= "FOR PAS";
-	ZmSearchToolBar.addMenuItem(ZmSearchToolBar.FOR_PAS_MI,
-								{msgKey:		"searchPersonalSharedContacts",
-								 tooltipKey:	"searchPersonalSharedContacts",
-								 icon:			"SearchSharedContacts",
-								 setting:		ZmSetting.SHARING_ENABLED
+								 icon:			"ContactsFolder",
+								 shareIcon:		"SharedContactsFolder"
 								});
 
 	ZmSearchToolBar.FOR_GAL_MI 	= "FOR GAL";
 	ZmSearchToolBar.addMenuItem(ZmSearchToolBar.FOR_GAL_MI,
 								{msgKey:		"searchGALContacts",
 								 tooltipKey:	"searchGALContacts",
-								 icon:			"SearchGAL",
+								 icon:			"GAL",
 								 setting:		ZmSetting.GAL_ENABLED
 								});
+};
+
+ZmContactsApp.prototype._setupCurrentAppToolbar =
+function() {
+	ZmCurrentAppToolBar.registerApp(this.getName(), ZmOperation.NEW_ADDRBOOK, ZmOrganizer.ADDRBOOK);
 };
 
 ZmContactsApp.prototype._registerApp =
@@ -285,17 +284,20 @@ function() {
 							  newActionCode:		ZmKeyMap.NEW_CONTACT,
 							  trashViewOp:			ZmOperation.SHOW_ONLY_CONTACTS,
 							  chooserSort:			20,
-							  defaultSort:			40
+							  defaultSort:			40,
+							  upsellUrl:			ZmSetting.CONTACTS_UPSELL_URL
 							  });
 };
 
 
 // App API
 
+/*
 ZmContactsApp.prototype.startup =
 function(result) {
 	AjxDispatcher.run("GetContacts");
 };
+*/
 
 /**
  * Checks for the creation of an address book or a mount point to one. Regular
@@ -469,7 +471,10 @@ function(callback, errorCallback) {
 
 ZmContactsApp.prototype._handleResponseGetContactList =
 function(callback) {
-	if (callback && callback.run) callback.run(this._contactList);
+	this.contactsLoaded = true;
+	if (callback && callback.run) {
+		callback.run(this._contactList);
+	}
 };
 
 // NOTE: calling method should handle exceptions!

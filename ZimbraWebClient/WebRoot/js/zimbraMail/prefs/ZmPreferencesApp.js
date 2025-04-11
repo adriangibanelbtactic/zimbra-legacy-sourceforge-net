@@ -36,6 +36,7 @@ ZmPreferencesApp = function(appCtxt, container) {
 ZmEvent.S_FILTER			= "FILTER";
 ZmEvent.S_DATA_SOURCE       = "DATA SOURCE";
 ZmEvent.S_IDENTITY       	= "IDENTITY";
+ZmEvent.S_SIGNATURE			= "SIGNATURE";
 ZmItem.DATA_SOURCE			= ZmEvent.S_DATA_SOURCE;
 
 // App-related constants
@@ -62,8 +63,10 @@ function() {
 ZmPreferencesApp.prototype.startup =
 function(result) {
 	var obj = result.getResponse().GetInfoResponse;
-	AjxDispatcher.run("GetIdentityCollection").initialize(obj.identities);
+	var appCtxt = this._appCtxt;
+	appCtxt.getIdentityCollection().initialize(obj.identities);
 	AjxDispatcher.run("GetDataSourceCollection").initialize(obj.dataSources);
+	appCtxt.getSignatureCollection().initialize(obj.signatures);
 };
 
 ZmPreferencesApp.prototype.launch =
@@ -80,16 +83,6 @@ function() {
 		this._prefController = new ZmPrefController(this._appCtxt, this._container, this);
 	}
 	return this._prefController;
-};
-
-ZmPreferencesApp.prototype.getPopAccountsController =
-function() {
-	if (!this._popAccountsController) {
-		var prefController = AjxDispatcher.run("GetPrefController");
-		var prefsView = prefController.getPrefsView();
-		this._popAccountsController = new ZmPopAccountsController(this._appCtxt, this._container, this, prefsView);
-	}
-	return this._popAccountsController;
 };
 
 ZmPreferencesApp.prototype.getFilterController =
@@ -121,6 +114,13 @@ function() {
 	return this._identityCollection;
 };
 
+ZmPreferencesApp.prototype.getSignatureCollection = function() {
+	if (!this._signatureCollection) {
+		this._signatureCollection = new ZmSignatureCollection(this._appCtxt);
+	}
+	return this._signatureCollection;
+};
+
 //
 // Protected methods
 //
@@ -130,10 +130,10 @@ function() {
 ZmPreferencesApp.prototype._defineAPI =
 function() {
 	AjxDispatcher.registerMethod("GetIdentityCollection", "PreferencesCore", new AjxCallback(this, this.getIdentityCollection));
+	AjxDispatcher.registerMethod("GetSignatureCollection", "PreferencesCore", new AjxCallback(this, this.getSignatureCollection));
 	AjxDispatcher.registerMethod("GetDataSourceCollection", "PreferencesCore", new AjxCallback(this, this.getDataSourceCollection));
 	AjxDispatcher.registerMethod("GetFilterRules", ["PreferencesCore", "Preferences"], new AjxCallback(this, this.getFilterRules));
 	AjxDispatcher.registerMethod("GetPrefController", ["PreferencesCore", "Preferences"], new AjxCallback(this, this.getPrefController));
-	AjxDispatcher.registerMethod("GetPopAccountsController", ["PreferencesCore", "Preferences"], new AjxCallback(this, this.getPopAccountsController));
 	AjxDispatcher.registerMethod("GetFilterController", ["PreferencesCore", "Preferences"], new AjxCallback(this, this.getFilterController));
 };
 
@@ -146,7 +146,7 @@ ZmPreferencesApp.prototype._registerApp =
 function() {
 	ZmApp.registerApp(ZmApp.PREFERENCES,
 							 {mainPkg:				"Preferences",
-							  nameKey:				"options",
+							  nameKey:				"preferences",
 							  icon:					"Preferences",
 							  chooserTooltipKey:	"goToOptions",
 							  button:				ZmAppChooser.B_OPTIONS,
@@ -172,7 +172,8 @@ function() {
 				ZmSetting.SEARCH_INCLUDES_TRASH,
 				ZmSetting.SHOW_SEARCH_STRING,
 				ZmSetting.SHOW_SELECTION_CHECKBOX,
-				ZmSetting.SKIN_NAME
+				ZmSetting.SKIN_NAME,
+				ZmSetting.CLIENT_TYPE
 			]
 		},
 		COMPOSING: {
@@ -185,7 +186,10 @@ function() {
 				ZmSetting.COMPOSE_INIT_FONT_COLOR,
 				ZmSetting.COMPOSE_INIT_FONT_FAMILY,
 				ZmSetting.COMPOSE_INIT_FONT_SIZE,
+				ZmSetting.FORWARD_INCLUDE_ORIG,
 				ZmSetting.NEW_WINDOW_COMPOSE,
+				ZmSetting.REPLY_INCLUDE_ORIG,
+				ZmSetting.REPLY_PREFIX,
 				ZmSetting.SAVE_TO_SENT
 			]
 		},
@@ -205,6 +209,14 @@ function() {
 	for (var id in sections) {
 		ZmPref.registerPrefSection(id, sections[id]);
 	}
+
+	ZmPref.registerPref("CLIENT_TYPE", {
+		displayName:		ZmMsg.clientType,
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_VERTICAL,
+		displayOptions: 	[ZmMsg.clientAdvanced, ZmMsg.clientStandard],
+		options: 			[ZmSetting.CLIENT_ADVANCED, ZmSetting.CLIENT_STANDARD]
+	});
 
 	ZmPref.registerPref("COMPOSE_AS_FORMAT", {
 		displayName:		ZmMsg.composeUsing,
@@ -241,13 +253,20 @@ function() {
 		displayContainer:	ZmPref.TYPE_CHECKBOX
 	});
 
+	ZmPref.registerPref("FORWARD_INCLUDE_ORIG", {
+		displayName:		ZmMsg.forwardInclude,
+		displayContainer:	ZmPref.TYPE_SELECT,
+		displayOptions:		[ZmMsg.includeInBody, ZmMsg.includePrefix, ZmMsg.includeOriginalAsAttach],
+		options:			[ZmSetting.INCLUDE, ZmSetting.INCLUDE_PREFIX, ZmSetting.INCLUDE_ATTACH]
+	});
+
 	ZmPref.registerPref("LOCALE_NAME", {
 		displayName:		ZmMsg.selectLanguage,
-		displayContainer:	ZmPref.TYPE_SELECT,
+		displayContainer:	ZmPref.TYPE_LOCALES,
 		images:				[],
 		displayOptions:		[],
-		options:			[],
-		loadFunction:		ZmPref.loadLocales,
+        options:			[],
+        loadFunction:		ZmPref.loadLocales,
 		displaySeparator:	true,
 		precondition:		ZmSetting.LOCALE_CHANGE_ENABLED
 	});
@@ -290,6 +309,27 @@ function() {
 		displaySeparator:	true
 	});
 
+	ZmPref.registerPref("REPLY_INCLUDE_ORIG", {
+		displayName:		ZmMsg.replyInclude,
+		displayContainer:	ZmPref.TYPE_SELECT,
+		displayOptions:		[ZmMsg.dontInclude,
+							 ZmMsg.includeInBody, ZmMsg.includePrefix,
+							 ZmMsg.includeOriginalAsAttach,
+							 ZmMsg.smartInclude],
+		options:			[ZmSetting.INCLUDE_NONE,
+							 ZmSetting.INCLUDE, ZmSetting.INCLUDE_PREFIX, 
+							 ZmSetting.INCLUDE_ATTACH,
+							 ZmSetting.INCLUDE_SMART]
+	});
+
+	ZmPref.registerPref("REPLY_PREFIX", {
+		displayName:		ZmMsg.prefix,
+		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
+		orientation:		ZmPref.ORIENT_HORIZONTAL,
+		displayOptions:		[">", "|"],
+		displaySeparator:	true
+	});
+
 	ZmPref.registerPref("SAVE_TO_SENT", {
 		displayName:		ZmMsg.saveToSent,
 		displayContainer:	ZmPref.TYPE_RADIO_GROUP,
@@ -302,8 +342,7 @@ function() {
 	ZmPref.registerPref("SEARCH_INCLUDES_SPAM", {
 		displayName:		ZmMsg.includeJunkFolder,
 		displayContainer:	ZmPref.TYPE_CHECKBOX,
-		precondition:		ZmSetting.MAIL_ENABLED,
-		precondition:		ZmSetting.SPAM_ENABLED
+		precondition:		AjxCallback.simpleClosure(ZmPref.requireAllPreConditions, null, ZmSetting.MAIL_ENABLED, ZmSetting.SPAM_ENABLED)
 	});
 
 	ZmPref.registerPref("SEARCH_INCLUDES_TRASH", {

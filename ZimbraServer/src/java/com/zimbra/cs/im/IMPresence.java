@@ -24,6 +24,8 @@
  */
 package com.zimbra.cs.im;
 
+import org.xmpp.packet.Presence;
+
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.soap.Element;
 import com.zimbra.cs.mailbox.Metadata;
@@ -46,6 +48,57 @@ public class IMPresence {
         mShow = show;
         mPriority = prio;
         mStatus = status;
+    }
+    
+    public IMPresence(Presence pres) {
+        mPriority = (byte)(pres.getPriority());
+        mStatus = pres.getStatus();
+        
+        Presence.Type ptype = pres.getType();
+        if (ptype == null) {
+            Presence.Show pShow = pres.getShow();
+            mShow = IMPresence.Show.ONLINE;
+            if (pShow != null) {
+                switch (pShow) {
+                    case chat:
+                        mShow = Show.CHAT;
+                        break;
+                    case away:
+                        mShow = Show.AWAY;
+                    break;
+                    case xa:
+                        mShow = Show.XA;
+                    break;
+                    case dnd:
+                        mShow = Show.DND;
+                    break;
+                }
+            }
+        } else {
+            mShow = Show.OFFLINE;
+        }
+    }
+    
+    Presence getXMPPPresence() {
+        Presence xmppPresence;
+
+        if (getShow() == Show.OFFLINE) {
+            xmppPresence = new Presence(Presence.Type.unavailable);
+        } else {
+            xmppPresence = new Presence();
+            if (getShow() == Show.CHAT)
+                xmppPresence.setShow(Presence.Show.chat);
+            else if (getShow() == Show.AWAY)
+                xmppPresence.setShow(Presence.Show.away);
+            else if (getShow() == Show.XA)
+                xmppPresence.setShow(Presence.Show.xa);
+            else if (getShow() == Show.DND)
+                xmppPresence.setShow(Presence.Show.dnd);
+        }
+        if (getStatus() != null && getStatus().length() > 0)
+            xmppPresence.setStatus(getStatus());
+        
+        return xmppPresence;
     }
     
     private static final String FN_SHOW = "h";

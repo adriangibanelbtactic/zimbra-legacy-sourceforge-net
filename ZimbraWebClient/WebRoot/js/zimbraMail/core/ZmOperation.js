@@ -113,7 +113,7 @@ function() {
 	ZmOperation.registerOp("CLOSE", {textKey:"close", tooltipKey:"closeTooltip", image:"Close"});
 	ZmOperation.registerOp("COMPOSE_FORMAT", {textKey:"format", tooltipKey:"formatTooltip", image:"SwitchFormat"}, ZmSetting.HTML_COMPOSE_ENABLED);
 	ZmOperation.registerOp("DELETE", {textKey:"del", tooltipKey:"deleteTooltip", image:"Delete"});
-	ZmOperation.registerOp("DETACH", {textKey:"detach", tooltipKey:"detachTT", image:"OpenInNewWindow"});
+	ZmOperation.registerOp("DETACH", {tooltipKey:"detachTT", image:"OpenInNewWindow"});
 	ZmOperation.registerOp("EDIT", {textKey:"edit", tooltipKey:"editTooltip", image:"Edit"});
 	ZmOperation.registerOp("EDIT_PROPS", {textKey:"editProperties", tooltipKey:"editPropertiesTooltip", image:"Properties"});
 	ZmOperation.registerOp("EXPAND_ALL", {textKey:"expandAll", image:"Plus"});
@@ -135,7 +135,6 @@ function() {
 	ZmOperation.registerOp("PAGE_DBL_FORW", {image:"RightDoubleArrow"});
 	ZmOperation.registerOp("PAGE_FORWARD", {image:"RightArrow"});
 	ZmOperation.registerOp("PRINT", {textKey:"print", tooltipKey:"printTooltip", image:"Print"}, ZmSetting.PRINT_ENABLED);
-	ZmOperation.registerOp("PRINT_MENU", {tooltipKey:"printTooltip", image:"Print"}, ZmSetting.PRINT_ENABLED);
 	ZmOperation.registerOp("REFRESH", {textKey:"refresh", tooltipKey:"refreshTooltip", image:"Refresh"});
 	ZmOperation.registerOp("RENAME_FOLDER", {textKey:"renameFolder", image:"Rename"});
 	ZmOperation.registerOp("RENAME_SEARCH", {textKey:"renameSearch", image:"Rename"});
@@ -146,9 +145,8 @@ function() {
 	ZmOperation.registerOp("SHARE", {textKey:"share", tooltipKey:"shareTooltip"}, ZmSetting.SHARING_ENABLED);
 	ZmOperation.registerOp("SHARE_ACCEPT", {textKey:"acceptShare", image:"Check"}, ZmSetting.SHARING_ENABLED);
 	ZmOperation.registerOp("SHARE_DECLINE", {textKey:"declineShare", image:"Cancel"}, ZmSetting.SHARING_ENABLED);
-	ZmOperation.registerOp("SHARE_FOLDER", {textKey:"shareFolder", image:"Folder"}, ZmSetting.SHARING_ENABLED);
+	ZmOperation.registerOp("SHARE_FOLDER", {textKey:"shareFolder", image:"SharedMailFolder"}, ZmSetting.SHARING_ENABLED);
 	ZmOperation.registerOp("SHOW_ALL_ITEM_TYPES", {textKey:"showAllItemTypes", image:"Globe"});
-	ZmOperation.registerOp("SHOW_ALL_MENU", {textKey:"showAllItemTypes", image:"Globe"});
 	ZmOperation.registerOp("SPELL_CHECK", {textKey:"spellCheck", image:"SpellCheck"});
 	ZmOperation.registerOp("SYNC", {textKey:"reload", image:"Refresh"});
 	ZmOperation.registerOp("SYNC_OFFLINE", {textKey:"checkMail", tooltipKey:"syncTooltip", image:"Refresh"});
@@ -163,9 +161,11 @@ function() {
 		}));
 	// placeholder for toolbar text
 	ZmOperation.registerOp("TEXT");
-	// XXX: need new icon?
+	// XXX: need new icon? -
+	//      Undelete is stupid. We should either add it for all items types (not just contacts) or just kill it
 	ZmOperation.registerOp("UNDELETE", {textKey:"undelete", tooltipKey:"undelete", image:"MoveToFolder"});
 	ZmOperation.registerOp("VIEW", {textKey:"view", image:"SplitView"});
+	ZmOperation.registerOp("VIEW_MENU", {textKey:"view", image:"SplitPane"});
 	ZmOperation.registerOp("ZIMLET", {image:"ZimbraIcon"});
 };
 

@@ -23,11 +23,20 @@ Contributor(s):
 
 ***** END LICENSE BLOCK *****
 -->
-<% 
-	String contextPath = request.getContextPath();
-	if(contextPath.equals("/")) {
-		contextPath = "";
-	}
+<%
+    String contextPath = request.getContextPath();
+    if(contextPath.equals("/")) {
+        contextPath = "";
+    }
+
+    String isDev = (String) request.getParameter("dev");
+    if (isDev != null) {
+        request.setAttribute("mode", "mjsf");
+    }
+
+    String mode = (String) request.getAttribute("mode");
+    boolean inDevMode = (mode != null) && (mode.equalsIgnoreCase("mjsf"));
+    boolean inSkinDebugMode = (mode != null) && (mode.equalsIgnoreCase("skindebug"));
 
    String vers = (String)request.getAttribute("version");
    String ext = (String)request.getAttribute("fileExtension");
@@ -37,4 +46,18 @@ Contributor(s):
    if (ext == null){
       ext = "";
    }
-%><script type="text/javascript" src="<%= contextPath %>/js/msgs/I18nMsg,AjxMsg,ZMsg,ZaMsg,ZmMsg.js<%= ext %>?v=<%= vers %>"></script>
+
+    String localeQs = "";
+    String localeId = (String) request.getAttribute("localeId");
+    if (localeId != null) {
+        int index = localeId.indexOf("_");
+        if (index == -1) {
+            localeQs = "&language=" + localeId;
+        } else {
+            localeQs = "&language=" + localeId.substring(0, index) +
+                       "&country=" + localeId.substring(localeId.length() - 2);
+        }
+    }
+
+%><script type="text/javascript" src="<%= contextPath %>/js/msgs/I18nMsg,AjxMsg,ZMsg,ZaMsg,ZmMsg.js<%= ext %>?v=<%= vers %><%= inSkinDebugMode || inDevMode ? "&debug=1" : "" %><%= localeQs %>"></script>
+ 

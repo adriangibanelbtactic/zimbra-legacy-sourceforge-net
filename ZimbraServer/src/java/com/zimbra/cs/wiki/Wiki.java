@@ -53,7 +53,6 @@ import com.zimbra.cs.service.wiki.WikiServiceException;
 import com.zimbra.cs.session.WikiSession;
 import com.zimbra.common.service.ServiceException;
 import com.zimbra.common.service.ServiceException.Argument;
-import com.zimbra.common.util.ByteUtil;
 import com.zimbra.common.util.Pair;
 import com.zimbra.common.util.ZimbraLog;
 import com.zimbra.common.soap.MailConstants;
@@ -174,7 +173,7 @@ public abstract class Wiki {
 			return Wiki.getInstance(ctxt, ownerAccount.getId(), getFolderPath(ctxt, referenceAccount));
 		}
 		public String getFullUrl(WikiContext ctxt, String referenceAccount) throws ServiceException {
-			if (mUrl != null)
+			if (mUrl != null && mUrl.startsWith("http://"))
 				return mUrl;
 			Account ownerAccount = getOwnerAccount(referenceAccount);
 			return UserServlet.getRestUrl(ownerAccount)
@@ -307,10 +306,8 @@ public abstract class Wiki {
 			mFolderId = fid;
 			
 			if (Provisioning.onLocalServer(acct)) {
-				Mailbox mbox = MailboxManager.getInstance().getMailboxByAccount(acct);
-				if (mbox == null)
-					throw WikiServiceException.ERROR("wiki account mailbox not found");
-				mbox.addListener(WikiSession.getInstance());
+			    Mailbox mbox = MailboxManager.getInstance().getMailboxByAccount(acct);
+			    WikiSession.getInstance().addMailboxForNotification(mbox);
 			} else {
 				// for some reason if the account is not local, but we have folder id.
 				throw WikiServiceException.ERROR("cannot access remote account "+acct.getName());
@@ -322,23 +319,35 @@ public abstract class Wiki {
 			WikiPage page = (WikiPage)mWikiPages.get(wikiWord);
 			if (page != null)
 				return page;
-			Mailbox mbox = MailboxManager.getInstance().getMailboxByAccountId(mWikiAccount);
-			try {
-				MailItem item = mbox.getItemByPath(ctxt.octxt, wikiWord, mFolderId);
-				page = WikiPage.create((Document) item);
-				synchronized (mWikiPages) {
-					if (!mWikiPages.containsKey(wikiWord))
-						mWikiPages.put(wikiWord, page);
-				}
-			} catch (MailServiceException.NoSuchItemException se) {
-				return null;
+			page = lookupWikiRevision(ctxt, wikiWord, -1);
+			synchronized (mWikiPages) {
+			    if (!mWikiPages.containsKey(wikiWord))
+			        mWikiPages.put(wikiWord, page);
 			}
 			return page;
 		}
 		
+		public WikiPage lookupWikiRevision(WikiContext ctxt, String wikiWord, int rev) throws ServiceException {
+            wikiWord = wikiWord.toLowerCase();
+            Mailbox mbox = MailboxManager.getInstance().getMailboxByAccountId(mWikiAccount);
+            if (mbox == null)
+                throw WikiServiceException.ERROR("mailbox not found for account " + mWikiAccount);
+            try {
+                MailItem item = mbox.getItemByPath(ctxt.octxt, wikiWord, mFolderId);
+                if (rev == -1)
+                    return WikiPage.create((Document) item);
+                else
+                    return WikiPage.create((Document) item, rev, ctxt);
+            } catch (MailServiceException.NoSuchItemException se) {
+                return null;
+            }
+		}
+        
 		public synchronized void renameDocument(WikiContext ctxt, int id, String newName, String author) throws ServiceException {
 			// rename the page, then flush the cache.
 			Mailbox mbox = MailboxManager.getInstance().getMailboxByAccountId(mWikiAccount);
+			if (mbox == null)
+			    throw WikiServiceException.ERROR("mailbox not found for account "+mWikiAccount);
 			mbox.rename(ctxt.octxt, id, MailItem.TYPE_DOCUMENT, newName);
 			Wiki.remove(mWikiAccount, Integer.toString(mFolderId));
 		}
@@ -355,7 +364,7 @@ public abstract class Wiki {
 	public static class WikiByPath extends Wiki {
 		private String mPath;
 		
-		WikiByPath(Account acct, String path) throws ServiceException {
+		WikiByPath(Account acct, String path) {
 			mWikiAccount = acct.getId();
 			mPath = path;
 		}
@@ -404,6 +413,9 @@ public abstract class Wiki {
 			return page;
 		}
 		
+		public WikiPage lookupWikiRevision(WikiContext ctxt, String wikiWord, int rev) throws ServiceException {
+            throw WikiServiceException.ERROR("lookupWikiRevision on a remote wiki: not implemented");
+		}
 		public void renameDocument(WikiContext ctxt, int id, String newName, String author) throws ServiceException {
 			throw WikiServiceException.ERROR("createDocument on a remote wiki: not implemented");
 		}
@@ -577,6 +589,7 @@ public abstract class Wiki {
 	public abstract int getWikiFolderId() throws ServiceException;
 	
 	public abstract WikiPage lookupWiki(WikiContext ctxt, String wikiWord) throws ServiceException;
+    public abstract WikiPage lookupWikiRevision(WikiContext ctxt, String wikiWord, int rev) throws ServiceException;
 	
 	public static WikiPage findPage(WikiContext ctxt, String accountId, int id) throws ServiceException {
 		Account account = Provisioning.getInstance().get(Provisioning.AccountBy.id, accountId);
@@ -626,7 +639,7 @@ public abstract class Wiki {
 					throw MailServiceException.ALREADY_EXISTS("wiki word "+wikiWord+" in folder "+fid,
 							new Argument(MailConstants.A_NAME, wikiWord, Argument.Type.STR),
 							new Argument(MailConstants.A_ID, pg.getId(), Argument.Type.IID),
-							new Argument(MailConstants.A_VERSION, pg.getLastRevision(), Argument.Type.NUM),
+							new Argument(MailConstants.A_VERSION, pg.getLastVersion(), Argument.Type.NUM),
 							new Argument(MailConstants.A_REST_URL, url, Argument.Type.STR));
 				}
 
@@ -638,11 +651,11 @@ public abstract class Wiki {
 			WikiPage oldPage = findPage(ctxt, account, id);
 			if (oldPage == null)
 				throw new WikiServiceException.NoSuchWikiException("page id="+id+" not found");
-			if (oldPage.getLastRevision() != ver) {
+			if (oldPage.getLastVersion() != ver) {
 				throw MailServiceException.MODIFY_CONFLICT(
 						new Argument(MailConstants.A_NAME, wikiWord, Argument.Type.STR),
 						new Argument(MailConstants.A_ID, oldPage.getId(), Argument.Type.IID),
-						new Argument(MailConstants.A_VERSION, oldPage.getLastRevision(), Argument.Type.NUM));
+						new Argument(MailConstants.A_VERSION, oldPage.getLastVersion(), Argument.Type.NUM));
 			}
 			oldPage.add(ctxt, page);
 		}
@@ -651,14 +664,16 @@ public abstract class Wiki {
 	public abstract void renameDocument(WikiContext ctxt, int id, String newName, String author) throws ServiceException;
 	
 	public WikiTemplate getTemplate(WikiContext ctxt, String name) throws ServiceException {
-		WikiPage page;
+        WikiPage page = lookupWiki(ctxt, name);
+        if (page != null)
+            return page.getTemplate(ctxt);
 
-		// check if the request is local to the same folder.
-		page = lookupWiki(ctxt, name);
-
-		if (page != null)
-			return page.getTemplate(ctxt);
-
+        return getChromeTemplate(ctxt, name);
+    }
+    
+    public WikiTemplate getChromeTemplate(WikiContext ctxt, String name) throws ServiceException {
+        WikiPage page = null;
+        
 		// check if the request is for the chrome.
 		if (name.startsWith("_")) {
 			try {
