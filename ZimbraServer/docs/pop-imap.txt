@@ -1,0 +1,41 @@
+IMAP protocol and extensions suppoted:
+
+    [IMAP4rev1]        RFC 3501: Internet Message Access Protocol - Version 4rev1
+    [LOGINDISABLED]    RFC 3501: Internet Message Access Protocol - Version 4rev1
+    [STARTTLS]         RFC 3501: Internet Message Access Protocol - Version 4rev1
+    [AUTH=PLAIN]       RFC 2595: Using TLS with IMAP, POP3 and ACAP
+    [BINARY]           RFC 3516: IMAP4 Binary Content Extension
+    [CATENATE]         RFC 4469: Internet Message Access Protocol (IMAP) CATENATE Extension
+    [CHILDREN]         RFC 3348: IMAP4 Child Mailbox Extension
+    [ESEARCH]          RFC 4731: IMAP4 Extension to SEARCH Command for Controlling What Kind of Information Is Returned
+    [ID]               RFC 2971: IMAP4 ID Extension
+    [IDLE]             RFC 2177: IMAP4 IDLE command
+    [IMAPURL]          RFC 2192: IMAP URL Scheme
+    [LITERAL+]         RFC 2088: IMAP4 non-synchronizing literals
+    [LOGIN-REFERRALS]  RFC 2221: IMAP4 Login Referrals
+    [NAMESPACE]        RFC 2342: IMAP4 Namespace
+    [QUOTA]            RFC 2087: IMAP4 QUOTA extension
+    [SASL-IR]          draft-siemborski-imap-sasl-initial-response-06: IMAP Extension for SASL Initial Client Response
+    [UIDPLUS]          RFC 4315: Internet Message Access Protocol (IMAP) - UIDPLUS extension
+    [UNSELECT]         RFC 3691: IMAP UNSELECT command
+    [WITHIN]           draft-ietf-lemonade-search-within-03: WITHIN Search extension to the IMAP Protocol
+    [X-DRAFT-I04-SEARCHRES]  draft-melnikov-imap-search-res-04: IMAP extension for referencing the last SEARCH result
+    [$MDNSent]         RFC 3503: Message Disposition Notification (MDN) profile for Internet Message Access Protocol (IMAP)
+
+POP protocol and extensions supported:
+
+    RFC 1939: Post Office Protocol - Version 3 
+    
+        supported: DELE, LIST, NOOP, PASS, QUIT, RETR, STAT, TOP, UIDL, USER
+      unsupported: APOP (optional, and requires clear-text password to be stored)
+    
+    RFC 2449: POP3 Extension Mechanism
+    
+        supported: CAPA, TOP, USER, UIDL, EXPIRE, IMPLEMENTATION
+      unsupported: SASL, RESP-CODES, LOGIN-DELAY, PIPELINING
+      
+    RFC 2595: Using TLS with IMAP, POP3 and ACAP 
+    
+        supported: STLS
+
+    

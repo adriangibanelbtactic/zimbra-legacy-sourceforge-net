@@ -1,0 +1,72 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+
+source /opt/zimbra/bin/zmshutil || exit 1
+
+source_config_dir=/opt/zimbra/openldap/etc/openldap
+config_dir=/opt/zimbra/conf
+
+zmsetvars zimbra_ldap_userdn zimbra_ldap_password ldap_root_password zimbra_server_hostname
+
+root_sha=`/opt/zimbra/openldap/sbin/slappasswd -s ${ldap_root_password}`
+zimbra_sha=`/opt/zimbra/openldap/sbin/slappasswd -s ${zimbra_ldap_password}`
+
+# Update slapd.conf
+
+sed -e "s|^rootpw.*|rootpw ${root_sha}|" \
+    ${source_config_dir}/slapd.conf > ${config_dir}/slapd.conf.in
+
+if [ -f "/opt/zimbra/lib/conf/zimbra-ext.schema" ]; then
+	sed -e '\|/opt/zimbra/openldap/etc/openldap/schema/zimbra.schema| a \
+		include "/opt/zimbra/lib/conf/zimbra-ext.schema"' ${config_dir}/slapd.conf.in > /tmp/slapd.conf
+	mv -f /tmp/slapd.conf ${config_dir}/slapd.conf.in
+fi
+
+# Update zimbra.ldif
+
+rm -f ${config_dir}/zimbra.ldif
+
+sed -e "s|^userPassword.*|userPassword: ${zimbra_sha}|" \
+        ${source_config_dir}/zimbra.ldif > ${config_dir}/zimbra.ldif
+
+ldap start
+
+${zimbra_home}/openldap/bin/ldapmodify -a -c -H ${ldap_master_url} -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f ${config_dir}/zimbra.ldif
+${zimbra_home}/openldap/bin/ldapmodify -a -c -H ${ldap_master_url} -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f ${source_config_dir}/zimbra_globalconfig.ldif 
+${zimbra_home}/openldap/bin/ldapmodify -a -c -H ${ldap_master_url} -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f ${source_config_dir}/zimbra_defaultcos.ldif
+${zimbra_home}/openldap/bin/ldapmodify -c -H ${ldap_master_url} -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f ${source_config_dir}/zimbra_mimehandlers.ldif
+
+#ldapmodify -c -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f ${config_dir}/zimbra.ldif
+${zimbra_home}/openldap/bin/ldapmodify -c -H ${ldap_master_url} -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f ${source_config_dir}/zimbra_mimehandlers.ldif
+
+for i in `ls /opt/zimbra/lib/conf/*ldif`; do
+    ${zimbra_home}/openldap/bin/ldapmodify -a -c -H ${ldap_master_url} -w ${ldap_root_password} -D "${zimbra_ldap_userdn}" -x -f $i
+done
+
+if [ -f "/opt/zimbra/.enable_replica" ]; then
+  /opt/zimbra/libexec/zmldapenablereplica
+fi
+

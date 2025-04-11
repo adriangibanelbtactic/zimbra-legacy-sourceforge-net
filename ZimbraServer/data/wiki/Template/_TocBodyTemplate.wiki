@@ -1,0 +1,7 @@
+<div class="zmwiki-toc">
+	<table class="zmwiki-tocTable" cellpadding="2" cellspacing="0">
+		<tbody><tr><td colspan="3" class="zmwiki-tocHeader"><wiklet class='MSG' key='wikiToc' /></td></tr>
+		<wiklet class='CONTENT' />
+	</tbody></table>
+</div>
+

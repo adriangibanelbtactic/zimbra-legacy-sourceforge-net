@@ -1,0 +1,173 @@
+  This install doc is aimed at developers internal to Zimbra.
+You'll see paths to internal shares and the like.  It's also 
+useful to setting up a development build with CVS, but that's 
+not the main focus.
+
+NOTE: Most or all binaries needed for installation are available
+on the \\kenny share. For example, Windows installers are located
+at: \\kenny\Public\software\windows. It might be best to copy the
+installers to your local machine before installing.
+
+1. Install Perforce (P4) (www.perforce.com)
+   Configure server port to "eric:1666".
+
+2. Checkout the following from Perforce:
+
+   ZimbraServer - the backend system
+
+   ZimbraWebClient - the dhtml interface
+
+   Ajax - DTML/Ajax toolkit
+  
+   Optional: ThirdParty - not needed to run, but has javadocs and
+   source for the various 3rd party jars/servers. It's very very large
+   since all the built servers and 3rd Party code (multiple versions)
+   are in there.
+
+3. Install latest 1.5.x JDK. Need full JDK, not just a JRE.
+   
+   Recommend installing in c:\opt\zimbra\java
+   
+   Set the JAVA_HOME environment variable to point to the installed
+   JDK location.
+
+4. Install Eclipse (www.eclipse.org)
+
+   You should install the Perforce plugin for Eclipse. To install,
+   select Help | Software Updates | Find and Install...  Then select
+   the "Search for new features to install" and hit Next.  From this
+   screen, add a new remote site using the URL:
+  
+   http://www.perforce.com/downloads/http/p4-wsad/install/
+  
+   This will add a P4 entry to the list on the left. Select that and
+   continue through the wizard.
+  
+   NOTE: You will need to configure the plugin with your Perforce
+   information before using the Perforce Perspective.
+  
+   Once you get the Perforce Perspective open right click on
+   ZimbraServer and select "Import as project". Do the same for Ajax
+   and ZimbraWebClient.
+
+5. Install Tomcat 5.5.x
+
+   On Windows, install Tomcat to c:\opt\zimbra\tomcat
+  
+   copy ZimbraServer/conf/tomcat-5.5/server.xml to c:\opt\zimbra\tomcat\conf\
+   copy ZimbraServer/conf/tomcat-5.5/tomcat-users.xml c:\opt\zimbra\tomcat\conf\
+  
+   The server.xml file is configured to use port 7070 by
+   default. Production would of course use 80, and we'll also need to
+   configure SSL
+  
+   The ZimbraServer/build.xml relies on a zimbra/zimbra user in the
+   tomcat-users.xml file to deploy
+
+   On Linux startup with:
+      $ JAVA_HOME={java-home} {tomcat-install}/bin/startup.sh      
+
+6. Install MySQL 4.1.x 
+
+   On Windows, install MySQL to c:\opt\zimbra\mysql
+
+   Install it to run on port 7306
+
+   We expect for now an admin account of "root" with password
+   "zimbra".  This is different then the OS root account (if on
+   Linux). The ZimbraServer/build.xml file relies on the root account
+   to create the zimbra database and user/pass.
+
+  On Linux, you can run the script ./configure in the main directory
+  of the binary mysql distribtion.  This script creates a minimal
+  mysql system, and starts up mqsql server.  Use can use
+  "{mysql-path}/mysqld_safe --no-defaults" to start the server and use
+  "kill `cat {mysql-path}/data/{hostname}.pid`" to shut it down.  Also
+  on linux after you have started the server, you have to allow
+  connections to mysql which you can do by running the mqsql command
+  line:
+
+    $ mysql -u root -p
+    Password: zimbra     
+    
+    mysql> grant all on *.* to "root"@"localhost.localdomain" identified by 'zimbra' with grant option;
+    Query OK, 0 rows affected (0.02 sec)
+    mysql> flush privileges;
+    Query OK, 0 rows affected (0.00 sec)
+
+   On Windows, follow instructions to install MySQL as a service with
+   the required database admin user password.
+
+7. Install OpenLDAP (Get pkg from \\kenny)
+   Or http://download.bergmans.us/openldap/
+
+   On Windows, install to c:\opt\zimbra\openldap. Then go to the
+   openldap directory and run "slapd install" to install it as a
+   Windows service.
+   
+   The location of the schema files changed in OpenLDAP 2.2.29.
+   If you're using 2.2.29 or later, you'll have to manually edit
+   slapd.win.conf and change the paths to the schema files from
+   /opt/zimbra/openldap/etc/schema to /opt/zimbra/openldap/schema.
+
+8. On Linux, probably want to chown /opt to yourself and/or give group
+   write access to /opt, so you don't have to worry about running as
+   root.
+  
+   All the index, blobs, data, etc, get installed under /opt/zimbra/*.
+  
+9. Initialize system
+
+	From inside Eclipse on the Java Perspective select:
+	
+  	Window -> Show View -> Ant
+  	
+  	Add: ZimbraServer/build.xml
+  		Run the "reset-the-world" target.
+  	This will wipe out parts of /opt/zimbra, reload the database, 
+  	and inject the sample messages.
+  	
+  	Add: ZimbraWebClient/build.xml
+    	Run "deploy" and "admin-deploy"
+
+    This will compile/deploy the DHTML interface and the Admin Console.
+    	
+    If you install ant standalone, you can also run "ant
+    reset-the-world" from within the ZimbraServer root directory.
+     
+10. Test deployment
+
+    You should now be able to go to:
+
+        http://localhost:7070/zimbra/
+  
+    and login as "user1[@{hostname}]" (the domain is optional), with
+    password "test123", where {hostname} is the name of your local
+    machine.
+  
+    You can log into the Admin Console by going to:
+  
+        https://localhost:7071/zimbraAdmin
+    
+    and login as "admin@{hostname}" (the domain is mandatory), with
+    the password "test123", where {hostname} is the name of your local
+    machine.
+	
+11. Set up a local mail server. This will allow you to actually send 
+    mail from the development build.
+	
+	Install ActiveState Perl
+	
+	From a command window, run ppm and give it the following commands:
+		ppm> install Net-LMTP
+		ppm> install SMTP-Server 
+		ppm> install Net-DNS
+	
+	set the ZIMBRA_HOSTNAME environment variable to be the name of your computer.
+	
+	run ZimbraServer\src\perl\zMTAHack.pl
+	
+	
+
+	
+	

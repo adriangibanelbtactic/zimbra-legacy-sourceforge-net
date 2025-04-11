@@ -1,0 +1,43 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+#
+# We cannot rely on any config parameters when running
+# zmlocalconfig for obvious chicken and egg reasons.  So
+# we just make assumptions about install layout.
+#
+
+ZMROOT=`dirname $0`/..
+ZMROOT=`(cd "${ZMROOT}"; pwd)`
+
+if [ -x "${ZMROOT}/java/bin/java" ]; then
+    java="${ZMROOT}/java/bin/java"
+else
+    java=java
+fi
+
+CP=${ZMROOT}/lib/jars/zimbracommon.jar:${ZMROOT}/lib/jars/commons-logging.jar:${ZMROOT}/lib/jars/commons-cli-2.0.jar:${ZMROOT}/lib/jars/dom4j-1.5.jar:${ZMROOT}/lib/jars/log4j-1.2.8.jar:${ZMROOT}/lib/jars/commons-httpclient-2.0.1.jar
+exec ${java} -client -Dzimbra.home="${ZMROOT}" -cp "$CP" \
+    com.zimbra.common.localconfig.Main "$@"

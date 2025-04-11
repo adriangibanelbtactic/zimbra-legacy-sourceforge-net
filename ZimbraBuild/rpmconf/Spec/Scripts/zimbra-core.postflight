@@ -1,0 +1,73 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+
+mkdir -p /opt/zimbra/log
+chown zimbra:zimbra /opt/zimbra/log
+
+mkdir /opt/zimbra/ssl
+chown zimbra:zimbra /opt/zimbra/ssl
+mkdir /opt/zimbra/.ssh
+chown zimbra:zimbra /opt/zimbra/.ssh
+
+rm -f /opt/zimbra/java
+ln -s /usr /opt/zimbra/java
+
+# Bug 6645
+PLAT=`/opt/zimbra/libexec/get_plat_tag.sh`
+ARCH=powerpc
+if [ "x$PLAT" = "xMACOSXx86" ]; then
+	ARCH=i686
+fi
+
+if [ ! -d /opt/zimbra/openldap-2.3.34 ]; then
+	mkdir -p /opt/zimbra/openldap-2.3.34
+	ln -s /opt/zimbra/lib /opt/zimbra/openldap-2.3.34/lib
+fi
+if [ ! -d /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH ]; then
+	mkdir -p /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH
+	ln -s /opt/zimbra/lib /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH/lib
+	ln -s /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH/lib /opt/zimbra/mysql-standard-5.0.33-apple-darwin8.2.0-$ARCH/lib/mysql
+fi
+
+/bin/sh /opt/zimbra/libexec/zmfixperms
+
+echo "Setting up syslog"
+#/opt/zimbra/bin/zmsyslogsetup local
+
+rm -rf /Users/zimbra
+
+ln -s /opt/zimbra /Users/zimbra
+
+# echo "Launching ZmSetup.app"
+# /opt/zimbra/libexec/ZmSetup.app/Contents/MacOS/ZmSetup
+D=`date +%s`
+echo "${D}: INSTALL SESSION COMPLETE" >> /opt/zimbra/.install_history
+
+# Fix perdition.conf.in dylib/so for mac
+sed -i .bak -e 's/\.so$/.dylib/' /opt/zimbra/conf/perdition.conf.in 
+sed -i .bak -e 's/\.so$/.dylib/' /opt/zimbra/conf/dspam.conf
+
+

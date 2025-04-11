@@ -1,0 +1,109 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2006 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+# Create group, user for zimbra and postfix.
+
+H=`hostname --fqdn`
+I=`hostname -i`
+
+#Symlinks
+rm -f /opt/zimbra/java
+PLAT=`/opt/zimbra/libexec/get_plat_tag.sh`
+BIT=`echo $PLAT | awk -F_ '{print $2}'`
+if [ "x$BIT" = "x64" ]; then
+	ln -s /opt/zimbra/jdk1.5.0_08 /opt/zimbra/java
+else
+	ln -s /opt/zimbra/jdk1.5.0_08 /opt/zimbra/java
+fi
+
+if [ -f /etc/debian_version ]; then
+	if [ -f /etc/ld.so.conf ]; then
+		mv -f /etc/ld.so.conf /etc/ld.so.conf.$$
+		cat /etc/ld.so.conf.$$ | grep -v zimbra > /etc/ld.so.conf
+	fi
+	cat /opt/zimbra/conf/zimbra.ld.conf >> /etc/ld.so.conf
+else
+	mkdir -p /etc/ld.so.conf.d
+	cp -f /opt/zimbra/conf/zimbra.ld.conf /etc/ld.so.conf.d
+fi
+
+if [ ! -d /opt/zimbra/zimbramon/mrtg/work/ ]; then
+	mkdir -p /opt/zimbra/zimbramon/mrtg/work/
+fi
+chown -R zimbra:zimbra /opt/zimbra/zimbramon/mrtg
+
+ldconfig
+
+# Setup syslog
+
+if [ -d /etc/logrotate.d ]; then
+	cp -f /opt/zimbra/conf/zmlogrotate /etc/logrotate.d/zimbra
+fi
+
+#/opt/zimbra/bin/zmsyslogsetup local
+
+cp -f /opt/zimbra/libexec/zimbra /etc/init.d/zimbra
+chmod 755 /etc/init.d/zimbra
+
+mkdir -p /opt/zimbra/backup
+chown zimbra:zimbra /opt/zimbra/backup
+mkdir -p /opt/zimbra/log
+chown zimbra:zimbra /opt/zimbra/log
+mkdir /opt/zimbra/ssl
+chown zimbra:zimbra /opt/zimbra/ssl
+mkdir /opt/zimbra/.ssh
+chown zimbra:zimbra /opt/zimbra/.ssh
+
+##### install_history
+PKG=@@PKGNAME@@
+VERSION=@@VERSION@@
+INSTALL_HISTORY=/opt/zimbra/.install_history
+D=`date +%s`
+UPGRADE=`grep "INSTALLED $PKG" $INSTALL_HISTORY`
+if [ x"$UPGRADE" = "x" ]; then
+  ACTION="INSTALLED"
+else
+  ACTION="UPGRADED"
+fi
+
+if [ $PKG = "zimbra-core" ]; then
+  echo "${D}: INSTALL SESSION START" >> $INSTALL_HISTORY
+fi
+
+echo "${D}: $ACTION ${PKG}_${VERSION}" >> /opt/zimbra/.install_history
+
+if [ $PKG = "zimbra-store" ]; then
+  echo "${D}: INSTALL SESSION COMPLETE" >> $INSTALL_HISTORY
+fi
+
+if [ -f "/etc/security/limits.conf" ]; then
+  egrep -q 'zimbra' /etc/security/limits.conf
+  if [ $? != 0 ]; then
+    echo "zimbra soft nofile 10000" >> /etc/security/limits.conf
+    echo "zimbra hard nofile 10000" >> /etc/security/limits.conf
+  fi
+fi
+
+exit 0

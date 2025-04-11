@@ -1,0 +1,548 @@
+/*
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: ZPL 1.2
+ *
+ * The contents of this file are subject to the Zimbra Public License
+ * Version 1.2 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ *
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ *
+ * The Original Code is: Zimbra Collaboration Suite Web Client
+ *
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+ * All Rights Reserved.
+ *
+ * Contributor(s):
+ *
+ * ***** END LICENSE BLOCK *****
+ */
+
+function ZmSearchController(appCtxt, container) {
+
+	ZmController.call(this, appCtxt, container);
+
+	this._inited = false;
+
+	// default menu values
+	this._searchFor = ZmSearchToolBar.FOR_MAIL_MI;
+	this._contactSource = ZmItem.CONTACT;
+	this._results = null;
+
+	if (this._appCtxt.get(ZmSetting.SEARCH_ENABLED))
+		this._setView();
+}
+
+ZmSearchController.prototype = new ZmController;
+ZmSearchController.prototype.constructor = ZmSearchController;
+
+ZmSearchController.prototype.toString =
+function() {
+	return "ZmSearchController";
+}
+
+ZmSearchController.prototype.getSearchPanel =
+function() {
+	return this._searchPanel;
+}
+
+ZmSearchController.prototype.getSearchToolbar =
+function() {
+	return this._searchToolBar;
+}
+
+ZmSearchController.prototype.dateSearch =
+function(d) {
+    if (d == null) d = new Date();
+    var date = (d.getMonth() + 1) + "/" + d.getDate() + "/" + d.getFullYear();
+	var groupBy = this._appCtxt.getSettings().getGroupMailBy();
+	this.search({query: "date:"+date, types: [groupBy]});
+}
+
+ZmSearchController.prototype.fromSearch =
+function(address) {
+	// always search for mail when doing a "from: <address>" search
+	var groupBy = this._appCtxt.getSettings().getGroupMailBy();
+	this.search({query: "from:(" + address + ")", types: [groupBy]});
+}
+
+ZmSearchController.prototype.fromBrowse =
+function(name) {
+	var bv = this.showBrowseView(true);
+	bv.removeAllPickers();
+	this._browseViewController.removeAllPickers();
+	var picker = this._browseViewController.addPicker(ZmPicker.BASIC);
+	picker.setFrom(name);
+	picker.execute();
+}
+
+ZmSearchController.prototype.showBrowseView =
+function(forceShow) {
+	var bvc = this._browseViewController;
+	var show, bv;
+	if (!bvc) {
+		show = true;
+		bvc = this._browseViewController = new ZmBrowseController(this._appCtxt, this._searchPanel);
+		bvc.setBrowseViewVisible(show);
+		bv = bvc.getBrowseView();
+	} else {
+		show = forceShow || !bvc.getBrowseViewVisible();
+		bvc.setBrowseViewVisible(show);
+		bv = bvc.getBrowseView();
+	}
+
+   	return bv;
+}
+
+ZmSearchController.prototype.getBrowseView =
+function() {
+	var bvc = this._browseViewController;
+	return (bvc == null) ? null : bvc.getBrowseView();
+}
+
+ZmSearchController.prototype.setSearchField =
+function(searchString) {
+	if (this._appCtxt.get(ZmSetting.SHOW_SEARCH_STRING) && this._searchToolBar)
+		this._searchToolBar.setSearchFieldValue(searchString);
+	else
+		this._currentQuery = searchString;
+}
+
+ZmSearchController.prototype.getSearchFieldValue =
+function() {
+	return this._searchToolBar ? this._searchToolBar.getSearchFieldValue() : "";
+}
+
+ZmSearchController.prototype.setEnabled =
+function(enabled) {
+	if (this._searchToolBar)
+		this._searchToolBar.setEnabled(enabled);
+}
+
+/**
+* Provides a programmatic way to set the search type. So that it doesn't override a user's
+* choice, it only works if there's a current system-set default, or the "force" flag is set.
+* Any time a user chooses a type through the menu, the default is cleared.
+*
+* @param type		the search type to set as the default
+* @param force		override user choice
+*/
+ZmSearchController.prototype.setDefaultSearchType =
+function(type, force) {
+	if (this._defaultSearchType || force) {
+		if (this._searchToolBar) {
+			var menu = this._searchToolBar.getButton(ZmSearchToolBar.SEARCH_MENU_BUTTON).getMenu();
+			this._preventSearch = true;
+			menu.checkItem(ZmSearchToolBar.MENUITEM_ID, type);
+			this._preventSearch = false;
+		}
+		this._defaultSearchType = type;
+	}
+}
+
+ZmSearchController.prototype._setView =
+function() {
+	// Create search panel - a composite is needed because the search builder
+	// element (ZmBrowseView) is added to it (can't add it to the toolbar)
+	this._searchPanel = new DwtComposite(this._container, "SearchPanel", Dwt.ABSOLUTE_STYLE);
+	this._searchToolBar = new ZmSearchToolBar(this._appCtxt, this._searchPanel);
+
+	var tg = this._createTabGroup();
+	tg.addMember(this._searchToolBar);
+	tg.addMember(this._searchToolBar.getSearchField());
+
+	// Register keyboard callback for search field
+	this._searchToolBar.registerCallback(this._searchFieldCallback, this);
+
+    // Menu and button listeners
+    var searchMenuListener = new AjxListener(this, this._searchMenuListener);
+    var m = this._searchToolBar.getButton(ZmSearchToolBar.SEARCH_MENU_BUTTON).getMenu();
+    var items = m.getItems();
+    for (var i = 0; i < items.length; i++) {
+    	var item = items[i];
+		item.addSelectionListener(searchMenuListener);
+		var mi = item.getData(ZmSearchToolBar.MENUITEM_ID);
+		// set mail as default search
+     	if (mi == ZmSearchToolBar.FOR_MAIL_MI)
+    		item.setChecked(true, true);
+    }
+
+	this._searchToolBar.addSelectionListener(ZmSearchToolBar.SEARCH_MENU_BUTTON, new AjxListener(this, this._searchButtonListener));
+	if (this._appCtxt.get(ZmSetting.BROWSE_ENABLED))
+		this._searchToolBar.addSelectionListener(ZmSearchToolBar.BROWSE_BUTTON, new AjxListener(this, this._browseButtonListener));
+	if (this._appCtxt.get(ZmSetting.SAVED_SEARCHES_ENABLED))
+		this._searchToolBar.addSelectionListener(ZmSearchToolBar.SAVE_BUTTON, new AjxListener(this, this._saveButtonListener));
+}
+
+/**
+* Performs a search and displays the results.
+*
+* @param query			[string]			search string
+* @param types			[Array]*			item types to search for
+* @param sortBy			[constant]*			sort constraint
+* @param offset			[int]*				starting point in list of matching items
+* @param limit			[int]*				maximum number of items to return
+* @param searchId		[int]*				ID of owning search folder (if any)
+* @param prevId			[int]*				ID of last items displayed (for pagination)
+* @param prevSortBy		[constant]*			previous sort order (for pagination)
+* @param noRender		[boolean]*			if true, results will not be passed to controller
+* @param userText		[boolean]*			true if text was typed by user into search box
+* @param callback		[AjxCallback]*		async callback
+* @param errorCallback	[AjxCallback]*		async callback to run if there is an exception
+*/
+ZmSearchController.prototype.search =
+function(params) {
+	if (!(params.query && params.query.length)) return;
+
+	// if the search string starts with "$set:" then it is a command to the client
+	if (params.query.indexOf("$set:") == 0 || params.query.indexOf("$cmd:") == 0) {
+		this._appCtxt.getClientCmdHdlr().execute((params.query.substr(5)), this);
+		return;
+	}
+
+	var respCallback = new AjxCallback(this, this._handleResponseSearch, [params.callback]);
+	this._doSearch(params, params.noRender, respCallback, params.errorCallback);
+}
+
+ZmSearchController.prototype._handleResponseSearch =
+function(callback, result) {
+	if (callback) callback.run();
+};
+
+/**
+* Performs the given search. It takes a ZmSearch, rather than constructing one out of the currently selected menu
+* choices. Aside from re-executing a search, it can be used to perform a canned search.
+*
+* @param search			[ZmSearch]			search object
+* @param noRender		[boolean]*			if true, results will not be passed to controller
+* @param changes		[Object]*			hash of changes to make to search
+* @param callback		[AjxCallback]*		async callback
+* @param errorCallback	[AjxCallback]*		async callback to run if there is an exception
+*/
+ZmSearchController.prototype.redoSearch =
+function(search, noRender, changes, callback, errorCallback) {
+	var params = {};
+	params.query		= search.query;
+	params.types		= search.types;
+	params.sortBy		= search.sortBy;
+	params.offset		= search.offset;
+	params.limit		= search.limit;
+	params.prevId		= search.prevId;
+	params.prevSortBy	= search.prevSortBy;
+	params.fetch		= search.fetch;
+	params.searchId		= search.searchId;
+	params.lastSortVal	= search.lastSortVal;
+	params.lastId		= search.lastId;
+
+	if (changes) {
+		for (var key in changes)
+			params[key] = changes[key];
+	}
+
+	this._doSearch(params, noRender, callback, errorCallback);
+}
+
+/**
+* Assembles a list of item types to return based on a search menu value (which can
+* be passed in).
+*
+* @param searchFor		the value of a search menu item (see ZmSearchToolBar)
+*/
+ZmSearchController.prototype.getTypes =
+function(searchFor) {
+	var types = new AjxVector();
+	searchFor = searchFor || this._searchFor;
+	var groupBy = this._appCtxt.getSettings().getGroupMailBy();
+
+	if (searchFor == ZmSearchToolBar.FOR_MAIL_MI) {
+		types.add(groupBy);
+	} else if (searchFor == ZmSearchToolBar.FOR_ANY_MI) {
+		types.add(groupBy);
+		if (this._appCtxt.get(ZmSetting.CONTACTS_ENABLED))
+			types.add(ZmItem.CONTACT);
+		if (this._appCtxt.get(ZmSetting.CALENDAR_ENABLED))
+			types.add(ZmItem.APPT);
+		if (this._appCtxt.get(ZmSetting.NOTES_ENABLED))
+			types.add(ZmItem.NOTE);
+		if (this._appCtxt.get(ZmSetting.NOTEBOOK_ENABLED)) {
+			types.add(ZmItem.PAGE);
+			types.add(ZmItem.DOCUMENT);
+		}
+	} else if (searchFor == ZmSearchToolBar.FOR_PAS_MI) {
+		if (this._appCtxt.get(ZmSetting.SHARING_ENABLED))
+			types.add(ZmItem.CONTACT);
+	} else {
+		types.add(searchFor);
+		if (searchFor == ZmItem.PAGE) {
+			types.add(ZmItem.DOCUMENT);
+		}
+	}
+
+	return types;
+}
+
+ZmSearchController.prototype._getSuitableSortBy =
+function(types) {
+	var sortBy = null;
+
+	if (types.size() == 1) {
+		var type = types.get(0);
+		var viewType = null;
+		switch (type) {
+			case ZmItem.CONV:		viewType = ZmController.CONVLIST_VIEW; break;
+			case ZmItem.MSG:		viewType = ZmController.TRAD_VIEW; break;
+			case ZmItem.CONTACT:	viewType = ZmController.CONTACT_SIMPLE_VIEW; break;
+			// more types go here as they are suported...
+		}
+
+		if (viewType)
+			sortBy = this._appCtxt.get(ZmSetting.SORTING_PREF, viewType);
+	}
+
+	return sortBy;
+}
+
+/*
+* Performs the search.
+*
+* @param params			[Object]		a hash of arguments for the search (see search() method)
+* @param noRender		[boolean]*		if true, the search results will not be rendered
+* @param callback		[AjxCallback]*	callback
+* @param errorCallback	[AjxCallback]*	error callback
+*/
+ZmSearchController.prototype._doSearch =
+function(params, noRender, callback, errorCallback) {
+
+	this._appCtxt.getZimletMgr().notifyZimlets("onSearch", params.query);
+
+	if (this._searchToolBar) {
+		var value = (this._appCtxt.get(ZmSetting.SHOW_SEARCH_STRING) || params.userText) ? params.query : "";
+		this._searchToolBar.setSearchFieldValue(value);
+		this._searchToolBar.setEnabled(false);
+	}
+
+	// get types from search menu if not passed in
+	var types = params.types || this.getTypes();
+	if (types instanceof Array) // convert array to AjxVector if necessary
+		types = AjxVector.fromArray(types);
+
+	// if the user explicitly searched for all types, force mixed view
+	var isMixed = (this._searchFor == ZmSearchToolBar.FOR_ANY_MI);
+
+	// XXX: hack -- we have to hack the query string in order for this search to work
+	if (this._searchFor == ZmSearchToolBar.FOR_PAS_MI) {
+		params.query += " (is:remote OR is:local)";
+	}
+
+	// only set contact source if we are searching for contacts
+	params.contactSource = (types.contains(ZmItem.CONTACT) || types.contains(ZmSearchToolBar.FOR_GAL_MI))
+		? this._contactSource : null;
+
+	// find suitable sort by value if not given one (and if applicable)
+	params.sortBy = params.sortBy || this._getSuitableSortBy(types);
+	params.types = types;
+
+	var search = new ZmSearch(this._appCtxt, params);
+	var respCallback = new AjxCallback(this, this._handleResponseDoSearch, [search, noRender, isMixed, callback]);
+	if (!errorCallback)
+		errorCallback = new AjxCallback(this, this._handleErrorDoSearch, [search, isMixed]);
+	search.execute({callback: respCallback, errorCallback: errorCallback});
+};
+
+/*
+* Takes the search result and hands it to the appropriate controller for display.
+*
+* @param search			[ZmSearch]
+* @param noRender		[boolean]
+* @param callback		[AjxCallback]*
+* @param result			[ZmCsfeResult]
+*/
+ZmSearchController.prototype._handleResponseDoSearch =
+function(search, noRender, isMixed, callback, result) {
+	var results = result.getResponse();
+
+	this._appCtxt.setCurrentSearch(search);
+	DBG.timePt("execute search", true);
+
+	if (this._searchToolBar)
+		this._searchToolBar.setEnabled(true);
+
+	if (!results.type)
+		results.type = search.types.get(0);
+
+	if (!noRender)
+		this._showResults(results, search, isMixed);
+
+	if (callback) callback.run(result);
+};
+
+ZmSearchController.prototype._showResults =
+function(results, search, isMixed) {
+	// allow old results to dtor itself
+	if (this._results && (this._results.type == results.type))
+		this._results.dtor();
+	this._results = results;
+
+	DBG.timePt("handle search results");
+
+	// determine if we need to default to mixed view
+	var folderTree = this._appCtxt.getTree(ZmOrganizer.FOLDER);
+	var folder = folderTree ? folderTree.getById(search.folderId) : null;
+	var inTrash = folder && folder.isInTrash();
+	var isInGal = (this._contactSource == ZmSearchToolBar.FOR_GAL_MI);
+	if (this._appCtxt.get(ZmSetting.SAVED_SEARCHES_ENABLED)) {
+		this._searchToolBar.getButton(ZmSearchToolBar.SAVE_BUTTON).setEnabled(!isInGal);
+	}
+
+	if (isMixed || inTrash) {
+		this._appCtxt.getApp(ZmZimbraMail.MIXED_APP).getMixedController().show(results);
+	} else if (results.type == ZmItem.CONV) {
+		this._appCtxt.getApp(ZmZimbraMail.MAIL_APP).getConvListController().show(results);
+	} else if (results.type == ZmItem.MSG) {
+		this._appCtxt.getApp(ZmZimbraMail.MAIL_APP).getTradController().show(results);
+	} else if (results.type == ZmItem.CONTACT) {
+		var clc = this._appCtxt.getApp(ZmZimbraMail.CONTACTS_APP).getContactListController();
+		clc.show(results, isInGal, search.folderId);
+	} else if (results.type == ZmItem.PAGE || results.type == ZmItem.DOCUMENT) {
+		var app = this._appCtxt.getApp(ZmZimbraMail.NOTEBOOK_APP);
+		var controller = app.getFileController();
+		controller.show(results, true);
+	}
+	this._appCtxt.setCurrentList(results.getResults(results.type));
+	this._updateOverview(search);
+	DBG.timePt("render search results");
+};
+
+/*
+* Handle a few minor errors where we show an empty result set and issue a
+* status message to indicate why the query failed. Those errors are: no such
+* folder, no such tag, and bad query. If it's a "no such folder" error caused
+* by the deletion of a folder backing a mountpoint, we pass it along for
+* special handling by ZmZimbraMail.
+*/
+ZmSearchController.prototype._handleErrorDoSearch =
+function(search, isMixed, ex) {
+	DBG.println(AjxDebug.DBG1, "Search exception: " + ex.code);
+	if (this._searchToolBar) {
+		this._searchToolBar.setEnabled(true);
+	}
+
+	if (ex.code == ZmCsfeException.MAIL_NO_SUCH_TAG ||
+		ex.code == ZmCsfeException.MAIL_QUERY_PARSE_ERROR ||
+		ex.code == ZmCsfeException.MAIL_TOO_MANY_TERMS ||
+		(ex.code == ZmCsfeException.MAIL_NO_SUCH_FOLDER && !(ex.data.itemId && ex.data.itemId.length))) {
+
+		var msg = ex.getErrorMsg();
+		this._appCtxt.setStatusMsg(msg, ZmStatusView.LEVEL_WARNING);
+		var results = new ZmSearchResult(this._appCtxt);
+		results.type = search.types ? search.types.get(0) : null;
+		this._showResults(results, search, isMixed);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+/*********** Search Field Callback */
+
+ZmSearchController.prototype._searchFieldCallback =
+function(queryString) {
+	this.search({query: queryString, userText: true});
+}
+
+/*********** Search Bar Callbacks */
+
+ZmSearchController.prototype._searchButtonListener =
+function(ev) {
+	var queryString = this._searchToolBar.getSearchFieldValue();
+	var userText = (queryString.length > 0);
+	if (queryString)
+		this._currentQuery = null;
+	else
+		queryString = this._currentQuery;
+	this.search({query: queryString, userText: userText});
+}
+
+ZmSearchController.prototype._browseButtonListener =
+function(ev) {
+	this.showBrowseView();
+}
+
+ZmSearchController.prototype._saveButtonListener =
+function(ev) {
+	if (this._results && this._results.search) {
+		var stc = this._appCtxt.getOverviewController().getTreeController(ZmOrganizer.SEARCH);
+		stc._showDialog(stc._getNewDialog(), stc._newCallback, this._results.search);
+	}
+}
+
+ZmSearchController.prototype._searchMenuListener =
+function(ev) {
+	if (ev.detail != DwtMenuItem.CHECKED) return;
+
+	var id = ev.item.getData(ZmSearchToolBar.MENUITEM_ID);
+	this._searchFor = id;
+	this._contactSource = (id == ZmSearchToolBar.FOR_GAL_MI) ? ZmSearchToolBar.FOR_GAL_MI : ZmItem.CONTACT;
+
+	// set tooltip
+	var tooltip = ZmMsg[ZmSearchToolBar.TT_MSG_KEY[id]];
+	if (id == ZmSearchToolBar.FOR_MAIL_MI) {
+		var groupBy = this._appCtxt.getSettings().getGroupMailBy();
+		tooltip = ZmMsg[ZmSearchToolBar.TT_MSG_KEY[groupBy]];
+	}
+// 	if (tooltip) {
+// 		var button = this._searchToolBar.getButton(ZmSearchToolBar.SEARCH_BUTTON);
+// 		button.setToolTipContent(tooltip);
+// 	}
+
+	var btn = this._searchToolBar.getButton(ZmSearchToolBar.SEARCH_MENU_BUTTON);
+	btn.setText(ev.item.getText());
+
+	// clear system default now that user has spoken
+	this._defaultSearchType = null;
+
+	if (!this._preventSearch)
+		this._searchButtonListener(ev);
+}
+
+ZmSearchController.prototype.setGroupMailBy =
+function(id) {
+// 	var tooltip = ZmMsg[ZmSearchToolBar.TT_MSG_KEY[id]];
+// 	this._searchToolBar.getButton(ZmSearchToolBar.SEARCH_BUTTON).setToolTipContent(tooltip);
+}
+
+/*
+* Selects the appropriate item in the overview based on the search. Selection only happens
+* if the search was a simple search for a folder or tag.
+*
+* @param search		[ZmSearch]		the current search
+*/
+ZmSearchController.prototype._updateOverview =
+function(search) {
+	var id, type;
+	if (search.folderId) {
+		id = search.folderId;
+		type = ZmOrganizer.FOLDER;
+	} else if (search.tagId) {
+		id = search.tagId;
+		type = ZmOrganizer.TAG;
+	} else if (search.searchId) {
+		id = search.searchId;
+		type = ZmOrganizer.SEARCH;
+	}
+	var opc = this._appCtxt.getOverviewController();
+	if (id) {
+		var treeView = opc.getTreeView(ZmZimbraMail._OVERVIEW_ID, type);
+		var treeItem = treeView.getTreeItemById(id);
+		treeView.setSelected(id, true);
+		opc.itemSelected(ZmZimbraMail._OVERVIEW_ID, type);
+	} else {
+		// clear overview of selection
+		opc.itemSelected(ZmZimbraMail._OVERVIEW_ID, 0);
+	}
+};

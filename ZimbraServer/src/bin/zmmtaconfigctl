@@ -1,0 +1,82 @@
+#!/bin/bash
+# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+# 
+
+if [ x`whoami` != xzimbra ]; then
+    echo Error: must be run as zimbra user
+	exit 1
+fi
+
+source `dirname $0`/zmshutil || exit 1
+zmsetvars \
+    zimbra_home \
+    zimbra_log_directory
+
+#
+# Main
+#
+case "$1" in
+    'start')
+		${zimbra_home}/libexec/zmmtaconfig </dev/null  \
+		    >> ${zimbra_log_directory}/zmmtaconfig.log 2>&1 
+        ;;
+
+    'kill')
+		if [ -f "/opt/zimbra/log/zmmtaconfig.pid" ]; then
+			cpid=`cat /opt/zimbra/log/zmmtaconfig.pid`
+			kill -TERM "$cpid" 2> /dev/null
+			rm -f /opt/zimbra/log/zmmtaconfig.pid
+		fi
+		exit 0
+        ;;
+
+    'stop')
+		if [ -f "/opt/zimbra/log/zmmtaconfig.pid" ]; then
+			cpid=`cat /opt/zimbra/log/zmmtaconfig.pid`
+			kill -TERM "$cpid" 2> /dev/null
+			rm -f /opt/zimbra/log/zmmtaconfig.pid
+		fi
+		exit 0
+        ;;
+    
+    'restart')
+        $0 stop
+        $0 start
+        ;;
+	
+	'status')
+		if [ -f "/opt/zimbra/log/zmmtaconfig.pid" ]; then
+			cpid=`cat /opt/zimbra/log/zmmtaconfig.pid`
+			kill -0 "$cpid" 2> /dev/null
+			exit $?
+		fi
+		exit 1
+		;;
+    
+    *)
+        echo "Usage: $0 start|stop|kill|restart|status"
+        exit 1
+        ;;
+esac

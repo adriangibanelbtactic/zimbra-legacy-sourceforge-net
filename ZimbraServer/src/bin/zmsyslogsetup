@@ -1,0 +1,108 @@
+#!/bin/bash
+#
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1
+# 
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 ("License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://www.zimbra.com/license
+# 
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+# 
+# The Original Code is: Zimbra Collaboration Suite Server.
+# 
+# The Initial Developer of the Original Code is Zimbra, Inc.
+# Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+# All Rights Reserved.
+# 
+# Contributor(s):
+# 
+# ***** END LICENSE BLOCK *****
+
+ID=`id -u`
+
+if [ $ID -ne 0 ]; then
+	echo "Run as root!"
+	echo ""
+	exit 1
+fi
+
+platform=`/opt/zimbra/libexec/get_plat_tag.sh`
+
+if [ x$platform = "xMACOSX" -o "x$platform" = "xMACOSXx86" ]; then
+	logfile="/var/log/zimbra.log"
+	LOCALHOST=`hostname`
+else
+	logfile="-/var/log/zimbra.log"
+	LOCALHOST=`hostname --fqdn`
+fi
+LOGHOST=`su - zimbra -c '/opt/zimbra/bin/zmprov -l gacf | egrep "^zimbraLogHostname"'`
+
+if [ "x$LOGHOST" = "x" ]; then
+	TYPE="local"
+else
+	LOGHOST=`echo $LOGHOST | awk '{print $2}'`
+	if [ x$LOGHOST = "x$LOCALHOST" ]; then
+		TYPE="local"
+	else
+		TYPE="remote"
+	fi
+fi
+
+usage() {
+	echo ""
+	echo "$0: set up syslog.conf for local or remote logging"
+	echo ""
+	echo "Usage:"
+	echo "	$0"
+	echo ""
+	exit 1
+}
+
+if [ x$platform = "xSuSE10" -o "x$platform" = "xopenSUSE_10.2" ]; then
+	cp -f /etc/syslog-ng/syslog-ng.conf.in /etc/syslog-ng/syslog-ng.conf.in.bak
+	grep -v zimbra /etc/syslog-ng/syslog-ng.conf.in > /tmp/syslog-ng.conf.in
+	echo 'filter f_local0       { facility(local0); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	echo 'destination zmail { file("/var/log/zimbra.log" owner("zimbra") ); }; # zimbra ' >> /tmp/syslog-ng.conf.in
+	echo 'log { source(src); filter(f_mail); destination(zmail); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	echo 'destination local0 { file("/var/log/zimbra.log" owner("zimbra") ); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	echo 'log { source(src); filter(f_local0); destination(local0); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	echo 'filter f_auth       { facility(auth); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	echo 'destination zmauth { file("/var/log/zimbra.log" owner("zimbra") ); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	echo 'log { source(src); filter(f_auth); destination(zmauth); }; # zimbra' >> /tmp/syslog-ng.conf.in
+	mv -f /tmp/syslog-ng.conf.in /etc/syslog-ng/syslog-ng.conf.in
+	/sbin/SuSEconfig --module syslog-ng
+	touch /var/log/zimbra.log
+	exit 0
+fi
+
+cp -f /etc/syslog.conf /etc/syslog.conf.bak
+
+#cat /etc/syslog.conf | sed -e 's:\(^local0.*\):#\1:' > /tmp/syslog.zimbra
+grep -v local0 /etc/syslog.conf > /tmp/syslog.zimbra
+sed -i -e '/^auth\.\* /d' /tmp/syslog.zimbra
+
+if [ $TYPE = "remote" ]; then
+      echo "local0.*                @$LOGHOST" >> /tmp/syslog.zimbra
+      echo "auth.*                  @$LOGHOST" >> /tmp/syslog.zimbra
+fi
+echo "local0.*                $logfile" >> /tmp/syslog.zimbra
+echo "auth.*                  $logfile" >> /tmp/syslog.zimbra
+touch /var/log/zimbra.log
+chown zimbra:zimbra /var/log/zimbra.log
+chmod 644 /var/log/zimbra.log
+
+egrep -v "^mail.*($LOGHOST|zimbra)" /tmp/syslog.zimbra > /tmp/syslog.zimbra2
+
+if [ $TYPE = "remote" ]; then
+      echo "mail.*                @$LOGHOST" >> /tmp/syslog.zimbra2
+fi
+echo "mail.*                $logfile" >> /tmp/syslog.zimbra2
+
+cp -f /tmp/syslog.zimbra2 /etc/syslog.conf
+
+killall -HUP syslogd

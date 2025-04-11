@@ -1,0 +1,43 @@
+dn: cn=zimbra
+objectclass: organizationalRole
+description: Zimbra Systems Application Data
+cn: zimbra
+
+dn: cn=admins,cn=zimbra
+objectclass: organizationalRole
+description: admin accounts
+cn: admins
+
+# place folder for initial admin
+dn: uid=zimbra,cn=admins,cn=zimbra
+uid: zimbra
+objectclass: zimbraAccount
+objectclass: organizationalPerson
+cn: zimbra
+sn: zimbra
+zimbraAccountStatus: active
+zimbraIsAdminAccount: TRUE
+zimbraId: e0fafd89-1360-11d9-8661-000a95d98ef2
+description: The master zimbra admin account
+userPassword: {SSHA}8+r0nkcErptqasSrFPcT0k81NFrbTcAS
+
+# zimlets
+dn: cn=zimlets,cn=zimbra
+objectclass: organizationalRole
+cn: zimlets
+description: for storing Zimlet configuration
+
+# for storing global config
+dn: cn=config,cn=zimbra
+objectclass: organizationalRole
+cn: config
+
+# for storing class-of-service config
+dn: cn=cos,cn=zimbra
+objectclass: organizationalRole
+cn: cos
+
+# for storing server info
+dn: cn=servers,cn=zimbra
+objectclass: organizationalRole
+cn: servers

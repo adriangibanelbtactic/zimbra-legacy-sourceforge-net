@@ -1,0 +1,96 @@
+/*
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: ZPL 1.2
+ * 
+ * The contents of this file are subject to the Zimbra Public License
+ * Version 1.2 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ * 
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * The Original Code is: Zimbra Collaboration Suite Web Client
+ * 
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+ * All Rights Reserved.
+ * 
+ * Contributor(s):
+ * 
+ * ***** END LICENSE BLOCK *****
+ */
+
+.MsgHeader .Object, .MsgHeader .Object-activated {
+	white-space: nowrap;
+}
+
+.MsgBody-text, .MsgBody-text * { 
+	@Text@
+	font-family: monospace;
+}
+
+body.MsgBody { 
+	padding: 10px;
+	@MailMsgBg@
+}
+
+.MsgBody .SignatureText { color: gray; }
+.MsgBody .QuotedText0 { color: purple; }
+.MsgBody .QuotedText1 { color: green; }
+.MsgBody .QuotedText2 { color: red; }
+
+
+.Object {
+	@Anchor@
+}
+
+.Object-activated {
+	@Anchor-hover@
+}
+
+.Object-triggered {
+	@Anchor-clicked@
+}
+
+
+.FakeAnchor, a:link, a:visited {
+	@Anchor@
+}
+
+a:hover {
+	@Anchor-hover@
+}
+
+a:active {
+	@Anchor-clicked@
+}
+
+.POObject {color: blue;}
+.POObjectApproved {color: green;}
+.POObjectRejected {color: red;}
+
+.zimbraHide {
+	display: none;
+}
+
+pre { /* ripped off from http://cheeaun.phoenity.com/weblog/2005/06/whitespace-and-generated-content.html */
+	white-space: pre; /* CSS2 */
+	#IFDEF GECKO
+	white-space: -moz-pre-wrap; /* Mozilla */
+	#ENDIF
+	#IFDEF OPERA
+	white-space: -o-pre-wrap; /* Opera 7 */
+	white-space: -pre-wrap; /* Opera 4-6 */
+	#ENDIF
+	#IFNDEF GECKO
+	white-space: -hp-pre-wrap; /* HP printers */
+	white-space: pre-wrap; /* CSS 2.1 */
+	white-space: pre-line; /* CSS 3 (and 2.1 as well, actually) */
+	#ENDIF
+	#IFDEF MSIE
+	word-wrap: break-word; /* IE */
+	#ENDIF
+}

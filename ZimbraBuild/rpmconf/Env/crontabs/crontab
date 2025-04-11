@@ -1,0 +1,15 @@
+# ZIMBRASTART -- DO NOT EDIT ANYTHING BETWEEN THIS LINE AND ZIMBRAEND
+#
+# Log pruning
+#
+30 2 * * * find /opt/zimbra/log/ -type f -name \*log\* -mtime +8 -exec rm {} \; > /dev/null 2>&1
+#
+# Status logging
+#
+*/2 * * * * /opt/zimbra/libexec/zmstatuslog
+*/10 * * * * /opt/zimbra/libexec/zmdisklog
+#
+# Backups
+#
+# BACKUP BEGIN
+# BACKUP END

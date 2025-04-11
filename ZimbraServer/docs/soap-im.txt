@@ -1,0 +1,160 @@
+IMGetRoster -- get buddy list
+-----------
+<IMGetRosterRequest/>
+
+<IMGetRosterResponse>
+     <presence SEE BELOW/> // MY current presence value
+     
+     <chats>
+        [  // 0 or more active chats
+           <chat thread="threadID">
+              <pcps> // participants
+                 [<p addr="foo@bar.com"/>]* // participants (NOT including yourself) in this chat
+              </pcps>   
+           </chat>   
+        ]*
+     </chats>   
+     
+     <items>
+        [
+          <item addr="foo@bar.com" [name="friendly name"] subscription="both|from|to" groups="group,group,group">
+             [<presence SEE BELOW>]*
+             
+             [ // block/allow list 
+                <block type="id|group|subscription|default" ( [id="foo@bar.com"] OR [value="both|to|from|none"] ) priority="positive number MUST BE UNIQUE">
+                   <message/>
+                   <presence-in/>
+                   <presence-out/>
+                </block>
+             ]*
+             
+          </item>
+        ]*  // 0 or more items 
+     </items>
+     <subscription-defaults>
+        [block/allow list "fall through" settings]*
+     </subscription-defaults>
+</IMGetRosterResponse>
+
+
+
+IMSubscribe -- subscribe to someone's presence / modify subscription 
+-----------
+<IMSubscribeRequest addr="foo@bar.com" [name="friendly name"] [groups="group,group..."] [op="add|remove"]/>
+
+<IMSubscribeResponse/>
+
+IMSubscribeReply -- jabber "subscribed" message: subscription response
+----------------
+<IMSubscribeReplyRequest addr="foo@bar.com" type="from|to|both|none">
+
+</IMSubscribeReplyResponse>
+
+
+IMSetPresence -- modify your presence state
+-------------
+<IMSetPresenceRequest>
+   [
+     <presence [lang="en"] [show="away|chat|dnd|xa|online|offline"] [priority="0-255"] [status="STATUS"]/>
+   ]+  // if multiple, each must have a different lang  
+</IMSetPresenceRequest>
+
+<IMSetPresenceResponse>
+
+
+IMGetChat -- return the chat history (param = num messages)
+---------
+<IMGetChatRequest thread="threadID" [seq="1st-sequence-to-retrieve"]/>
+
+<IMGetChatResponse>
+   <chat thread="threadID">
+      <pcps> // like email-element-cache -- only valid for this single message!
+         <p id="num" addr="foo@bar.com" [name="friendly"] [resource="resource"]/>*
+      </pcps>
+      <messages>
+         <message seq="sequence-number" ts="timestamp" from="id">
+            [<subject [lang="LANGUAGE"]>SUBJECT</subject>]*   // Zimbra-HTML-Special encoding
+            [<body [lang="LANGUAGE">BODY</body>]              // Zimbra-HTML-Special encoding
+         </message>
+      </messages>   
+   </chat>
+</IMGetChatResponse>
+
+
+IMSendMessage -- send a new message, optional chat parameter
+-------------
+To an existing chat:
+<IMSendMessageRequest>
+   <message thread="threadID">
+      [<subject [lang="LANGUAGE"]>SUBJECT</subject>]*   // Zimbra-HTML-Special encoding
+      [<body [lang="LANGUAGE">BODY</body>]              // Zimbra-HTML-Special encoding
+   </message>
+</IMSendMessageRequest>
+   
+...OR create a new chat:
+<IMSendMessageRequest>
+   <message addr="foo@bar.com">
+      [<subject [lang="LANGUAGE"]>SUBJECT</subject>]*   // Zimbra-HTML-Special encoding
+      [<body [lang="LANGUAGE">BODY</body>]              // Zimbra-HTML-Special encoding
+   </message>
+</IMSendMessageRequest>
+
+<IMSendMessageResponse thread="thread id"/>
+
+
+   
+IMModifyChat -- add/remove users from multi-user chat, adjust save preferences, etc
+------------
+<IMModifyChatRequest thread="threadId" op="close"/>
+
+<IMModifyChatResponse/>
+   
+
+IMModifyWhitelist -- block/allow
+-----------------
+
+
+============================================================
+IM NOTIFICATIONS
+============================================================
+
+//
+// In soap header block (see soap.txt):
+//
+  [<soap:Header>
+     <context xmlns="urn:zimbra">
+
+       ...
+       
+       <notify>
+          [<deleted.../>]
+          [<created.../>]
+          [<modified.../>]
+          [
+             <im>
+                [
+                // NEW MESSAGE RECEIVED:
+                   <message from="address" thread="UID" ts="TIMESTAMP>
+                      [<subject [lang="LANG"]>SUBJECT</subject>]
+                      [<body [lang="LANG"]>BODY</body>]
+                   </message>
+                ]*
+                [
+                   <presence from="FROMADDR" [lang="en"] [show="away|chat|dnd|xa"] [priority="0-255"] [status="STATUS"]/>
+                ]*
+                [
+                   <subscribe from="FROMADDR"/> // they added you to their buddy list
+                ]*
+                [
+                   <subscribed to="TOADDR" name="NAME" groups="GROUPS" /> // you added them to your buddy list
+                ]*
+                [
+                   <unsubscribed to="TOADDR" groups="GROUPS" /> // you removed them from your buddy list
+                ]*
+                [
+                   <leftchat thread="UID" addr="ADDRESS"> // specified user left the chat
+                ]*
+                
+             </im>]
+          ]?     
+        </notify>]

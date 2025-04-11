@@ -1,0 +1,508 @@
+/*
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: ZPL 1.2
+ * 
+ * The contents of this file are subject to the Zimbra Public License
+ * Version 1.2 ("License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.zimbra.com/license
+ * 
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+ * the License for the specific language governing rights and limitations
+ * under the License.
+ * 
+ * The Original Code is: Zimbra Collaboration Suite Web Client
+ * 
+ * The Initial Developer of the Original Code is Zimbra, Inc.
+ * Portions created by Zimbra are Copyright (C) 2005, 2006 Zimbra, Inc.
+ * All Rights Reserved.
+ * 
+ * Contributor(s):
+ * 
+ * ***** END LICENSE BLOCK *****
+ */
+
+/* 
+* HTML elements - use for global declarations
+*/
+
+P, TH, TD, DIV, SELECT, INPUT[type=text], INPUT[type=password], INPUT[type=file], TEXTAREA, BUTTON {
+	@FontFamily-default@
+	@FontSize-normal@
+}
+#IFDEF MSIE
+P, TH, TD, DIV, SELECT, INPUT, TEXTAREA, BUTTON {
+	@FontFamily-default@
+	@FontSize-normal@
+}
+#ENDIF
+
+INPUT[readonly] {
+	@InputField-disabled@
+	cursor: text;
+}
+TEXTAREA[readonly] {
+	@TextArea-disabled@
+	cursor: text;
+}
+
+HTML {
+	@FullSize@
+}
+
+BODY {
+	@FullSize@
+	margin: 0px;
+}
+
+FORM {
+	margin: 0;
+	padding: 0;
+}
+
+FIELDSET {
+	@FieldSet@
+}
+
+LEGEND {
+	@FieldSetLabel@
+}
+
+#IFDEF GECKO
+	/* set for 'text' and 'password' fields explicitly so checkboxes don't get borders */
+	input[type="text"], 
+	input[type="password"] {
+		@InputField@
+	}
+	INPUT[disabled] {
+		@InputField-disabled@
+	}
+	
+	TEXTAREA[disabled] {
+		@TextArea-disabled@
+	}
+
+	textarea {
+		@TextArea@
+	}
+	
+	input[type="checkbox"] {
+		@ActiveCursor@
+	}
+#ENDIF
+
+.CompactTable {
+	@CompactTable@
+}
+
+.fullSize	{	@FullSize@		}
+.fullWidth 	{	@FullWidth@		}
+.fullHeight {	@FullHeight@	}
+.minSize	{	width:1px; height:1px;	}
+
+
+.leftAlign {
+  text-align:left;
+}
+
+.rightAlign {
+  text-align:right;
+}
+
+
+/* ??? USE? */
+.checkboxLabel {
+  font-weight:bold;
+}
+
+.ToolbarBg {
+	@ToolbarBg@
+}
+
+
+/* Generic classes -- try to use one of these if you can */
+.ZmHead {
+	@FontSize-bigger@
+}
+
+.ZmSubHead {
+	@FontSize-big@
+}
+
+.ZmBigger {
+	@FontSize-bigger@
+}
+
+.ZmFinePrint {
+	@FontSize-smaller@
+}
+
+.ZmImportant {
+	@Text-important@
+}
+
+
+/* Field labels -- always use one of these!  */
+.ZmFieldLabel {
+	@Label@
+}
+
+.ZmFieldLabelLeft {
+	@Label@
+	text-align:left;
+}
+
+.ZmFieldLabelRight {
+	@Label@
+	text-align:right;
+}
+
+.ZmFieldLabelCenter {
+	@Label@
+	text-align:center;
+}
+
+
+ZmSectionLabel {
+	@SectionLabel@
+}
+
+
+/* Apply to any text element which you want to have some spacing on either side */
+.TextPadding {
+	@TextPadding@
+}
+
+/* ??? USED */
+.BigHeaderBg {
+	@WidgetHeaderContainer@
+	@WidgetHeaderSize-big@
+}
+
+
+
+/* ??? */
+.ZmOverride {
+	background-color:#FFF6BF;
+	padding:2px;
+}
+
+/* ??? */
+.ZmSelectedHeaderBg {
+	@SelectedBg@
+}
+
+
+
+
+
+
+/* Graph key -- eg: boxes in Appt Schedule view that say what each color mean */
+.ZmGraphKey {
+	@AppBg@
+	@AppBorder@
+}
+
+.ZmGraphKeyHeader {
+	@PageHeaderBg@
+	@FontSize-big@
+	@Text@
+	@TextPadding@
+	text-align:left;
+	font-weight:bold;
+	vertical-align:middle;
+}
+
+.ZmGraphKeyBody {
+	@BoxSpacing@
+}
+
+.ZmGraphKeyColorBox {
+	@AppBorder@
+	width:16px;
+	height:16px;
+}
+
+.ZmGraphKeyColorText {
+	@Text@
+	@NoWrap@
+}
+
+
+
+
+
+
+
+
+
+/* Horizontal separator */
+.horizSep {
+	@PrettyBottomSeparator@
+	@AddVerticalSpace@
+	width: 100%;
+}
+
+/* Vertical separator */
+
+/* ??? MARGINS, USE */
+.vertSep {
+	@LeftSeparator@
+	margin-left:1px;
+	padding-right:1px;
+	width:3;
+	height: 16;
+}
+
+/* Vertical space */
+DIV.vSpace {
+	@AddVerticalSpace@
+}
+
+
+
+/* 
+	Link to open an attachment 
+	WHY IS THIS DIFFERENT ?
+*/
+
+.AttLink:link, .AttLink:visited {
+	@Anchor@
+}
+.AttLink:hover {
+	@Anchor-hover@
+}
+
+.AttLink:active {
+	@Anchor-clicked@
+}
+
+/*  ??? WHY ARE THESE DIFFERENT ? */
+.Row-selected .AttLink:link, .Row-selected .AttLink:active, .Row-selected .AttLink:visited {
+	@Anchor@
+}
+.AttLink:hover, .Row-selected .AttLink:hover {
+	@Anchor-hover@
+}
+
+
+
+/* 
+* Drag N Drop
+*/
+
+.DndIcon {
+	@DndOpacity@
+}
+
+.DropNotAllowed {
+	@DndNotAllowedContainer@
+	@DndOpacity@
+}
+
+/* bug fix# 3235 */
+.DropNotAllowed-linux {
+	@DndNotAllowedContainer@
+}
+
+.DropAllowed {
+	@DndAllowedContainer@
+	@DndOpacity@
+}
+
+/* bug fix# 3235 */
+.DropAllowed-linux {
+	@DndAllowedContainer@
+}
+
+
+/* Used by the text laid over the multi-select icon to show number of items selected */
+.DndIconTextLabel {
+	font-weight: bold;
+	color: white;
+}
+
+
+
+
+/* ??? WHY ARE SOME VEILS WHITE AND SOME TRANSPARENT? */
+.BusyOverlay table, .VeilOverlay table {
+	@VeilOpacity@
+	@BusyCursor@
+	background-color: transparent;	/* ??? */
+}
+/* As of 07/22/05 Linux (or rather X) has a nasty issue that causes a huge perf problem with opacity.*/
+
+.BusyOverlay-linux table, .VeilOverlay-linux table {
+	@BusyCursor@
+	background-color: transparent;
+}
+
+
+.VeilOverlay table {
+	@DisabledCursor@
+	@VeilColor@
+}
+
+.VeilOverlay-linux table {
+	@DisabledCursor@
+}
+
+.CurtainOverlay table {
+	@VeilColor@
+}
+
+
+
+
+
+/*
+ *  New tag dialog 
+---UNUSED---
+.TagColorMenu {
+	background-color: white;
+	border: solid #CCCCCC 1px;
+}
+*/
+
+
+/* 
+ * New folder dialog 
+---UNUSED---
+.FolderTree {
+	background-color: white;
+	width: 400px;
+	height: 200px;
+	border: 1px solid #999999;
+	padding: @BoxPaddingSize@ 0 0 @BoxPaddingSize@;
+}
+.FolderTree td {padding: 0;}
+ */
+ 
+ 
+/* 
+ *  Row display and highlighting in list views
+ *	NOTE: these should probably be more specific names!
+ */
+.Row, .Row-selected, .Row-matched, .Row-matched-drag, 
+.Row-drag, .Row-selected-drag, .Row-selected-right, .Row-selected-disabled {
+	@ListItemContainer@
+#IFDEF GECKO
+	-moz-user-select: none;
+#ENDIF
+}
+
+.selected, .Row-selected, .Row-selected-drag, .Row-selected-disabled { 
+	@ListItemContainer-selected@
+}
+
+.Row-matched, .Row-matched-dnd { 
+	@ListItemContainer-matched@
+}
+
+.Row-matched td, .Row-matched-dnd td{ 
+	@ListItemText-matched@
+}
+
+.Row-Focus {
+	@ListItemContainer-focused@
+}
+
+
+/* ??? what is this used for ?*/
+.Row-selected-right, .Row-drag, .Row-matched-drag { 
+	@ListItemContainer-rightClicked@
+}
+
+.Row-selected table, .Row-selected-drag table, .Row-drag table, 
+.Row-matched-drag table, .Row-selected-right table { 
+	@ListItemText@
+}
+
+.Row table, .Row-selected table, .Row-matched table, .Row-matched-drag table, .Row-dnd table, 
+.Row-selected-drag table, .Row-drag table, .Row-selected-right table {
+	table-layout: fixed;
+}
+
+.Row, .Row-selected, .Row-selected-disabled, .Row-dnd, 
+.Row td, .Row div, .Row-selected td, .Row-matched td, .Row-dnd td, .Row-selected-drag td, 
+.Row-drag td, .Row-matched-drag td, .Row-selected-right td {
+	@ListItemText@
+}
+
+.Row td.Flag, .Row td.Attach, .Row td.Tag, .Row td.Icon,
+.Row-dnd td.Flag, .Row-dnd td.Attach, .Row-dnd td.Tag, .Row-dnd td.Icon, 
+.Row-selected-drag td.Flag, .Row-selected-drag td.Attach, .Row-selected-drag td.Tag, .Row-selected-drag td.Icon, 
+.Row-matched-drag td.Flag, .Row-matched-drag td.Attach, .Row-matched-drag td.Tag, .Row-matched-drag td.Icon, 
+.Row-drag td.Flag, .Row-drag td.Attach,.Row-drag td.Tag, .Row-drag td.Icon {
+	text-align: center;
+}
+
+
+
+/* 
+ * Flags 
+ */
+.Unread { 
+	@Text-unread@
+}
+.Trash { 
+	@Text-deleted@
+}
+
+
+
+
+/* Overview */
+
+.overview {
+	@FullSize@
+}
+
+
+.OverviewTree {
+	@FullWidth@
+}
+
+
+.dialogOverview {
+	@TreeContainer@
+	@InsetBorder@
+	@BoxPadding@
+	height: 200px;		/* ??? SIZE */
+}
+
+
+.dialogOverview td {
+	@Text@
+}
+
+.pickerOverview {
+	@TreeContainer@
+	@FullHeight@
+}
+
+/* ??? MARGINS */
+.overviewHeader {
+	@InactiveCursor@
+	@TreeHeaderContainer@
+	@TreeHeaderText@
+	@TreeItemSpacing@
+}
+
+.overviewHeader-Text, .overviewHeader-actioned,
+.overviewHeader-DragOver {
+	@TreeHeaderText@
+}
+
+
+.overviewHeader .imageCell {
+	@ImagePadding@
+	white-space: nowrap;	/* ??? */
+}
+
+.inlineIcon {
+	font-family:Verdana;
+	font-size:13px;
+}

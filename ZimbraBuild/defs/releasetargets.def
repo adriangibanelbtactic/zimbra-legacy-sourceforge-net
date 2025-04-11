@@ -1,0 +1,75 @@
+zcs-$(RELEASE).dmg: $(ARCH)/zcs.mpkg packages
+	mkdir -p $(ARCH)/tmp/scripts
+	mkdir -p $(ARCH)/tmp/docs
+	cp -f $(WEBAPP_DIR)/zimbra/downloads/* $(ARCH)
+	cp -f $(PACKAGE_CONF_DIR)/Install/install-mac.sh $(ARCH)/tmp/scripts/installZCS.sh
+	cp -f $(CONSOLE_DIR)/WebRoot/adminhelp/pdf/* $(ARCH)/tmp/docs/
+	cp -R $(ARCH)/zcs.mpkg $(ARCH)/tmp
+	hdiutil create -srcfolder $(ARCH)/tmp -volname zcs-$(VERSION_TAG) $(ARCH)/zcs-$(VERSION_TAG).dmg
+	rm -rf $(ARCH)/tmp
+	(cd $(ARCH); ln -s zcs-$(VERSION_TAG).dmg zcs.dmg)
+
+$(ARCH)/zcs.mpkg: $(ARCH)/zcs.mpkg/Contents
+	mkdir -p $@/Contents
+
+$(ARCH)/zcs.mpkg/Contents: $(ARCH)/zcs.mpkg/Contents/.Packages $(ARCH)/zcs.mpkg/Contents/Resources $(ARCH)/zcs.mpkg/Contents/distribution.dist
+	mkdir -p $@
+
+$(ARCH)/zcs.mpkg/Contents/.Packages:
+	mkdir -p $@
+	cp -R $(ARCH)/*.pkg $@
+
+$(ARCH)/zcs.mpkg/Contents/Resources: $(ARCH)/zcs.mpkg/Contents/Resources/English.lproj
+	mkdir -p $@
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/InstallationCheck $@/InstallationCheck
+	chmod 755 $@/InstallationCheck
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/VolumeCheck $@/VolumeCheck
+	chmod 755 $@/VolumeCheck
+
+$(ARCH)/zcs.mpkg/Contents/Resources/English.lproj: 
+	mkdir -p $@
+	cat $(LICENSE_DIR)/zimbra/zcl.txt | \
+		sed -e 's<.*http.*<http://www.zimbra.com/license/collaboration_suite_collective_license.html<' >\
+		$@/License.txt 
+	echo "Welcome to the ZCS installer" > $@/Welcome.txt
+	echo "ZCS Installation complete" > $@/Conclusion.txt
+	echo "Run /opt/zimbra/libexec/zmsetup.pl AS ROOT" >> $@/Conclusion.txt
+	echo "to complete system configuration" >> $@/Conclusion.txt
+	cp $(PACKAGE_CONF_DIR)/Spec/Scripts/zcs.postflight $@/postflight
+	chmod 755 $@/postflight
+	cp $(PACKAGE_CONF_DIR)/Spec/InstallationCheck.strings $@/InstallationCheck.strings
+	cp $(PACKAGE_CONF_DIR)/Spec/VolumeCheck.strings $@/VolumeCheck.strings
+
+$(ARCH)/zcs.mpkg/Contents/distribution.dist:
+	sh $(PACKAGE_CONF_DIR)/Build/create_distribution.dist.sh $(ARCH) $(PACKAGE_CONF_DIR)/Spec/distribution.dist > $@
+
+zcs-$(RELEASE).tgz: zcs_stage packages
+
+zcs_stage:
+	mkdir -p zcs/packages
+	mkdir -p zcs/bin
+	mkdir -p zcs/data
+	mkdir -p zcs/docs
+	mkdir -p zcs/util/modules
+	cp -f $(LICENSE_DIR)/zimbra/zpl-full.txt zcs/ZPL.txt
+	cp -f $(CONSOLE_DIR)/WebRoot/adminhelp/pdf/*pdf zcs/docs
+	cp -f $(LICENSE_DIR)/zimbra/zcl-full.txt zcs/docs/zcl-full.txt
+	cp -f $(LICENSE_DIR)/zimbra/zcl.txt zcs/docs/zcl.txt
+	cp -f $(CONSOLE_DIR)/WebRoot/adminhelp/txt/readme_source.txt zcs
+	cp -f $(CONSOLE_DIR)/WebRoot/adminhelp/txt/readme_binary.txt zcs
+	cp -f $(SERVICE_DIR)/build/versions-init.sql zcs/data
+	cp $(PACKAGE_CONF_DIR)/Install/install.sh zcs
+	cp -f $(PACKAGE_CONF_DIR)/Install/Util/*sh zcs/util
+	cp -f $(PACKAGE_CONF_DIR)/Install/Util/modules/*sh zcs/util/modules
+	cp -f $(BUILD_ROOT)/RE/README.txt zcs
+	cp -f $(BUILD_ROOT)/rpmconf/Build/get_plat_tag.sh zcs/bin
+	chmod 755 zcs/install.sh
+	cp $(PACKAGE_DIR)/*$(PACKAGE_EXT) zcs/packages
+	tar czf zcs-$(VERSION_TAG).tgz zcs
+	mv zcs-$(VERSION_TAG).tgz $(PACKAGE_DIR)
+	(cd $(PACKAGE_DIR); ln -s zcs-$(VERSION_TAG).tgz zcs.tgz)
+	cp -f $(WEBAPP_DIR)/zimbra/downloads/* $(PACKAGE_DIR)
+	@echo "*** BUILD COMPLETED ***"
+
+packages: core mta store ldap snmp logger apache spell
+	@echo "*** Creating PACKAGES in $(PACKAGE_DIR)"

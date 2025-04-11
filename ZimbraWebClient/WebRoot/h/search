@@ -1,0 +1,66 @@
+<%@ page buffer="8kb" autoFlush="true" %>
+<%@ page pageEncoding="UTF-8" contentType="text/html; charset=UTF-8" %>
+<%@ taglib prefix="zm" uri="com.zimbra.zm" %>
+<%@ taglib prefix="app" uri="com.zimbra.htmlclient" %>
+<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
+<%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
+<%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
+<fmt:setBundle basename="/msgs/ZhMsg" scope="session"/>
+
+<app:handleError>
+    <app:composeCheck/>
+    <c:set var="action" value="${empty param.paction ? param.action : param.paction}" scope="request"/>
+    <jsp:useBean id="expanded" scope="session" class="java.util.HashMap" />
+    
+     <c:if test="${not empty param.expand}">
+         <c:set target="${sessionScope.expanded}" property="${param.expand}" value="expand"/>
+     </c:if>
+     <c:if test="${not empty param.collapse}">
+         <c:set target="${sessionScope.expanded}" property="${param.collapse}" value="collapse"/>
+     </c:if>
+     
+     <%-- switch based on context saerch types --%>
+
+     <c:choose>
+         <c:when test="${not empty param.doConvListViewAction}">
+             <app:convListViewAction/>
+         </c:when>
+         <c:when test="${not empty param.doMessageAction}">
+             <app:messageAction/>             
+         </c:when>
+         <c:when test="${not empty param.doContactListViewAction}">
+             <app:contactListViewAction/>
+         </c:when>
+     </c:choose>
+
+    <zm:getMailbox var="mailbox"/>
+    <zm:computeSearchContext var="context" usecache="true"/>
+</app:handleError>
+
+ <%-- switch based on context saerch types --%>
+<c:choose>
+    <c:when test="${context.isConversationSearch and action eq 'view'}">
+        <app:convView context="${context}"/>
+    </c:when>
+    <c:when test="${context.isConversationSearch and action eq 'view2'}">
+        <app:convView2 context="${context}"/>
+    </c:when>
+    <c:when test="${context.isConversationSearch}">
+        <app:convListView context="${context}"/>
+    </c:when>
+    <c:when test="${context.isMessageSearch and action eq 'view'}">
+        <app:messageView context="${context}"/>
+    </c:when>
+    <c:when test="${context.isMessageSearch}">
+        <app:messageListView context="${context}"/>
+    </c:when>
+    <c:when test="${context.isContactSearch and action eq 'view'}">
+        <app:contactView context="${context}"/>
+    </c:when>
+    <c:when test="${context.isContactSearch}">
+        <app:contactListView context="${context}"/>
+    </c:when>
+    <c:otherwise>
+        mixed view Types (${context.types})
+    </c:otherwise>
+</c:choose>

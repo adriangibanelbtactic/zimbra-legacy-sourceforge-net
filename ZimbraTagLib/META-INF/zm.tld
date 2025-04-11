@@ -1,0 +1,3363 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<taglib xmlns="http://java.sun.com/xml/ns/j2ee"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://java.sun.com/xml/ns/j2ee http://java.sun.com/xml/ns/j2ee/web-jsptaglibrary_2_0.xsd"
+        version="2.0">
+
+    <description>Contains tags and functions for interacting with the Zimbra Collaboration Suite.</description>
+    <tlib-version>1.0</tlib-version>
+
+    <short-name>zm</short-name>
+    <uri>com.zimbra.zm</uri>
+
+    <tag>
+        <description>sends a message</description>
+        <name>sendMessage</name>
+        <tag-class>com.zimbra.cs.taglib.tag.SendMessageTag</tag-class>
+        <body-content>empty</body-content>        
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZMailbox.ZSendMessageResponse</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+             <description>
+                 message compose bean to use. all other args are ignored.
+             </description>
+             <name>compose</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageComposeBean</type>
+         </attribute>
+        <attribute>
+            <description>
+                value of To addresses
+            </description>
+            <name>to</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of Reply-To address
+            </description>
+            <name>replyto</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                comma-separated list of message ids to attach at server
+            </description>
+            <name>messages</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                comma-separated list of attachment part names (from message messageid) to attach at server
+            </description>
+            <name>attachments</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of Cc addresses
+            </description>
+            <name>cc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of Bcc addresses
+            </description>
+            <name>bcc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of From address
+            </description>
+            <name>from</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of subject
+            </description>
+            <name>subject</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of content-type
+            </description>
+            <name>contenttype</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of original message-id header
+            </description>
+            <name>inreplyto</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                Zimbra message id of message we are replying/forwarding to
+            </description>
+            <name>messageid</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                reply type (r = reply, w = forward)
+            </description>
+            <name>replytype</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of content
+            </description>
+            <name>content</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+    </tag>
+
+    <tag>
+        <description>save a draft message</description>
+        <name>saveDraft</name>
+        <tag-class>com.zimbra.cs.taglib.tag.SaveDraftTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZMessage</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+             <description>
+                 message compose bean to use. all other args are ignored.
+             </description>
+             <name>compose</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageComposeBean</type>
+         </attribute>        
+        <attribute>
+            <description>
+                value of To addresses
+            </description>
+            <name>to</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of Reply-To address
+            </description>
+            <name>replyto</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                comma-separated list of message ids to attach at server
+            </description>
+            <name>messages</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                comma-separated list of attachment part names (from message messageid) to attach at server
+            </description>
+            <name>attachments</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of Cc addresses
+            </description>
+            <name>cc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of Bcc addresses
+            </description>
+            <name>bcc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of From address
+            </description>
+            <name>from</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of subject
+            </description>
+            <name>subject</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of content-type
+            </description>
+            <name>contenttype</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of original message-id header
+            </description>
+            <name>inreplyto</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                Zimbra message id of message we are replying/forwarding to
+            </description>
+            <name>messageid</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                reply type (r = reply, w = forward)
+            </description>
+            <name>replytype</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                value of content
+            </description>
+            <name>content</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                existing draft id, if updating
+            </description>
+            <name>draftid</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+               optional folder id to save draft in
+            </description>
+            <name>folderid</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+         <description>compute data need to reply-to/forward a message</description>
+         <name>messageCompose</name>
+         <tag-class>com.zimbra.cs.taglib.tag.MessageComposeTag</tag-class>
+         <body-content>empty</body-content>
+         <variable>
+             <name-from-attribute>var</name-from-attribute>
+             <variable-class>com.zimbra.cs.taglib.bean.ZMessageComposeBean</variable-class>
+             <scope>AT_END</scope>
+         </variable>
+         <attribute>
+             <description>
+                 Name of the exported scoped variable for the result.
+             </description>
+             <name>var</name>
+             <required>true</required>
+         </attribute>
+         <attribute>
+             <description>
+                 message being acted on
+             </description>
+             <name>message</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageBean</type>
+         </attribute>
+         <attribute>
+             <description>
+                 action (reply/replyAll/forward)
+             </description>
+             <name>action</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
+
+    <tag>
+         <description>use uploaded form data with message containing attachments to fix up the compose object</description>
+         <name>fixupMessageCompose</name>
+         <tag-class>com.zimbra.cs.taglib.tag.FixupMessageComposeTag</tag-class>
+         <body-content>empty</body-content>
+         <attribute>
+             <description>
+                 message being acted on
+             </description>
+             <name>message</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageBean</type>
+         </attribute>
+         <attribute>
+             <description>
+                 compose object being acted on
+             </description>
+             <name>compose</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>com.zimbra.cs.taglib.bean.ZMessageComposeBean</type>
+         </attribute>
+         <attribute>
+             <description>
+                 true if attachments were just added (so they get checked by default)
+             </description>
+             <name>newattachments</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>compute data need to reply-to/forward a message</description>
+        <name>composeUploader</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ComposeUploaderTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZComposeUploaderBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Iterates over all mailbox tags.
+        </description>
+        <name>forEachTag</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ForEachTagTag</tag-class>
+        <body-content>scriptless</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZTagBean</variable-class>
+            <scope>NESTED</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+    </tag>
+
+    <tag>
+        <description>
+            Iterates over all mailbox folders
+        </description>
+        <name>forEachFolder</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ForEachFolderTag</tag-class>
+        <body-content>scriptless</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZFolderBean</variable-class>
+            <scope>NESTED</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the
+                current item of the iteration.
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                Id folder to start with.
+            </description>
+            <name>parentid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+                whether or not to top-level folder. default value is true.
+            </description>
+            <name>skiproot</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+        <attribute>
+            <description>
+                whether or not to skip system folders. default value is false.
+            </description>
+            <name>skipsystem</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+        <attribute>
+            <description>
+                whether or not to skip top-level search folers. default value is false.
+            </description>
+            <name>skiptopsearch</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+        <attribute>
+            <description>
+                Map indexed on folder ids. If value is set to "collapse", skip any sub folders, otherwise do sub folders
+            </description>
+            <name>expanded</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>            
+            <type>java.util.Map</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Searches.
+        </description>
+        <name>search</name>
+        <tag-class>com.zimbra.cs.taglib.tag.SearchTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZSearchResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>search query
+            </description>
+            <name>query</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>max number of results to return</description>
+            <name>limit</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>offset to start at</description>
+            <name>offset</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>types of objects to return (conversation, message, contact,appointment)</description>
+            <name>types</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>the search operator to use for text without an operator (defaults to content)</description>
+            <name>field</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>sort order (dateDesc, dateAsc, subjDesc, subjAsc, nameDesc, nameAsc)</description>
+            <name>sort</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>search context</description>
+            <name>searchContext</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>conversation id to search in</description>
+            <name>conv</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>mark message as read</description>
+            <name>markread</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>fetch (none,first,all) messages in a search</description>
+            <name>fetch</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>prefer HTML</description>
+            <name>wanthtml</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            clears the search cache.
+        </description>
+
+        <name>clearSearchCache</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.ClearSearchCacheTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                clear only specified type
+            </description>
+            <name>type</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Search Gal.
+        </description>
+        <name>searchGal</name>
+        <tag-class>com.zimbra.cs.taglib.tag.SearchGalTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZSearchGalResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Name of the exported scoped variable for the result.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>search query
+            </description>
+            <name>query</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>type of objects to return (account, resource, all)</description>
+            <name>type</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Throw a ZTagLibException
+        </description>
+        <name>tagLibException</name>
+        <tag-class>com.zimbra.cs.taglib.tag.TagLibExceptionTag</tag-class>
+        <body-content>empty</body-content>
+        <attribute>
+            <description>
+               exception code
+            </description>
+            <name>code</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>exception message
+            </description>
+            <name>message</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            login tag. Does an AuthRequest and establishes session/cookie. Either username/password or
+            authtoken must be specified.
+        </description>
+        <name>login</name>
+        <tag-class>com.zimbra.cs.taglib.tag.LoginTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>varRedirectUrl</name-from-attribute>
+            <variable-class>java.lang.String</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <variable>
+            <name-from-attribute>varAuthResult</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZAuthResult</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+        <attribute>
+            <description>
+                Username
+            </description>
+            <name>username</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                Password
+            </description>
+            <name>password</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                pre-existing auth token
+            </description>
+            <name>authtoken</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                true if authtoken came from URL
+            </description>
+            <name>authtokenInUrl</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                url client should redirect to if value is not empty
+            </description>
+            <name>varRedirectUrl</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+                <attribute>
+            <description>
+                variable to store ZAuthResult in.
+            </description>
+            <name>varAuthResult</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                New password
+            </description>
+            <name>newpassword</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                remember me
+            </description>
+            <name>rememberme</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                URL
+            </description>
+            <name>url</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Changes a password.
+        </description>
+        <name>changePassword</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ChangePasswordTag</tag-class>
+        <body-content>empty</body-content>
+        <attribute>
+            <description>
+                Username
+            </description>
+            <name>username</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                Password
+            </description>
+            <name>password</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                New password
+            </description>
+            <name>newpassword</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>
+                URL
+            </description>
+            <name>url</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            logout. clears cookie and JSP session.
+        </description>
+        <name>logout</name>
+        <tag-class>com.zimbra.cs.taglib.tag.LogoutTag</tag-class>
+        <body-content>empty</body-content>
+    </tag>
+
+    <tag>
+        <description>
+            Retreive a message.
+        </description>
+
+        <name>getMessage</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.GetMessageTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZMessageBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZMessageBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>message id</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+
+        </attribute>
+
+        <attribute>
+            <description>mark message as read</description>
+            <name>markread</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>prefer HTML</description>
+            <name>wanthtml</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>return the raw message content</description>
+            <name>raw</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>"1" to "neuter" IMG tags returned in HTML content; this involves switching
+                the "src" attribute to "dfsrc" so that images don't display by default
+            </description>
+            <name>neuterimages</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>supply a "part" and the retrieved data will be on the specified message/rfc822 subpart.
+                if the part does not exist or is not a message/rfc822 part, mail.NO_SUCH_PART</description>
+            <name>part</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+    </tag>
+
+    <tag>
+        <description>
+            Retreive a conversation.
+        </description>
+
+        <name>getConversation</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.GetConversationTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZConversationBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                fetch none/first//all messages in conv
+            </description>
+            <name>fetch</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZConversationBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>conversation id</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+    </tag>
+
+    <tag>
+        <description>
+            Hard-delete a conversation. Use moveConversation if you just want to move to trash.
+        </description>
+
+        <name>deleteConversation</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.DeleteConversationTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+         <attribute>
+             <description>
+              <![CDATA[
+                 [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                 t - include items in the Trash <br />
+                 j - include items in Spam/Junk<br />
+                 s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                 o - include items in any other folder<br />
+                 a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+               ]]>                 
+             </description>
+             <name>tc</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>             
+             <type>java.lang.String</type>
+         </attribute>
+
+         <attribute>
+             <description>conversation id(s) to delete</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+             Mark a conversation read/unread.
+         </description>
+
+        <name>markConversationRead</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.MarkConversationReadTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+             <description>
+              <![CDATA[
+                 [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                 t - include items in the Trash <br />
+                 j - include items in Spam/Junk<br />
+                 s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                 o - include items in any other folder<br />
+                 a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+               ]]>
+             </description>
+             <name>tc</name>
+             <required>false</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+        </attribute>
+
+         <attribute>
+             <description>conversation id(s) to mark read/unread</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+
+         <attribute>
+             <description>read state (true=read, false=unread)</description>
+             <name>read</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+            Flag/unflag a conversation.
+        </description>
+
+        <name>flagConversation</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.FlagConversationTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>conversation id(s) to flag/unflag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>            
+        </attribute>
+         <attribute>
+             <description>flag state (true=flagged, false=unflagged)</description>
+             <name>flag</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Move a conversation to a folder.
+        </description>
+
+        <name>moveConversation</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.MoveConversationTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>conversation id(s) to move</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>destination folder id</description>
+             <name>folderid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Tag a conversation.
+        </description>
+
+        <name>tagConversation</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.TagConversationTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>conversation id(s) to tag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>tag id</description>
+             <name>tagid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+        <attribute>
+            <description>tag state (true=tag, false=untag)</description>
+            <name>tag</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+    
+    <tag>
+        <description>
+            Mark a conversation as spam/unspam, and optionally move to a specific folder.
+        </description>
+
+        <name>markConversationSpam</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.conv.MarkConversationSpamTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>
+                <![CDATA[
+                   [-]{constraint} = list of characters; constrains the set of affected items in a conversation <br />
+                   t - include items in the Trash <br />
+                   j - include items in Spam/Junk<br />
+                   s - include items in the user's Sent folder (not necessarily "Sent")<br />
+                   o - include items in any other folder<br />
+                   a leading '-' means to negate the constraint (e.g. "-t" means all messages not in Trash)<br />
+                 ]]>
+            </description>
+            <name>tc</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>conversation id(s) to mark as spam/not spam</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>destination folder id</description>
+            <name>folderid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>spam state (true=spam, false=not spam)</description>
+            <name>spam</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Hard-delete a message. Use moveMessage if you just want to move to trash.
+        </description>
+
+        <name>deleteMessage</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.DeleteMessageTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+         <attribute>
+             <description>message id(s) to delete</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+             Mark a message read/unread.
+         </description>
+
+        <name>markMessageRead</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.MarkMessageReadTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+         <attribute>
+             <description>message id(s) to mark read/unread</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+
+         <attribute>
+             <description>read state (true=read, false=unread)</description>
+             <name>read</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+            Flag/unflag a message.
+        </description>
+
+        <name>flagMessage</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.FlagMessageTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>message id(s) to flag/unflag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>flag state (true=flagged, false=unflagged)</description>
+             <name>flag</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Move a message to a folder.
+        </description>
+
+        <name>moveMessage</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.MoveMessageTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>message id(s) to move</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>destination folder id</description>
+             <name>folderid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Tag a message.
+        </description>
+
+        <name>tagMessage</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.TagMessageTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>message id(s) to tag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>tag id</description>
+             <name>tagid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+        <attribute>
+            <description>tag state (true=tag, false=untag)</description>
+            <name>tag</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Mark a message spam/unspam, and optionally move to a specific folder.
+        </description>
+
+        <name>markMessageSpam</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.msg.MarkMessageSpamTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>message id(s) to mark as spam/not spam</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>destination folder id</description>
+            <name>folderid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>spam state (true=spam, false=not spam)</description>
+            <name>spam</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Retreive a contact.
+        </description>
+
+        <name>getContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.GetContactTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZContactBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZContactBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>contact id</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>return modified date</description>
+            <name>sync</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Hard-delete a contact. Use moveContact if you just want to move to trash.
+        </description>
+
+        <name>deleteContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.DeleteContactTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+         <attribute>
+             <description>contact id(s) to delete</description>
+             <name>id</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+            Flag/unflag a contact.
+        </description>
+
+        <name>flagContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.FlagContactTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>contact id(s) to flag/unflag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>flag state (true=flagged, false=unflagged)</description>
+             <name>flag</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Create a contact
+        </description>
+
+        <name>createContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.CreateContactTag</tag-class>
+
+        <body-content>scriptless</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.String</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                id of created contact.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>folder id to create contact in</description>
+            <name>folderid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>tag ids to create contact with</description>
+            <name>tagids</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>allow unknown contact fields to used</description>
+             <name>force</name>
+             <required>false</required>             
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Modify a contact
+        </description>
+
+        <name>modifyContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.ModifyContactTag</tag-class>
+
+        <body-content>scriptless</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.String</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                id of modified/created contact.
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>contact id to modify. if not present (or empty), a contact will be created.</description>
+            <name>id</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>replace (true) or merge modify fields with contact</description>
+             <name>replace</name>
+             <required>false</required>             
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+        <attribute>
+            <description>folder id to create contact in (not used with modify)</description>
+            <name>folderid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>tag ids to create contact with</description>
+            <name>tagids</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>        
+    </tag>
+
+    <tag>
+        <description>
+            A field for a contact being created or modified
+        </description>
+
+        <name>field</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.FieldTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Name of the field.
+            </description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>            
+        </attribute>
+        <attribute>
+            <description>
+               Value of the field.
+            </description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>            
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Move a contact to a folder.
+        </description>
+
+        <name>moveContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.MoveContactTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>contact id(s) to move</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>destination folder id</description>
+             <name>folderid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Tag a message.
+        </description>
+
+        <name>tagContact</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.contact.TagContactTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZActionResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZActionResultBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>contact id(s) to tag</description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>tag id</description>
+             <name>tagid</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>java.lang.String</type>
+         </attribute>
+        <attribute>
+            <description>tag state (true=tag, false=untag)</description>
+            <name>tag</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Convert an exception into a ZExceptionBean
+        </description>
+
+        <name>getException</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.GetExceptionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZExceptionBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZExceptionBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>the exception</description>
+            <name>exception</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>            
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Retreive the ZMailboxBean
+        </description>
+
+        <name>getMailbox</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.GetMailboxTag</tag-class>
+
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZMailboxBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name of the exported scoped variable to store the ZMailboxBean in.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+
+        <attribute>
+            <description>
+                Refresh account info
+            </description>
+            <name>refreshaccount</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>boolean</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Require current http request to be a POST. Throws an exception if not.
+        </description>
+
+        <name>requirePost</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.RequirePostTag</tag-class>
+
+        <body-content>empty</body-content>
+    </tag>
+
+    <tag>
+        <description>
+            look at the query strings and compute SearchContext
+        </description>
+        <name>computeSearchContext</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ComputeSearchContextTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.tag.SearchContext</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name for exported request scoped variable
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <rtexprvalue>false</rtexprvalue>
+        </attribute>
+       <attribute>
+            <description>
+                search limit
+            </description>
+            <name>limit</name>
+           <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>types of objects to return (conversaion, message, contact,appointment)</description>
+            <name>types</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>if true, use cached saerch if possible</description>
+            <name>usecache</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            call saerch conv
+        </description>
+        <name>searchConv</name>
+        <tag-class>com.zimbra.cs.taglib.tag.conv.SearchConvTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZSearchResultBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name for exported request scoped variable
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+       <attribute>
+            <description>
+                context from computeQuery
+            </description>
+            <name>context</name>
+           <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.tag.SearchContext</type>
+        </attribute>
+        <attribute>
+            <description>
+                fetch first/hits/all message in conv
+            </description>
+            <name>fetch</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+       <attribute>
+            <description>
+                search limit
+            </description>
+            <name>limit</name>
+           <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        
+        <attribute>
+            <description>mark message as read</description>
+            <name>markread</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>prefer HTML</description>
+            <name>wanthtml</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+        <attribute>
+            <description>
+                conversation id to fetch
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>sort order (dateDesc, dateAsc, subjDesc, subjAsc, nameDesc, nameAsc)</description>
+            <name>sort</name>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            compute next/prev item offset/index based on current context plus index
+        </description>
+        <name>computeNextPrevItem</name>
+        <tag-class>com.zimbra.cs.taglib.tag.ComputeNextPrevItemTag</tag-class>
+        <body-content>empty</body-content>
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.NextPrevItemBean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                Name for exported request scoped variable
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+       <attribute>
+            <description>
+                search result bean
+            </description>
+            <name>searchResult</name>
+           <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.taglib.bean.ZSearchResultBean</type>
+        </attribute>
+        <attribute>
+            <description>
+                index of current item
+            </description>
+            <name>index</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>int</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Create a tag
+        </description>
+
+        <name>createTag</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.tag.CreateTagTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.String</variable-class>
+            <scope>AT_BEGIN</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                id of created tag.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>name of tag to create</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>color of tag: orange, blue, cyan, green, purple, red, yellow</description>
+            <name>color</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Modify tag's color.
+        </description>
+
+        <name>modifyTagColor</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.tag.ModifyTagColorTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of tag to modify.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>            
+        </attribute>
+        <attribute>
+            <description>color of tag: orange, blue, cyan, green, purple, red, yellow</description>
+            <name>color</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Rename a tag
+        </description>
+
+        <name>renameTag</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.tag.RenameTagTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of tag to rename.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new tag name </description>
+            <name>newname</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Delete a tag
+        </description>
+
+        <name>deleteTag</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.tag.DeleteTagTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of tag to delete.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Mark all items with tag read.
+        </description>
+
+        <name>markTagRead</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.tag.MarkTagReadTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of tag to mark read.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Create a folder
+        </description>
+
+        <name>createFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.CreateFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZFolderBean</variable-class>
+            <scope>AT_BEGIN</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                ZFolderBean for create folder.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>parent id of new folder</description>
+            <name>parentid</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>name of folder to create</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>color of folder: orange, blue, cyan, green, purple, red, yellow, pink, gray</description>
+            <name>color</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>default view of new folder: appointment, contact, conversation, message, wiki</description>
+            <name>view</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>flags for new folder</description>
+            <name>flags</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>RSS/Atom URL for new folder</description>
+            <name>url</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>        
+    </tag>
+
+    <tag>
+        <description>
+            Rename a folder
+        </description>
+
+        <name>renameFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.RenameFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to rename.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder name </description>
+            <name>newname</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Move a folder.
+        </description>
+
+        <name>moveFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.MoveFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to move.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>new folder parent id</description>
+            <name>parentid</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Hard delete a folder
+        </description>
+
+        <name>deleteFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.DeleteFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to hard delete
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Mark all items in folder as read
+        </description>
+
+        <name>markFolderRead</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.MarkFolderReadTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to mark read.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Empty all items/sub-folders in a folder
+        </description>
+
+        <name>emptyFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.EmptyFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to empty.
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            sync the folder's contents to the remote feed specified by the folder's URL
+        </description>
+
+        <name>syncFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.SyncFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                id of folder to sync
+            </description>
+            <name>id</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Create a search folder
+        </description>
+
+        <name>createSearchFolder</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.folder.CreateSearchFolderTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.taglib.bean.ZFolderBean</variable-class>
+            <scope>AT_BEGIN</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                ZFolderBean for created folder.
+            </description>
+            <name>var</name>
+            <required>true</required>
+        </attribute>
+        <attribute>
+            <description>parent id of new folder</description>
+            <name>parentid</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>name of folder to create</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>search query</description>
+            <name>query</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>types to search for: conversation, message, contact, appointment, document, wiki </description>
+            <name>types</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>sort order (dateDesc, dateAsc, subjDesc, subjAsc)</description>            
+            <name>sort</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>color of folder: orange, blue, cyan, green, purple, red, yellow, pink, gray</description>
+            <name>color</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+             Modify prefs
+        </description>
+
+        <name>modifyPrefs</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.ModifyPrefsTag</tag-class>
+
+        <body-content>scriptless</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>java.lang.Boolean</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                set to true if any prefs were modified
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+
+     </tag>
+
+     <tag>
+         <description>
+             A pref to modify
+         </description>
+
+         <name>pref</name>
+
+         <tag-class>com.zimbra.cs.taglib.tag.PrefTag</tag-class>
+
+         <body-content>empty</body-content>
+
+         <attribute>
+             <description>
+                 Name of the pref.
+             </description>
+             <name>name</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+         </attribute>
+         <attribute>
+             <description>
+                Value of the pref.
+             </description>
+             <name>value</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+         </attribute>
+     </tag>
+
+    <tag>
+        <description>
+            construct a filter rule object (for use with createFilterRule/modifyFilterRule)
+        </description>
+
+        <name>filterRule</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.FilterRuleTag</tag-class>
+
+        <body-content>scriptless</body-content>
+
+        <variable>
+            <name-from-attribute>var</name-from-attribute>
+            <variable-class>com.zimbra.cs.zclient.ZFilterRule</variable-class>
+            <scope>AT_END</scope>
+        </variable>
+
+        <attribute>
+            <description>
+                create filter
+            </description>
+            <name>var</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>name of filter rule.</description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+         <attribute>
+             <description>whether rule is active or not</description>
+             <name>active</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+         <attribute>
+             <description>whether all conditions must be met or not</description>
+             <name>allconditions</name>
+             <required>true</required>
+             <rtexprvalue>true</rtexprvalue>
+             <type>boolean</type>
+         </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Whether or not an address in a header is in/not in address book.
+        </description>
+
+        <name>addressBookCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.AddressBookConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Name of header to check
+            </description>
+            <name>header</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+               operation (IN, NOT_IN)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Whether or not a message has an attachment.
+        </description>
+
+        <name>attachmentExistsCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.AttachmentExistsConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+               operation (EXISTS, NOT_EXISTS)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Whether or not the body contains specified text.
+        </description>
+
+        <name>bodyCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.BodyConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Value to check for
+            </description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+               operation (CONTAINS, NOT_CONTAINS)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Checks the date on the message.
+        </description>
+
+        <name>dateCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.DateConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Date value to check for (YYYYMMDD)
+            </description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+               operation (BEFORE, NOT_BEFORE, AFTER, NOT_AFTER)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Checks a header for a particular value.
+        </description>
+
+        <name>headerCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.HeaderConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Header name
+            </description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                Header value to check for
+            </description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+               operation (IS, NOT_IS, CONTAINS, NOT_CONTAINS, MATCHES, NOT_MATCHES)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Header exists condition.
+        </description>
+
+        <name>headerExistsCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.HeaderExistsConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Header name
+            </description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+               operation (EXISTS, NOT_EXISTS)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Size condition.
+        </description>
+
+        <name>sizeCondition</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.SizeConditionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Value of size (10B, 10K, 10M)
+            </description>
+            <name>value</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+        <attribute>
+            <description>
+               Size operation (UNDER, NOT_UNDER, OVER, NOT_OVER)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Keep action.
+        </description>
+
+        <name>keepAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.KeepActionTag</tag-class>
+        <body-content>empty</body-content>
+    </tag>
+
+    <tag>
+        <description>
+            Stop action.
+        </description>
+
+        <name>stopAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.StopActionTag</tag-class>
+        <body-content>empty</body-content>
+    </tag>
+
+    <tag>
+        <description>
+            Discard action.
+        </description>
+
+        <name>discardAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.DiscardActionTag</tag-class>
+        <body-content>empty</body-content>
+    </tag>
+
+    <tag>
+        <description>
+            Tag action.
+        </description>
+
+        <name>tagAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.TagActionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                Tag name.
+            </description>
+            <name>tag</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            FileInto action.
+        </description>
+
+        <name>fileIntoAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.FileIntoActionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+               Path name (Inbox, Foo/Bar, etc)
+            </description>
+            <name>path</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Mark action.
+        </description>
+
+        <name>markAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.MarkActionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+               op (READ, FLAGGED)
+            </description>
+            <name>op</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            Redirect action.
+        </description>
+
+        <name>redirectAction</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.RedirectActionTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+               address to redirect to
+            </description>
+            <name>address</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            create a filter rule
+        </description>
+
+        <name>createFilterRule</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.CreateFilterRuleTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                the rule to create
+            </description>
+            <name>rule</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.zclient.ZFilterRule</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            modify a filter rule
+        </description>
+
+        <name>modifyFilterRule</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.ModifyFilterRuleTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                the rule to modify
+            </description>
+            <name>rule</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>com.zimbra.cs.zclient.ZFilterRule</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                original filter name (to detect renames)
+            </description>
+            <name>originalname</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+     <tag>
+        <description>
+            delete a filter rule
+        </description>
+
+        <name>deleteFilterRule</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.DeleteFilterRuleTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                the rule to delete
+            </description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag>
+        <description>
+            move a filter rule
+        </description>
+
+        <name>moveFilterRule</name>
+
+        <tag-class>com.zimbra.cs.taglib.tag.filter.MoveFilterRuleTag</tag-class>
+
+        <body-content>empty</body-content>
+
+        <attribute>
+            <description>
+                the rule to delete
+            </description>
+            <name>name</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+
+        <attribute>
+            <description>
+                the direction to move the rule: up (towards the front of the list) or down (towards the end of the list)
+            </description>
+            <name>direction</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+            <type>java.lang.String</type>
+        </attribute>
+    </tag>
+
+    <tag-file>
+        <name>currentResultUrl</name>
+        <path>/META-INF/tags/currentResultUrl.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>newSortUrl</name>
+        <path>/META-INF/tags/newSortUrl.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>nextResultUrl</name>
+        <path>/META-INF/tags/nextResultUrl.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>prevResultUrl</name>
+        <path>/META-INF/tags/prevResultUrl.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>prevItemUrl</name>
+        <path>/META-INF/tags/prevItemUrl.tag</path>
+    </tag-file>
+
+    <tag-file>
+        <name>nextItemUrl</name>
+        <path>/META-INF/tags/nextItemUrl.tag</path>
+    </tag-file>
+
+    <function>
+        <description>Used to determine if any of the specified fields are set in a contact</description>
+        <name>anySet</name>
+        <function-class>com.zimbra.cs.taglib.bean.ZContactBean</function-class>
+        <function-signature>boolean anySet(com.zimbra.cs.taglib.bean.ZContactBean,java.lang.String)</function-signature>
+        <example>
+                        <![CDATA[ ]]>
+
+            <![CDATA[
+
+            <c:if test="${zm:anySet(contact,'email email2 email3')}">
+              ...
+            </c:if>
+
+            ]]>
+<![CDATA[ ]]>            
+        </example>
+    </function>
+
+    <function>
+        <name>truncate</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String truncate(java.lang.String,int,boolean)</function-signature>
+    </function>
+
+    <function>
+        <name>joinLines</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String joinLines(java.lang.String,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>displaySize</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String displaySize(long)</function-signature>
+    </function>
+
+    <function>
+        <name>displaySizeFractions</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String displaySize(long, int)</function-signature>
+    </function>
+
+    <function>
+        <name>displayMsgDate</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String
+            displayMsgDate(javax.servlet.jsp.PageContext,java.util.Date)</function-signature>
+    </function>
+ 
+    <function>
+        <name>getTags</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.util.List&lt;com.zimbra.cs.taglib.bean.ZTagBean&gt;
+            getTags(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getTagNames</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String
+            getTagNames(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+
+    <function>
+        <name>getTagName</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String
+            getTagName(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getFolderName</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String
+            getFolderName(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>repeatString</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String repeatString(java.lang.String, int)</function-signature>
+    </function>
+
+    <function>
+        <name>encodeHtmlAttr</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String encodeHtmlAttr(java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getEnvString</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getEnvString(java.lang.String, java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getUrlRand</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>java.lang.String getUrlRand()</function-signature>
+    </function>
+
+
+    <function>
+        <name>getPreLoginRedirectUrl</name>
+        <function-class>com.zimbra.cs.taglib.ZJspSession</function-class>
+        <function-signature>java.lang.String getPreLoginRedirectUrl(javax.servlet.jsp.PageContext, java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>getChangePasswordUrl</name>
+        <function-class>com.zimbra.cs.taglib.ZJspSession</function-class>
+        <function-signature>java.lang.String getChangePasswordUrl(javax.servlet.jsp.PageContext,java.lang.String)</function-signature>
+    </function>
+
+    <function>
+        <name>isAddressBook</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isAddressBook(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getAddressBook</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZAddressBookCondition getAddressBook(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isBody</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isBody(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getBody</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZBodyCondition getBody(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isSize</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isSize(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getSize</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZSizeCondition getSize(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isDate</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isDate(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getDate</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZDateCondition getDate(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isHeader</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isHeader(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getHeader</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZHeaderCondition getHeader(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isHeaderExists</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isHeaderExists(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getHeaderExists</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZHeaderExistsCondition getHeaderExists(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isAttachmentExists</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isAttachmentExists(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>getAttachmentExists</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterCondition.ZAttachmentExistsCondition getAttachmentExists(com.zimbra.cs.zclient.ZFilterCondition)</function-signature>
+    </function>
+
+    <function>
+        <name>isKeep</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isKeep(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>isStop</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isStop(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>isDiscard</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isDiscard(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>isFileInto</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isFileInto(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>isTag</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isTag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>isFlag</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isFlag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>isRedirect</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean isRedirect(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>getTag</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZTagAction getTag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>getFlag</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZMarkAction getFlag(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>getRedirect</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZRedirectAction getRedirect(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+    <function>
+        <name>getFileInto</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>com.zimbra.cs.zclient.ZFilterAction.ZFileIntoAction getFileInto(com.zimbra.cs.zclient.ZFilterAction)</function-signature>
+    </function>
+
+
+    <function>
+        <name>getPartHtmlContent</name>
+        <function-class>com.zimbra.cs.taglib.bean.ZMessageBean</function-class>
+        <function-signature>java.lang.String getHtmlContent(com.zimbra.cs.taglib.bean.ZMimePartBean,com.zimbra.cs.taglib.bean.ZMessageBean)</function-signature>
+    </function>
+
+    <function>
+        <name>actionSet</name>
+        <function-class>com.zimbra.cs.taglib.bean.BeanUtils</function-class>
+        <function-signature>boolean actionSet(java.util.Map,java.lang.String)</function-signature>
+    </function>
+
+</taglib>
